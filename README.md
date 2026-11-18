@@ -79,25 +79,14 @@ Caso queira testar ou programar offline:
 
 ```
 condado-de-knox/
-├── index.html              # Jogo completo (Three.js WebGL, áudio sintético, HUD, P2P)
-├── server.mjs              # Servidor local Node.js (com suporte completo a MIME .glb)
+├── server.mjs              # Servidor local Node.js (com suporte a public/ e MIME .glb)
 ├── INICIAR_LOCAL.bat       # Inicializador rápido de 1 clique
 ├── vercel.json             # Configuração da Vercel (região SP gru1 + cache imutável de .GLB)
 ├── package.json            # Metadados do projeto
 ├── api/
 │   └── servers.js          # Rota Serverless da Vercel para listagem de salas
-├── GUNS/                   # Modelos 3D (.glb) das 10 armas de fogo
-│   ├── ak-47-tactical-upgrade.glb
-│   ├── akm-assault-rifle-game-ready-model.glb
-│   ├── ar-15-style-rifle.glb
-│   ├── assault-rifle-m4a1.glb
-│   ├── hk-mp5-smg.glb
-│   ├── lr-300-ml-a-assault-rifle.glb
-│   ├── ps1-double-barrel-shotgun-1840.glb
-│   ├── ps1-style-awp-sniper.glb
-│   ├── ps1-style-sawn-off-shotgun.glb
-│   └── psx-magnum-44.glb
-└── MODELOS PERSONAGENS/    # Modelos 3D (.glb) dos Zumbis
-    ├── zombie.glb
-    └── zombie2.glb
+└── public/                 # Pasta estática padrão da Vercel (servida na raiz /)
+    ├── index.html          # Jogo completo (Three.js WebGL, áudio sintético, HUD, P2P)
+    ├── GUNS/               # Modelos 3D (.glb) das 10 armas de fogo
+    └── MODELOS PERSONAGENS/# Modelos 3D (.glb) dos Zumbis
 ```

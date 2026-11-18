@@ -49,7 +49,10 @@ const server = http.createServer((req, res) => {
   }
 
   const relPath = pathname === '/' ? '/index.html' : pathname;
-  const safePath = path.normalize(path.join(__dirname, relPath));
+  let safePath = path.normalize(path.join(__dirname, 'public', relPath));
+  if (!fs.existsSync(safePath)) {
+    safePath = path.normalize(path.join(__dirname, relPath));
+  }
   if (!safePath.startsWith(__dirname)) {
     res.writeHead(403); res.end('Forbidden'); return;
   }

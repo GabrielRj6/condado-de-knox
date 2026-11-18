@@ -2,8 +2,5 @@
   "name": "knox-dayz-survival",
   "version": "0.3.1",
   "private": true,
-  "description": "KNOX Survival Multiplayer (DayZ + Zomboid Style) - Three.js WebGL + WebRTC PeerJS + Vercel",
-  "scripts": {
-    "start": "node server.mjs"
-  }
+  "description": "KNOX Survival Multiplayer (DayZ + Zomboid Style) - Three.js WebGL + WebRTC PeerJS + Vercel"
 }
