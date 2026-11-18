@@ -1,0 +1,6 @@
+{
+  "name": "knox-dayz-survival",
+  "version": "0.3.0",
+  "private": true,
+  "description": "KNOX Survival Multiplayer (DayZ + Zomboid Style) - Three.js + WebRTC + Vercel"
+}
