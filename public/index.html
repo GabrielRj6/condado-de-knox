@@ -126,6 +126,44 @@
   .attach-slot-box { background:rgba(14,16,13,0.9); border:1px dashed var(--bd-hi); padding:9px 11px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; font-size:11px; }
   .slot-lbl { font-size:9.5px; color:var(--dim); display:block; }
 
+  /* TELA DE MORTE CINEMÁTICA ("SE FUDEU OTARIO") */
+  #death-screen {
+    position: fixed; inset: 0; z-index: 45; display: none;
+    background: radial-gradient(circle at center, rgba(160, 20, 20, 0.45) 0%, rgba(8, 4, 4, 0.94) 80%);
+    flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    backdrop-filter: blur(4px); opacity: 0; transition: opacity 0.5s ease; pointer-events: none;
+  }
+  #death-screen.active {
+    display: flex; opacity: 1; pointer-events: auto;
+  }
+  .death-headline {
+    font-family: 'Oswald', sans-serif; font-size: clamp(44px, 8vw, 84px);
+    font-weight: 700; letter-spacing: 5px; color: #ff3324;
+    text-shadow: 0 0 28px rgba(255, 30, 20, 0.9), 0 4px 14px #000;
+    text-transform: uppercase; animation: deathPulse 2s infinite alternate;
+  }
+  @keyframes deathPulse {
+    from { transform: scale(0.98); text-shadow: 0 0 20px rgba(255, 30, 20, 0.7); }
+    to { transform: scale(1.02); text-shadow: 0 0 38px rgba(255, 30, 20, 1.0), 0 0 60px rgba(255, 30, 20, 0.5); }
+  }
+  .death-subtext {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 2px;
+    color: #e0d8cc; margin-top: 12px; max-width: 620px; text-shadow: 0 2px 4px #000;
+  }
+  .death-btn-stack {
+    margin-top: 30px; display: flex; gap: 14px;
+  }
+  .death-btn {
+    background: #a8241e; border: 2px solid #e0443b; color: #fff;
+    font-family: 'Oswald', sans-serif; font-size: 17px; letter-spacing: 2.5px;
+    padding: 12px 32px; cursor: pointer; text-transform: uppercase;
+    box-shadow: 0 4px 18px rgba(180, 20, 20, 0.6); transition: all 0.15s;
+  }
+  .death-btn:hover {
+    background: #c8322a; border-color: #ff5c52; transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(255, 40, 30, 0.85);
+  }
+
   /* MENU PRINCIPAL + ABA DE SERVIDORES VERCEL/WEBRTC */
   #menu-overlay { position:fixed; inset:0; z-index:22; background:linear-gradient(90deg,rgba(7,9,7,0.95) 0%,rgba(9,11,8,0.84) 50%,rgba(9,11,8,0.18) 100%); display:flex; align-items:center; padding-left:clamp(20px,4.5vw,72px); transition:opacity 0.22s; }
   #menu-overlay.hidden { opacity:0; pointer-events:none; }
@@ -306,6 +344,16 @@
     <div class="col-title"><span>JOGADORES CONECTADOS NO SERVIDOR</span></div>
     <div id="party-players-list" style="overflow-y:auto;max-height:300px;"></div>
   </div>
+</div>
+
+<!-- TELA DE MORTE CINEMÁTICA ("SE FUDEU OTARIO") -->
+<div id="death-screen">
+  <div class="death-headline">SE FUDEU OTARIO</div>
+  <div class="death-subtext" id="death-cause-text">VOCÊ SUCUMBIU AOS PERIGOS DE KNOX COUNTY // SEU CORPO FICOU PARA OS ZUMBIS</div>
+  <div class="death-btn-stack">
+    <button class="death-btn" id="btn-respawn-now">RENASCER AGORA (FACA KA-BAR)</button>
+  </div>
+  <div style="margin-top: 14px; font-size: 11px; color: #a89f8c; letter-spacing: 1.5px;">[PRESSIONE ESPAÇO PARA RENASCER]</div>
 </div>
 
 <!-- Menu Inicial & Aba de Servidores Online (Pronto para Vercel) -->
@@ -913,8 +961,9 @@ function buildOmniCharacter(jacketTint = null) {
     return m;
   };
 
-  // Pelve + Cinto Social
+  // Pelve + Cinto Social (Mixamo Hips)
   const pelvis = new THREE.Group();
+  pelvis.name = 'Hips';
   pelvis.position.set(0, 0.93, 0);
   root.add(pelvis);
 
@@ -929,10 +978,19 @@ function buildOmniCharacter(jacketTint = null) {
     mk(new THREE.BoxGeometry(0.018, 0.005, 0.018), Mats.gunSilver, 0.006, 0.066, -0.115)
   );
 
-  // Coluna + Jaqueta Xadrez Vinho Aberta + Camisa Cinza + Golas
+  // Coluna + Jaqueta Xadrez Vinho Aberta + Camisa Cinza + Golas (Mixamo Spine -> Spine01 -> Spine02)
   const spine = new THREE.Group();
+  spine.name = 'Spine';
   spine.position.set(0, 0.06, 0);
   pelvis.add(spine);
+
+  const spine01 = new THREE.Group();
+  spine01.name = 'Spine01';
+  spine.add(spine01);
+
+  const spine02 = new THREE.Group();
+  spine02.name = 'Spine02';
+  spine01.add(spine02);
 
   const torsoVisuals = new THREE.Group();
   spine.add(torsoVisuals);
@@ -973,10 +1031,15 @@ function buildOmniCharacter(jacketTint = null) {
     torsoVisuals.add(mk(snapGeo, Mats.gunSilver, 0.066, sy, -0.117, Math.PI * 0.5, 0, 0));
   });
 
-  // Cabeça + Óculos Wayfarer + Chapéu Pork-Pie
+  // Cabeça + Óculos Wayfarer + Chapéu Pork-Pie (Mixamo neck -> Head)
+  const neck = new THREE.Group();
+  neck.name = 'neck';
+  neck.position.set(0, 0.465, 0);
+  spine02.add(neck);
+
   const headPivot = new THREE.Group();
-  headPivot.position.set(0, 0.465, 0);
-  spine.add(headPivot);
+  headPivot.name = 'Head';
+  neck.add(headPivot);
 
   const headMesh = mk(sculptedHeadGeo, [skinMat, skinMat, skinMat, skinMat, skinMat, faceMat], 0, 0.156, 0);
   const noseTip = mk(new THREE.SphereGeometry(0.013, 8, 8), skinMat, 0, 0.138, -0.114);
@@ -1022,21 +1085,33 @@ function buildOmniCharacter(jacketTint = null) {
     noseTip, glasses, hat
   );
 
-  // Braços Esculpidos
+  // Braços Esculpidos (Mixamo RightShoulder/RightArm/RightForeArm/RightHand e Left)
   const buildArm = (side) => {
+    const isRight = side > 0;
     const shoulder = new THREE.Group();
-    shoulder.position.set(side * 0.215, 0.405, 0.005);
-    spine.add(shoulder);
+    shoulder.name = isRight ? 'RightShoulder' : 'LeftShoulder';
+    shoulder.position.set(side * 0.12, 0.405, 0.005);
+    spine02.add(shoulder);
+
+    const upperArm = new THREE.Group();
+    upperArm.name = isRight ? 'RightArm' : 'LeftArm';
+    upperArm.position.set(side * 0.095, 0, 0);
+    shoulder.add(upperArm);
+
     const upperSleeve = mk(new THREE.CylinderGeometry(0.060, 0.052, 0.25, 10), jacketMat, 0, -0.125, 0);
     upperSleeve.scale.set(0.95, 1, 1.06);
-    shoulder.add(mk(new THREE.SphereGeometry(0.061, 10, 8), jacketMat, 0, -0.01, 0), upperSleeve);
+    upperArm.add(mk(new THREE.SphereGeometry(0.061, 10, 8), jacketMat, 0, -0.01, 0), upperSleeve);
 
     const elbow = new THREE.Group();
+    elbow.name = isRight ? 'RightForeArm' : 'LeftForeArm';
     elbow.position.set(0, -0.245, 0);
-    shoulder.add(elbow);
+    upperArm.add(elbow);
+
     const foreSleeve = mk(new THREE.CylinderGeometry(0.052, 0.044, 0.21, 10), jacketMat, 0, -0.105, 0);
     foreSleeve.scale.set(0.95, 1, 1.05);
+
     const handGroup = new THREE.Group();
+    handGroup.name = isRight ? 'RightHand' : 'LeftHand';
     handGroup.position.set(0, -0.262, 0);
     handGroup.add(
       mk(new THREE.BoxGeometry(0.062, 0.058, 0.036), skinMat, 0, 0, 0),
@@ -1054,14 +1129,16 @@ function buildOmniCharacter(jacketTint = null) {
     const weaponMount = new THREE.Group();
     weaponMount.position.set(0, -0.275, -0.03);
     weaponMount.rotation.x = -Math.PI * 0.5;
-    elbow.add(weaponMount);
-    return { shoulder, elbow, weaponMount };
+    handGroup.add(weaponMount);
+    return { shoulder, upperArm, elbow, handGroup, weaponMount };
   };
   const leftArm = buildArm(-1), rightArm = buildArm(1);
 
-  // Pernas com comprimentos exatos L1=0.42m (Coxa), L2=0.41m (Canela) + Junta ANKLE (Tornozelo) com sola em -0.06m!
+  // Pernas com comprimentos exatos L1=0.42m (Coxa), L2=0.41m (Canela) + Junta ANKLE (Tornozelo) (Mixamo RightUpLeg/RightLeg/RightFoot/RightToeBase)
   const buildLeg = (side) => {
+    const isRight = side > 0;
     const hip = new THREE.Group();
+    hip.name = isRight ? 'RightUpLeg' : 'LeftUpLeg';
     hip.position.set(side * 0.095, -0.04, 0);
     pelvis.add(hip);
 
@@ -1070,6 +1147,7 @@ function buildOmniCharacter(jacketTint = null) {
     hip.add(thigh);
 
     const knee = new THREE.Group();
+    knee.name = isRight ? 'RightLeg' : 'LeftLeg';
     knee.position.set(0, -0.42, 0);
     hip.add(knee);
 
@@ -1081,8 +1159,14 @@ function buildOmniCharacter(jacketTint = null) {
 
     // Junta real do Tornozelo (Ankle) -> mantém a sola 100% paralela ao chão!
     const ankle = new THREE.Group();
+    ankle.name = isRight ? 'RightFoot' : 'LeftFoot';
     ankle.position.set(0, -0.41, 0);
     knee.add(ankle);
+
+    const toeBase = new THREE.Group();
+    toeBase.name = isRight ? 'RightToeBase' : 'LeftToeBase';
+    toeBase.position.set(0, -0.03, -0.10);
+    ankle.add(toeBase);
 
     const shoe = new THREE.Group();
     shoe.position.set(0, -0.012, -0.038);
@@ -1099,14 +1183,50 @@ function buildOmniCharacter(jacketTint = null) {
     shoe.add(sole, heelBlock, upperHeel, instep, toeCap);
     ankle.add(shoe);
 
-    return { hip, knee, ankle, headMesh };
+    return { hip, knee, ankle, toeBase, headMesh };
   };
 
+  const mixer = new THREE.AnimationMixer(root);
   return {
-    root, pelvis, spine, torsoVisuals, headPivot, headMesh,
+    root, pelvis, spine, spine01, spine02, neck, torsoVisuals, headPivot, headMesh,
     leftArm, rightArm,
-    leftLeg: buildLeg(-1), rightLeg: buildLeg(1)
+    leftLeg: buildLeg(-1), rightLeg: buildLeg(1),
+    mixer,
+    actions: {},
+    activeAction: null,
+    currentAnim: null
   };
+}
+
+function setupPlayerActions(rig) {
+  if (!rig || !rig.mixer) return;
+  rig.actions = {};
+  for (const id in PLAYER_ANIM_CLIPS) {
+    rig.actions[id] = rig.mixer.clipAction(PLAYER_ANIM_CLIPS[id]);
+  }
+  const defaultAction = rig.actions['rifle_idle'];
+  if (defaultAction) {
+    defaultAction.play();
+    rig.activeAction = defaultAction;
+    rig.currentAnim = 'rifle_idle';
+  }
+}
+
+function transitionPlayerAnim(rig, targetClipId, fadeDuration = 0.18, loopMode = THREE.LoopRepeat, clampWhenFinished = false) {
+  if (!rig || !rig.actions || !rig.actions[targetClipId]) return;
+  const nextAction = rig.actions[targetClipId];
+  if (rig.activeAction === nextAction) return;
+
+  nextAction.reset();
+  nextAction.setLoop(loopMode);
+  nextAction.clampWhenFinished = clampWhenFinished;
+  nextAction.play();
+
+  if (rig.activeAction) {
+    rig.activeAction.crossFadeTo(nextAction, fadeDuration, true);
+  }
+  rig.activeAction = nextAction;
+  rig.currentAnim = targetClipId;
 }
 
 /* Solver Analítico de IK 2-Ossos (Lei dos Cossenos) -> Impede 100% o pé de entrar no chão! */
@@ -1587,10 +1707,10 @@ function buildZombieEntity(id, x, z, rng) {
     wanderTimer: 2, speed: 1.3 + rng() * 0.8, legHit: false,
     alertT: 0, stagger: 0, knockX: 0, knockZ: 0, atkCd: 0,
     phase: rng() * 10, hitboxes: [], glbHolder: null, mixer: null, hipsBone: null,
-    walkAnimId: 'walk_' + (1 + (vIdx % 5)), // 5 caminhadas aleatórias (Not So Scary / Scary)
-    runAnimId: 'run_' + (1 + (vIdx % 2)),   // Corrida garantida para todos ao perseguir!
-    deathAnimId: 'death_' + (1 + (vIdx % 4)), // 4 mortes aleatorizadas
-    attackAnimId: (['attack_punch', 'attack_bite', 'attack_neck', 'attack_kick'])[vIdx % 4],
+    walkAnimId: 'walk_' + (1 + (vIdx % 3)), // 3 caminhadas aleatórias 100% eretas (walking, walking2, zombiewalk)
+    runAnimId: 'run_' + (1 + (vIdx % 2)),   // Corrida garantida para todos ao perseguir (run_1, run_2)
+    deathAnimId: 'death_' + (1 + (vIdx % 4)), // 4 mortes aleatorizadas (apenas quando hp <= 0!)
+    attackAnimId: (['attack_punch', 'attack_bite', 'attack_punch2', 'attack_kick'])[vIdx % 4],
     currentAnim: null, actions: {}, activeAction: null
   };
   const addP = (parent, geo, mat, px, py, pz, zone) => {
@@ -2351,13 +2471,19 @@ function respawnLocalSurvivor(resetItems = true) {
   player.bodyYaw = player.yaw;
   player.hp = 100;
   player.dead = false;
+  player.deathT = 0;
   player.stamina = 100;
   player.crouching = false;
   player.crouchAlpha = 0;
   document.getElementById('hp-fill').style.width = '100%';
   document.getElementById('hp-fill').style.backgroundColor = '#6f8b52';
   document.getElementById('menu-main-title').textContent = 'CONDADO DE KNOX';
+  const deathScreen = document.getElementById('death-screen');
+  if (deathScreen) deathScreen.classList.remove('active');
   if (resetItems) resetDayZLoadout();
+  if (playerAnimsLoaded && omni.actions) {
+    transitionPlayerAnim(omni, 'rifle_idle', 0.2);
+  }
 }
 
 function resolveCircleWorldCollisions(pos, radius, minY, maxY, stepH, ignoreVehicleId = null) {
@@ -2396,6 +2522,60 @@ function animateCharacterRig(rig, state, dt) {
 
   rig.root.position.copy(pos);
   rig.root.rotation.set(0, bodyYaw, state.turnLeanZ || 0);
+
+  // Se o pacote de animações reais do personagem estiver carregado, usa a máquina de estados Mixamo:
+  if (playerAnimsLoaded && rig.actions && Object.keys(rig.actions).length > 0) {
+    let targetAnim = 'rifle_idle';
+    let loopMode = THREE.LoopRepeat;
+    let clamp = false;
+    let fade = 0.18;
+
+    if (state.isDying) {
+      targetAnim = state.deathAnimId || player.deathAnimId || 'death_front';
+      loopMode = THREE.LoopOnce;
+      clamp = true;
+      fade = 0.10;
+    } else if (reloading && rig.actions['rifle_reload']) {
+      targetAnim = 'rifle_reload';
+      fade = 0.15;
+    } else if ((recoilKick || 0) > 0.04 && rig.actions['rifle_fire']) {
+      targetAnim = 'rifle_fire';
+      fade = 0.05;
+    } else if (crouchAlpha > 0.45 && hSpeed < 0.25 && rig.actions['crouch_kneel']) {
+      targetAnim = 'crouch_kneel';
+      fade = 0.20;
+    } else if (hSpeed > 0.25) {
+      if (localFwdVel < -0.3) {
+        // Marcha Ré com Rifle / Corrida para trás
+        targetAnim = (sprinting || Math.abs(localFwdVel) > 3.0) && rig.actions['run_back'] ? 'run_back' : 'walk_back';
+      } else if (Math.abs(localStrVel) > 0.35 && Math.abs(localFwdVel) < 0.6) {
+        // Passo lateral (Strafe) esquerda / direita
+        targetAnim = localStrVel < 0 ? 'strafe_left' : 'strafe_right';
+      } else if (localFwdVel > 0.3) {
+        // Avanço frontal (Corrida / Caminhada)
+        targetAnim = (sprinting || localFwdVel > 3.2) && rig.actions['run_fwd'] ? 'run_fwd' : 'walk_fwd';
+      } else {
+        targetAnim = 'walk_fwd';
+      }
+    } else {
+      // Parado mirando
+      targetAnim = 'rifle_idle';
+    }
+
+    transitionPlayerAnim(rig, targetAnim, fade, loopMode, clamp);
+    if (rig.mixer) rig.mixer.update(dt);
+
+    // Ajuste sutil de inclinação de mira da cabeça
+    const aimPitch = inCombat ? pitch : pitch * 0.35;
+    let headDiffYaw = ((lookYaw - bodyYaw + Math.PI) % (Math.PI * 2)) - Math.PI;
+    if (headDiffYaw < -Math.PI) headDiffYaw += Math.PI * 2;
+    headDiffYaw = THREE.MathUtils.clamp(headDiffYaw, -0.65, 0.65);
+    if (rig.headPivot) {
+      rig.headPivot.rotation.x = THREE.MathUtils.lerp(rig.headPivot.rotation.x, aimPitch * 0.45, Math.min(1, dt * 15));
+      rig.headPivot.rotation.y = THREE.MathUtils.lerp(rig.headPivot.rotation.y, headDiffYaw, Math.min(1, dt * 15));
+    }
+    return;
+  }
 
   // Morte física e dramática do personagem (Death From Front / Death From Right / Dying)
   if (state.isDying) {
@@ -2743,6 +2923,27 @@ const aimRaycaster = new THREE.Raycaster();
 const aimWorldPoint = new THREE.Vector3();
 
 function updateCameraAndWeaponViewmodel(dt) {
+  // Caso 0: Morte Cinematográfica em 3ª Pessoa (Mostra o corpo caindo e a mensagem "SE FUDEU OTARIO")
+  if (player.dead) {
+    document.getElementById('scope-overlay').style.display = 'none';
+    omni.headPivot.visible = true;
+    omni.torsoVisuals.visible = true;
+    omni.leftArm.shoulder.visible = true;
+    omni.rightArm.shoulder.visible = true;
+    fpWeaponRig.visible = false;
+
+    const deathT = player.deathT || 0;
+    const camDist = THREE.MathUtils.lerp(2.2, 3.8, deathT);
+    const camHeight = THREE.MathUtils.lerp(1.4, 2.5, deathT);
+    const deathAngle = player.yaw + Math.PI + 0.35;
+    const targetCamX = player.pos.x - Math.sin(deathAngle) * camDist;
+    const targetCamZ = player.pos.z - Math.cos(deathAngle) * camDist;
+    const targetCamY = player.pos.y + camHeight;
+    camera.position.lerp(new THREE.Vector3(targetCamX, targetCamY, targetCamZ), Math.min(1, dt * 5.5));
+    camera.lookAt(player.pos.x, player.pos.y + 0.3, player.pos.z);
+    return;
+  }
+
   const wInst = getActiveWeaponObj();
   const wDef = WEAPON_DEFS[wInst.id];
   const opticId = wInst.attachments.optic;
@@ -3830,6 +4031,7 @@ function getOrCreateRemotePlayer(id, nick = 'Sobrevivente') {
 
   const rig = buildOmniCharacter(0xd6c8dc);
   scene.add(rig.root);
+  if (playerAnimsLoaded) setupPlayerActions(rig);
 
   // Armas visíveis na mão do jogador remoto
   const remWeapons = {};
@@ -4567,10 +4769,26 @@ function damageLocalPlayer(amount, cause = 'COMBATE') {
 
   if (player.hp <= 0) {
     player.dead = true;
+    player.deathT = 0;
+    const deathOptions = ['death_front', 'death_right', 'death_dying'];
+    player.deathAnimId = deathOptions[Math.floor(Math.random() * deathOptions.length)];
+    if (playerAnimsLoaded && omni.actions && omni.actions[player.deathAnimId]) {
+      transitionPlayerAnim(omni, player.deathAnimId, 0.12, THREE.LoopOnce, true);
+    }
     mouseDownLeft = false; mouseDownRight = false;
     player.adsFirstPersonToggle = false;
     dropAllLootOnDeath();
-    showToast(`VOCÊ MORREU (${cause}) // SEU LOOT CAIU NO CHÃO!`);
+    showToast(`VOCÊ MORREU // SE FUDEU OTARIO`);
+
+    // Ativa a tela de morte cinematográfica "SE FUDEU OTARIO"
+    const deathScreen = document.getElementById('death-screen');
+    if (deathScreen) {
+      deathScreen.classList.add('active');
+      const causeEl = document.getElementById('death-cause-text');
+      if (causeEl) {
+        causeEl.textContent = `VOCÊ SUCUMBIU AOS PERIGOS DE KNOX COUNTY // CAUSA: ${cause.toUpperCase()} // SEU CORPO FICOU PARA OS ZUMBIS`;
+      }
+    }
     document.getElementById('menu-main-title').textContent = 'VOCÊ CAIU EM KNOX';
     document.getElementById('btn-play-label').textContent = 'RENASCER COM FACA';
     try { document.exitPointerLock(); } catch (_) {}
@@ -4865,6 +5083,14 @@ window.addEventListener('keydown', (e) => {
   if (['Tab', 'AltLeft', 'AltRight', 'Space'].includes(e.code)) e.preventDefault();
   keys[e.code] = true;
 
+  // Se estiver morto na tela cinematográfica "SE FUDEU OTARIO", apertar Espaço ou Enter renasce na hora!
+  if (player.dead && (e.code === 'Space' || e.code === 'Enter') && !e.repeat) {
+    sfx.init();
+    respawnLocalSurvivor(true);
+    try { canvas.requestPointerLock(); } catch (_) {}
+    return;
+  }
+
   // Aceitar / Recusar convite de Time rapidamente no Y / U!
   if (pendingTeamInvite && e.code === 'KeyY') {
     player.teamId = pendingTeamInvite.teamId;
@@ -5021,6 +5247,11 @@ const startOrResumePlay = () => {
 
 document.getElementById('btn-play').onclick = startOrResumePlay;
 document.getElementById('btn-play-resume').onclick = startOrResumePlay;
+document.getElementById('btn-respawn-now').onclick = () => {
+  sfx.init();
+  respawnLocalSurvivor(true);
+  try { canvas.requestPointerLock(); } catch (_) {}
+};
 document.getElementById('btn-host-server').onclick = () => { sfx.init(); createOnlineServer(); };
 document.getElementById('btn-stop-server').onclick = () => stopHostedServer();
 document.getElementById('btn-esc-stop-server').onclick = () => stopHostedServer();
@@ -5063,7 +5294,11 @@ document.addEventListener('pointerlockchange', () => {
   } else {
     mouseDownLeft = false; mouseDownRight = false;
     document.getElementById('scope-overlay').style.display = 'none';
-    if (inventoryOpen || partyOpen) {
+    if (player.dead) {
+      // Quando morto, o menu principal deve continuar oculto e a tela "SE FUDEU OTARIO" ativa!
+      menuOverlay.classList.add('hidden');
+      hudEl.style.opacity = '0';
+    } else if (inventoryOpen || partyOpen) {
       menuOverlay.classList.add('hidden');
       hudEl.style.opacity = '1';
     } else {
@@ -5199,6 +5434,10 @@ function preloadAllProjectGLBModels() {
       }
       playerAnimsLoaded = true;
       console.log('Pacote de Animações de Personagens Ativo:', Object.keys(PLAYER_ANIM_CLIPS).length, 'animações');
+      setupPlayerActions(omni);
+      for (const rp of remotePlayers.values()) {
+        if (rp.rig) setupPlayerActions(rp.rig);
+      }
     })
     .catch(err => console.warn('Aviso: player_anims.json:', err));
 }
@@ -5216,8 +5455,8 @@ function animate() {
 
   updateRemotePlayersAndNet(dt);
 
-  if (isPlaying || inventoryOpen || partyOpen) {
-    if (isPlaying && !inventoryOpen && !partyOpen) {
+  if (isPlaying || inventoryOpen || partyOpen || player.dead) {
+    if ((isPlaying || player.dead) && !inventoryOpen && !partyOpen) {
       updateLocalPlayer(dt);
       updateVehicles(dt);
       updateCameraAndWeaponViewmodel(dt);
