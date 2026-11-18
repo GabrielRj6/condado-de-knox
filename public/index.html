@@ -1197,15 +1197,55 @@ let swatTemplateScene = null;
 let swatLoaded = false;
 let swatPlayer = null;
 
+let swatHeadTexGlobal = null;
+let swatBodyTexGlobal = null;
+
+function getSwatTextures() {
+  if (!swatHeadTexGlobal) {
+    const texLoader = new THREE.TextureLoader();
+    swatHeadTexGlobal = texLoader.load('./swat_head_diffuse.jpg');
+    swatHeadTexGlobal.flipY = false;
+    swatBodyTexGlobal = texLoader.load('./swat_body_diffuse.jpg');
+    swatBodyTexGlobal.flipY = false;
+  }
+  return { headTex: swatHeadTexGlobal, bodyTex: swatBodyTexGlobal };
+}
+
+function applySwatTextures(mesh) {
+  const { headTex, bodyTex } = getSwatTextures();
+  mesh.traverse(child => {
+    if (child.isSkinnedMesh && child.material) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      for (const m of mats) {
+        if (!m) continue;
+        const isHead = m.name && m.name.toLowerCase().includes('head');
+        m.map = isHead ? headTex : bodyTex;
+        m.color.setHex(0xffffff);
+        m.roughness = 0.75;
+        m.metalness = 0.15;
+        m.needsUpdate = true;
+      }
+    }
+  });
+}
+
 function buildSwatEntity() {
   if (!swatTemplateScene) return null;
-  const root = SkeletonUtils.clone(swatTemplateScene);
-  root.scale.set(0.0098, 0.0098, 0.0098); // Proporção humana exata (1.78m)
+  const root = new THREE.Group();
+  const swatMesh = SkeletonUtils.clone(swatTemplateScene);
+  swatMesh.scale.set(0.0098, 0.0098, 0.0098); // Proporção humana real (1.78m)
+  swatMesh.rotation.y = Math.PI; // Alinha o Policial SWAT de frente para -Z (mesma direção da câmera e mira!)
+  root.add(swatMesh);
+
+  // Aplica texturas reais oficiais da SWAT
+  applySwatTextures(swatMesh);
 
   let headBone = null, spineBone = null, rightHand = null;
   let leftArm = null, rightArm = null, leftLeg = null, rightLeg = null;
 
-  root.traverse(child => {
+  swatMesh.traverse(child => {
     if (child.isBone) {
       if (child.name === 'mixamorigHead') headBone = child;
       if (child.name === 'mixamorigSpine1' || child.name === 'mixamorigSpine2') spineBone = child;
@@ -1217,14 +1257,14 @@ function buildSwatEntity() {
     }
   });
 
-  // Ponto de montagem da arma na mão direita do Policial SWAT
+  // Ponto de montagem da arma perfeitamente alinhada na mão direita apontando para a frente (-Z)
   const weaponMount = new THREE.Group();
   weaponMount.scale.set(102, 102, 102);
-  weaponMount.position.set(0.06, 0.14, -0.02);
-  weaponMount.rotation.set(-Math.PI * 0.45, 0, Math.PI * 0.5);
+  weaponMount.position.set(0.05, 0.12, -0.01);
+  weaponMount.quaternion.set(0.4901147, 0.4904769, -0.4565714, 0.5574608);
   if (rightHand) rightHand.add(weaponMount);
 
-  const mixer = new THREE.AnimationMixer(root);
+  const mixer = new THREE.AnimationMixer(swatMesh);
   const actions = {};
   for (const id in PLAYER_ANIM_CLIPS) {
     actions[id] = mixer.clipAction(PLAYER_ANIM_CLIPS[id]);
@@ -1236,7 +1276,7 @@ function buildSwatEntity() {
   }
 
   return {
-    root, headBone, spineBone, rightHand, leftArm, rightArm, leftLeg, rightLeg,
+    root, swatMesh, headBone, spineBone, rightHand, leftArm, rightArm, leftLeg, rightLeg,
     weaponMount, mixer, actions, activeAction: defaultAction, currentAnim: 'rifle_idle'
   };
 }
@@ -1560,10 +1600,7 @@ function buildWeaponAssembly(type, withFirstPersonHands = false, isLoot = false)
     tip.position.set(0, 0.228, -0.035); tip.rotation.set(0.25, Math.PI * 0.25, 0);
     gunVisualGroup.add(tip);
     muzzleZ = -0.18;
-    if (withFirstPersonHands) {
-      boxTo(g, 0.056, 0.058, 0.068, Mats.omniSkin, 0.005, -0.012, 0.035, 0.25);
-      boxTo(g, 0.072, 0.072, 0.30, Mats.omniJacket, 0.085, -0.095, 0.18, 0.24, -0.28, 0);
-    }
+    // 1P Knife View: Sem blocos flutuantes, visão limpa
     return { root: g, gunVisualGroup, magMesh: null, boltMesh: blade, muzzleZ, ironSightRear, attachGroup: new THREE.Group(), opticZ, baseSightY, opticSightY: baseSightY, isLoot };
   }
 
@@ -1579,17 +1616,7 @@ function buildWeaponAssembly(type, withFirstPersonHands = false, isLoot = false)
     muzzleZ = -0.62; opticZ = -0.05;
   }
 
-  if (withFirstPersonHands) {
-    boxTo(g, 0.048, 0.062, 0.066, Mats.omniSkin, 0.008, -0.025, 0.04, 0.22);
-    boxTo(g, 0.072, 0.072, 0.34, Mats.omniJacket, 0.095, -0.105, 0.21, 0.24, -0.30, 0);
-    if (def.twoHand) {
-      boxTo(g, 0.050, 0.054, 0.072, Mats.omniSkin, -0.008, -0.012, -0.26);
-      boxTo(g, 0.070, 0.070, 0.38, Mats.omniJacket, -0.11, -0.098, -0.08, 0.22, 0.40, 0);
-    } else {
-      boxTo(g, 0.046, 0.058, 0.064, Mats.omniSkin, -0.012, -0.028, 0.032, 0.22);
-      boxTo(g, 0.068, 0.068, 0.35, Mats.omniJacket, -0.095, -0.11, 0.20, 0.26, 0.34, 0);
-    }
-  }
+  // 1P Guns View: Sem blocos flutuantes de manga/mão bloqueando a visão ou a mira ADS!
 
   const attachGroup = new THREE.Group();
   g.add(attachGroup);
@@ -3080,7 +3107,9 @@ function updateLocalPlayer(dt) {
     isDying: false
   };
 
-  const useFirstPerson = player.firstPerson || player.adsFirstPersonToggle || ((mouseDownRight || player.adsFirstPersonToggle) && opticCfg && opticCfg.overlay);
+  const activeOpticId = wInst.attachments ? wInst.attachments.optic : null;
+  const activeOpticCfg = activeOpticId ? ATTACHMENTS_DB[activeOpticId] : null;
+  const useFirstPerson = player.firstPerson || player.adsFirstPersonToggle || ((mouseDownRight || player.adsFirstPersonToggle) && activeOpticCfg && activeOpticCfg.overlay);
 
   if (swatPlayer && swatLoaded) {
     swatPlayer.root.visible = !useFirstPerson;
@@ -5754,26 +5783,33 @@ function preloadAllProjectGLBModels() {
       }
       playerAnimsLoaded = true;
       console.log('Pacote de Animações de Personagens Ativo:', Object.keys(PLAYER_ANIM_CLIPS).length, 'animações');
+      if (swatPlayer && swatPlayer.mixer) {
+        for (const id in PLAYER_ANIM_CLIPS) {
+          if (!swatPlayer.actions[id]) {
+            swatPlayer.actions[id] = swatPlayer.mixer.clipAction(PLAYER_ANIM_CLIPS[id]);
+          }
+        }
+        if (!swatPlayer.activeAction && swatPlayer.actions['rifle_idle']) {
+          swatPlayer.activeAction = swatPlayer.actions['rifle_idle'];
+          swatPlayer.activeAction.play();
+        }
+      }
+      for (const rp of remotePlayers.values()) {
+        if (rp.swat && rp.swat.mixer) {
+          for (const id in PLAYER_ANIM_CLIPS) {
+            if (!rp.swat.actions[id]) {
+              rp.swat.actions[id] = rp.swat.mixer.clipAction(PLAYER_ANIM_CLIPS[id]);
+            }
+          }
+        }
+      }
     })
     .catch(err => console.warn('Aviso: player_anims.json:', err));
 
   // Carrega o Modelo 3D Oficial do Policial SWAT com Texturas Reais
   gltfLoader.load('./swat.glb', (gltf) => {
     swatTemplateScene = gltf.scene;
-    const texLoader = new THREE.TextureLoader();
-    const headTex = texLoader.load('./swat_head_diffuse.jpg');
-    const bodyTex = texLoader.load('./swat_body_diffuse.jpg');
-
-    swatTemplateScene.traverse(child => {
-      if (child.isSkinnedMesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
-        if (Array.isArray(child.material)) {
-          if (child.material[0]) { child.material[0].map = headTex; child.material[0].needsUpdate = true; }
-          if (child.material[1]) { child.material[1].map = bodyTex; child.material[1].needsUpdate = true; }
-        }
-      }
-    });
+    applySwatTextures(swatTemplateScene);
 
     swatLoaded = true;
     console.log('Modelo 3D do Policial SWAT carregado com sucesso!');
@@ -5810,25 +5846,37 @@ function animate() {
       updateCameraAndWeaponViewmodel(dt);
     }
   } else {
-    // Showcase do Omni segurando a Faca KA-BAR no Menu Inicial (enquadrado à direita)
+    // Showcase do Policial SWAT no Menu Inicial (enquadrado à direita)
     menuOrbit += dt * 0.34;
-    omni.root.visible = true;
-    omni.headPivot.visible = true;
-    omni.torsoVisuals.visible = true;
-    omni.leftArm.shoulder.visible = true;
-    omni.rightArm.shoulder.visible = true;
     fpWeaponRig.visible = false;
 
-    animateCharacterRig(omni, {
-      pos: player.pos,
-      bodyYaw: player.bodyYaw,
-      lookYaw: player.bodyYaw + Math.sin(menuOrbit * 0.8) * 0.18,
-      pitch: -0.02,
-      hSpeed: 0, localFwdVel: 0, localStrVel: 0,
-      crouchAlpha: 0, landSquash: 0, onGround: true, sprinting: false, inCombat: false,
-      weaponId: getActiveWeaponObj().id,
-      reloading: false, reloadProgress: 0, recoilKick: 0, meleeSwingT: 0, pumpTimer: 0, walkPhase: 0
-    }, dt);
+    if (swatPlayer && swatLoaded) {
+      swatPlayer.root.visible = true;
+      omni.root.visible = false;
+      animateSwatCharacter(swatPlayer, {
+        pos: player.pos,
+        bodyYaw: player.bodyYaw,
+        lookYaw: player.bodyYaw + Math.sin(menuOrbit * 0.8) * 0.18,
+        pitch: -0.02,
+        hSpeed: 0, localFwdVel: 0, localStrVel: 0,
+        crouchAlpha: 0, landSquash: 0, onGround: true, sprinting: false, inCombat: false,
+        weaponId: getActiveWeaponObj().id,
+        reloading: false, reloadProgress: 0, recoilKick: 0, meleeSwingT: 0, pumpTimer: 0, walkPhase: 0,
+        isDying: false
+      }, dt);
+    } else {
+      omni.root.visible = true;
+      animateCharacterRig(omni, {
+        pos: player.pos,
+        bodyYaw: player.bodyYaw,
+        lookYaw: player.bodyYaw + Math.sin(menuOrbit * 0.8) * 0.18,
+        pitch: -0.02,
+        hSpeed: 0, localFwdVel: 0, localStrVel: 0,
+        crouchAlpha: 0, landSquash: 0, onGround: true, sprinting: false, inCombat: false,
+        weaponId: getActiveWeaponObj().id,
+        reloading: false, reloadProgress: 0, recoilKick: 0, meleeSwingT: 0, pumpTimer: 0, walkPhase: 0
+      }, dt);
+    }
 
     const angle = player.bodyYaw + Math.sin(menuOrbit * 0.6) * 0.80;
     const dist = 2.35;
