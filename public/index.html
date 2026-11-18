@@ -1185,6 +1185,10 @@ const GLB_ZOMBIE_ASSETS = {
   animatedGLTF: null, // zombie2.glb (SkinnedMesh + AnimationClip)
   staticGLTF: null    // zombie.glb
 };
+const ZOMBIE_ANIM_CLIPS = {}; // id -> THREE.AnimationClip retargeted para zombie2.glb
+const PLAYER_ANIM_CLIPS = {}; // id -> THREE.AnimationClip
+let zombieAnimsLoaded = false;
+let playerAnimsLoaded = false;
 const registeredGunAssemblies = [];
 
 function applyGunGLBToAssembly(assembly, type, withFirstPersonHands) {
@@ -1510,21 +1514,62 @@ function attachZombieGLBVisual(zObj) {
     cloned.scale.setScalar(scaleVar);
     holder.add(cloned);
     const mixer = new THREE.AnimationMixer(cloned);
-    const clip = chosen.animations[0];
-    const action = mixer.clipAction(clip);
-    action.play();
-    // Dessincroniza os passos para que os zumbis não andem em marcha robótica idêntica
-    action.time = ((zObj.phase + zObj.variantIdx * 0.4) % Math.max(0.5, clip.duration || 2.0));
-    mixer.update(0.01);
-
     zObj.mixer = mixer;
-    zObj.animClip = clip;
+    zObj.skinnedRoot = cloned;
+
+    if (zombieAnimsLoaded && Object.keys(ZOMBIE_ANIM_CLIPS).length > 0) {
+      setupZombieActions(zObj);
+    } else {
+      const clip = chosen.animations[0];
+      const action = mixer.clipAction(clip);
+      action.play();
+      action.time = ((zObj.phase + zObj.variantIdx * 0.4) % Math.max(0.5, clip.duration || 2.0));
+      zObj.activeAction = action;
+      zObj.currentAnim = 'default';
+    }
+    mixer.update(0.01);
   } else {
     // Fallback para zombie.glb estático caso o modelo animado ainda esteja carregando
     cloned.scale.setScalar(1.54);
     holder.add(cloned);
     zObj.isStaticGLB = true;
   }
+}
+
+function setupZombieActions(zObj) {
+  if (!zObj.mixer) return;
+  zObj.actions = {};
+  for (const id in ZOMBIE_ANIM_CLIPS) {
+    zObj.actions[id] = zObj.mixer.clipAction(ZOMBIE_ANIM_CLIPS[id]);
+  }
+  if (zObj.activeAction) {
+    zObj.activeAction.stop();
+  }
+  const targetId = zObj.walkAnimId || 'walk_1';
+  if (zObj.actions[targetId]) {
+    const act = zObj.actions[targetId];
+    act.play();
+    act.time = ((zObj.phase + zObj.variantIdx * 0.4) % Math.max(0.5, act.getClip().duration || 2.0));
+    zObj.activeAction = act;
+    zObj.currentAnim = targetId;
+  }
+}
+
+function transitionZombieAnim(z, targetClipId, fadeDuration = 0.22, loopMode = THREE.LoopRepeat, clampWhenFinished = false) {
+  if (!z.actions || !z.actions[targetClipId]) return;
+  const nextAction = z.actions[targetClipId];
+  if (z.activeAction === nextAction) return;
+
+  nextAction.reset();
+  nextAction.setLoop(loopMode);
+  nextAction.clampWhenFinished = clampWhenFinished;
+  nextAction.play();
+
+  if (z.activeAction) {
+    z.activeAction.crossFadeTo(nextAction, fadeDuration, true);
+  }
+  z.activeAction = nextAction;
+  z.currentAnim = targetClipId;
 }
 
 const zInvisibleHitMat = new THREE.MeshBasicMaterial({ visible: false });
@@ -1535,12 +1580,18 @@ function buildZombieEntity(id, x, z, rng) {
   const zShirt = regD(new THREE.MeshStandardMaterial({ color: Z_SHIRTS[(rng() * Z_SHIRTS.length) | 0], roughness: 0.92 }));
   const zPants = regD(new THREE.MeshStandardMaterial({ color: Z_PANTS[(rng() * Z_PANTS.length) | 0], roughness: 0.92 }));
 
+  const vIdx = (rng() * 100) | 0;
   const zObj = {
-    id, root, variantIdx: (rng() * 100) | 0,
+    id, root, variantIdx: vIdx,
     hp: 100, dead: false, deathT: 0, yaw: rng() * Math.PI * 2,
     wanderTimer: 2, speed: 1.3 + rng() * 0.8, legHit: false,
     alertT: 0, stagger: 0, knockX: 0, knockZ: 0, atkCd: 0,
-    phase: rng() * 10, hitboxes: [], glbHolder: null, mixer: null, hipsBone: null
+    phase: rng() * 10, hitboxes: [], glbHolder: null, mixer: null, hipsBone: null,
+    walkAnimId: 'walk_' + (1 + (vIdx % 5)), // 5 caminhadas aleatórias (Not So Scary / Scary)
+    runAnimId: 'run_' + (1 + (vIdx % 2)),   // Corrida garantida para todos ao perseguir!
+    deathAnimId: 'death_' + (1 + (vIdx % 4)), // 4 mortes aleatorizadas
+    attackAnimId: (['attack_punch', 'attack_bite', 'attack_neck', 'attack_kick'])[vIdx % 4],
+    currentAnim: null, actions: {}, activeAction: null
   };
   const addP = (parent, geo, mat, px, py, pz, zone) => {
     const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); m.castShadow = true;
@@ -2346,6 +2397,23 @@ function animateCharacterRig(rig, state, dt) {
   rig.root.position.copy(pos);
   rig.root.rotation.set(0, bodyYaw, state.turnLeanZ || 0);
 
+  // Morte física e dramática do personagem (Death From Front / Death From Right / Dying)
+  if (state.isDying) {
+    const dtT = state.deathT || 0;
+    const fallDir = state.deathFront ? -1 : 1;
+    rig.pelvis.position.set(0, THREE.MathUtils.lerp(0.93, 0.12, dtT), fallDir * dtT * 0.28);
+    rig.pelvis.rotation.set(dtT * 1.45 * fallDir, 0, dtT * 0.35);
+    rig.spine.rotation.set(dtT * 0.5 * fallDir, 0, 0);
+    rig.headPivot.rotation.set(dtT * 0.4, 0, 0);
+    rig.leftArm.shoulder.rotation.set(dtT * 0.8, 0, 0.6 * dtT);
+    rig.rightArm.shoulder.rotation.set(dtT * 0.8, 0, -0.6 * dtT);
+    rig.leftArm.elbow.rotation.set(0.3 * dtT, 0, 0);
+    rig.rightArm.elbow.rotation.set(0.3 * dtT, 0, 0);
+    solveLegIK(rig.leftLeg, new THREE.Vector3(-0.095, THREE.MathUtils.lerp(0.93, 0.12, dtT) - 0.04, 0), new THREE.Vector3(-0.15, SOLE_H, -dtT * 0.45 * fallDir), -dtT * 0.5);
+    solveLegIK(rig.rightLeg, new THREE.Vector3(0.095, THREE.MathUtils.lerp(0.93, 0.12, dtT) - 0.04, 0), new THREE.Vector3(0.15, SOLE_H, -dtT * 0.30 * fallDir), -dtT * 0.4);
+    return;
+  }
+
   // Altura suave do quadril (em pé: 0.93m -> agachado: 0.61m) + amortecimento de pouso
   const basePelvisY = THREE.MathUtils.lerp(0.93, 0.61, crouchAlpha) - landSquash * 0.14;
   const moveFactor = THREE.MathUtils.clamp(hSpeed / 4.6, 0, 1.25);
@@ -2490,7 +2558,22 @@ function animateCharacterRig(rig, state, dt) {
 
 /* Atualização de Movimento Local (A Pé ou Dirigindo Veículo!) */
 function updateLocalPlayer(dt) {
-  if (player.dead) return;
+  if (player.dead) {
+    player.deathT = Math.min(1, (player.deathT || 0) + dt * 2.2);
+    omni.root.visible = true;
+    fpWeaponRig.visible = false;
+    animateCharacterRig(omni, {
+      pos: player.pos,
+      bodyYaw: player.bodyYaw,
+      lookYaw: player.yaw,
+      pitch: player.pitch,
+      hSpeed: 0, localFwdVel: 0, localStrVel: 0,
+      crouchAlpha: 1, landSquash: 0.5, onGround: true, sprinting: false, inCombat: false,
+      weaponId: 'knife', reloading: false, reloadProgress: 0, recoilKick: 0, meleeSwingT: 0, pumpTimer: 0, walkPhase: 0,
+      isDying: true, deathT: player.deathT, deathFront: ((player.deathAnimIdx || 0) % 2 === 0)
+    }, dt);
+    return;
+  }
 
   if (player.drivingCar) {
     omni.root.visible = false;
@@ -4369,11 +4452,15 @@ function updateZombies(dt) {
     const z = zombies[i];
     const zp = z.root.position;
     if (z.dead) {
+      if (z.currentAnim !== z.deathAnimId) {
+        transitionZombieAnim(z, z.deathAnimId, 0.12, THREE.LoopOnce, true);
+      }
+      if (z.mixer) z.mixer.update(dt);
       if (z.deathT < 1) {
-        z.deathT = Math.min(1, z.deathT + dt * 3.5);
+        z.deathT = Math.min(1, z.deathT + dt * 2.8);
         z.parts.pelvis.position.y = THREE.MathUtils.lerp(0.92, 0.14, z.deathT);
         z.parts.pelvis.rotation.x = z.deathT * (Math.PI * 0.48);
-        if (z.glbHolder) {
+        if (z.glbHolder && !z.mixer) {
           z.glbHolder.rotation.x = z.deathT * (Math.PI * 0.48);
           z.glbHolder.position.y = z.deathT * 0.12;
         }
@@ -4391,22 +4478,33 @@ function updateZombies(dt) {
     let moveSpd = 0;
     if (z.stagger > 0) {
       z.stagger -= dt; zp.x += z.knockX * dt; zp.z += z.knockZ * dt;
+      if (z.actions && z.actions.hit_reaction && z.currentAnim !== 'hit_reaction') {
+        transitionZombieAnim(z, 'hit_reaction', 0.10, THREE.LoopOnce);
+      }
     } else if (z.alertT > 0 && !player.dead) {
       z.yaw = lerpAngle(z.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 6.5));
       if (dist > 1.05) {
+        // PERSEGUIÇÃO: Todos os zumbis usam animação de corrida (run_1 ou run_2)!
         moveSpd = z.speed * (z.legHit ? 0.50 : 1.45);
         zp.x += -Math.sin(z.yaw) * moveSpd * dt;
         zp.z += -Math.cos(z.yaw) * moveSpd * dt;
+        transitionZombieAnim(z, z.runAnimId, 0.20, THREE.LoopRepeat);
       } else if (z.atkCd <= 0 && !player.drivingCar && Math.abs(player.pos.y - zp.y) < 1.35) {
         z.atkCd = 1.15;
         damageLocalPlayer(14, 'MORDIDA DE ZUMBI');
+        // ATAQUE: Ataca com socos, mordida no pescoço ou chute!
+        transitionZombieAnim(z, z.attackAnimId, 0.15, THREE.LoopRepeat);
+      } else {
+        transitionZombieAnim(z, z.attackAnimId, 0.20, THREE.LoopRepeat);
       }
     } else {
+      // PATRULHA / VAGANDO: Caminhada aleatorizada entre os 5 tipos de walk!
       z.wanderTimer -= dt;
       if (z.wanderTimer <= 0) { z.wanderTimer = 3 + Math.random() * 4; z.yaw += (Math.random() - 0.5) * 2.0; }
       moveSpd = z.speed * 0.38;
       zp.x += -Math.sin(z.yaw) * moveSpd * dt;
       zp.z += -Math.cos(z.yaw) * moveSpd * dt;
+      transitionZombieAnim(z, z.walkAnimId, 0.30, THREE.LoopRepeat);
     }
 
     resolveCircleWorldCollisions(zp, 0.35, 0, 1.8, 0.35);
@@ -4417,27 +4515,21 @@ function updateZombies(dt) {
 
     if (z.mixer) {
       // Animação esquelética fluida e orgânica sincronizada com a velocidade real:
-      // Se correndo/alertado: 1.30x a 1.45x (passada agressiva e frenética)
-      // Se patrulhando: 0.88x a 0.98x (caminhada rastejante natural)
-      // Se ferido na perna: 0.65x (manco assimétrico)
-      const targetTimeScale = z.alertT > 0
-        ? (z.legHit ? 0.65 : 1.35)
-        : (z.legHit ? 0.50 : 0.92);
+      const isRunning = (z.currentAnim === z.runAnimId);
+      const targetTimeScale = isRunning
+        ? (z.legHit ? 0.70 : 1.30)
+        : (z.alertT > 0 ? (z.legHit ? 0.65 : 1.15) : (z.legHit ? 0.55 : 0.95));
       z.mixer.timeScale = THREE.MathUtils.lerp(z.mixer.timeScale || 1.0, targetTimeScale, Math.min(1, dt * 5.0));
       z.mixer.update(dt);
 
       if (z.glbHolder) {
-        // Postura grotesca e viva:
-        // Tronco projeta para frente na perseguição (estilo DayZ)
-        const targetTiltX = z.stagger > 0 ? 0.38 : (z.alertT > 0 ? 0.22 : 0.06);
-        const targetSwayZ = (z.legHit ? 0.18 : 0.08) * sw;
+        // Postura viva: leve inclinação na perseguição
+        const targetTiltX = z.stagger > 0 ? 0.35 : (z.alertT > 0 ? 0.18 : 0.05);
+        const targetSwayZ = (z.legHit ? 0.14 : 0.06) * sw;
         z.glbHolder.rotation.x = THREE.MathUtils.lerp(z.glbHolder.rotation.x, targetTiltX, Math.min(1, dt * 6.0));
         z.glbHolder.rotation.z = THREE.MathUtils.lerp(z.glbHolder.rotation.z, targetSwayZ, Math.min(1, dt * 6.0));
-        // Bobbing vertical dinâmico nos passos
-        z.glbHolder.position.y = Math.abs(sw) * 0.032;
       }
     } else if (z.isStaticGLB && z.glbHolder) {
-      // Balanço orgânico para modelo estático
       z.glbHolder.position.y = Math.abs(sw) * 0.045;
       z.glbHolder.rotation.z = sw * (z.legHit ? 0.18 : 0.10);
       z.glbHolder.rotation.x = z.stagger > 0 ? 0.30 : (z.alertT > 0 ? 0.16 : 0.05);
@@ -5085,6 +5177,30 @@ function preloadAllProjectGLBModels() {
     }
     markProgress('ZOMBIE 1');
   }, undefined, () => markProgress('ZOMBIE 1'));
+
+  // 3. Carrega o pacote de Animações Reais Mixamo de Zumbis e Personagens (Walks, Runs, Deaths, Attacks)
+  fetch('./zombie_anims.json')
+    .then(r => r.json())
+    .then(bundle => {
+      for (const id in bundle.clips) {
+        ZOMBIE_ANIM_CLIPS[id] = THREE.AnimationClip.parse(bundle.clips[id]);
+      }
+      zombieAnimsLoaded = true;
+      console.log('Pacote de Animações de Zumbis Ativo:', Object.keys(ZOMBIE_ANIM_CLIPS).length, 'animações');
+      for (const z of zombies) setupZombieActions(z);
+    })
+    .catch(err => console.warn('Aviso: zombie_anims.json:', err));
+
+  fetch('./player_anims.json')
+    .then(r => r.json())
+    .then(bundle => {
+      for (const id in bundle.clips) {
+        PLAYER_ANIM_CLIPS[id] = THREE.AnimationClip.parse(bundle.clips[id]);
+      }
+      playerAnimsLoaded = true;
+      console.log('Pacote de Animações de Personagens Ativo:', Object.keys(PLAYER_ANIM_CLIPS).length, 'animações');
+    })
+    .catch(err => console.warn('Aviso: player_anims.json:', err));
 }
 
 generateProceduralMap();
