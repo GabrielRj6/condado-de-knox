@@ -188,7 +188,10 @@
   <div class="watch-widget">
     <div class="watch-top">
       <span class="watch-time" id="hud-clock">07:20</span>
-      <span class="watch-net" id="hud-net-status">OFFLINE // SOLO</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span class="watch-net" id="hud-net-status">OFFLINE // SOLO</span>
+        <button id="hud-stop-server-btn" style="display:none;font-size:9.5px;background:#c23d33;color:#fff;border:1px solid #e05544;padding:2px 7px;border-radius:2px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-weight:700;">ENCERRAR</button>
+      </div>
     </div>
     <div class="watch-sub">
       <span id="hud-kills">ZUMBIS: 0</span>
@@ -337,6 +340,7 @@
         <div class="field-row">
           <input type="text" id="inp-server-name" class="txt-input" maxlength="28" value="Servidor Knox #1 [PvP/Loot]" placeholder="Nome do Servidor..." />
           <button class="mini-btn" id="btn-host-server" style="padding:8px 12px;">CRIAR SALA</button>
+          <button class="mini-btn" id="btn-stop-server" style="padding:8px 12px;background:#c23d33;color:#fff;border-color:#e05544;display:none;font-weight:700;">ENCERRAR SERVIDOR</button>
         </div>
         <div style="font-size:10px;color:var(--dim);">Seus amigos verão sua sala na lista abaixo ou podem entrar pelo código da sala.</div>
       </div>
@@ -366,7 +370,9 @@
       <div class="btn-stack">
         <button class="t-btn pri" id="btn-play"><span id="btn-play-label">ENTRAR NA PARTIDA</span><span style="font-size:10px;color:var(--dim)">[CLIQUE]</span></button>
         <button class="t-btn" id="btn-new-map"><span>GERAR OUTRO MAPA (NOVA SEED)</span><span style="font-size:10px;color:var(--dim)">[TECLA N]</span></button>
+        <button class="t-btn" id="btn-esc-stop-server" style="display:none;background:#75221c;border-color:#b5392e;color:#fff;"><span>ENCERRAR MEU SERVIDOR ONLINE</span><span style="font-size:10px;color:#ffa39b">[FINALIZAR]</span></button>
       </div>
+      <div class="slider-box"><span>DISTÂNCIA DE VISÃO / DRAW DISTANCE (LOD)</span><input type="range" id="draw-dist-slider" min="65" max="160" step="15" value="110" /></div>
       <div class="slider-box"><span>SENSIBILIDADE DO MOUSE</span><input type="range" id="sens-slider" min="0.3" max="2.4" step="0.05" value="1.0" /></div>
       <div class="slider-box"><span>VOLUME DOS PASSOS</span><input type="range" id="step-vol-slider" min="0" max="1.5" step="0.05" value="0.55" /></div>
     </div>
@@ -807,18 +813,19 @@ const Mats = {
    ============================================================================ */
 const canvas = document.getElementById('game-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.98;
 
+let currentDrawDistance = 110; // Draw Distance padrão (65m a 160m ajustável no menu)
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x828880, 0.0085);
+scene.fog = new THREE.Fog(0x828880, currentDrawDistance * 0.45, currentDrawDistance + 18);
 scene.background = new THREE.Color(0x828880);
 
-const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.04, 350);
+const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.04, currentDrawDistance + 25);
 scene.add(camera);
 
 // Viewmodel Rig acoplado à câmera para 1ª Pessoa e Mira ADS Real (Alça/Massa & Red Dot!)
@@ -832,13 +839,13 @@ const sunLight = new THREE.DirectionalLight(0xe4dccb, 1.2);
 const currentSunOffset = new THREE.Vector3(36, 56, 30);
 sunLight.position.copy(currentSunOffset);
 sunLight.castShadow = true;
-sunLight.shadow.mapSize.set(2048, 2048);
-sunLight.shadow.camera.near = 6;
-sunLight.shadow.camera.far = 175;
-const shS = 56;
+sunLight.shadow.mapSize.set(1024, 1024); // 1024x1024 PCFSoft: 4x mais leve e rápido que 2048 com excelente nitidez!
+sunLight.shadow.camera.near = 4;
+sunLight.shadow.camera.far = 110;
+const shS = 38; // Foco da sombra restrito em torno da ação (elimina shadow-pass no horizonte)
 sunLight.shadow.camera.left = -shS; sunLight.shadow.camera.right = shS;
 sunLight.shadow.camera.top = shS; sunLight.shadow.camera.bottom = -shS;
-sunLight.shadow.bias = -0.0005;
+sunLight.shadow.bias = -0.0006;
 scene.add(sunLight, sunLight.target);
 
 const flashlight = new THREE.SpotLight(0xfff0d4, 0, 44, Math.PI / 5.2, 0.45, 1.3);
@@ -1450,6 +1457,8 @@ let zombies = [];
 let lootItems = [];     // { uid, kind, subId, name, qty, attachments, pos, mesh, taken }
 let vehicles = [];      // Carros dirigíveis com física, atropelamento e explosão!
 let spawnCandidates = [];
+let streamingHouses = []; // Streaming e LOD por casa da cidade
+let streamingTrees = [];  // Streaming e LOD de vegetação
 let activeParticles = [];
 let activeTracers = [];
 let decalPool = [];
@@ -1471,9 +1480,8 @@ const Z_SHIRTS = [0x4c5448, 0x5c3a36, 0x3b4856, 0x6b6556, 0x3e3942, 0x734f38];
 const Z_PANTS  = [0x2b3440, 0x2c2a28, 0x3b362e, 0x23262b];
 
 function attachZombieGLBVisual(zObj) {
-  const preferAnimated = (zObj.variantIdx % 3) !== 2;
-  const useAnim = preferAnimated ? GLB_ZOMBIE_ASSETS.animatedGLTF : (GLB_ZOMBIE_ASSETS.staticGLTF || GLB_ZOMBIE_ASSETS.animatedGLTF);
-  const chosen = useAnim || GLB_ZOMBIE_ASSETS.animatedGLTF || GLB_ZOMBIE_ASSETS.staticGLTF;
+  // Prioriza SEMPRE o modelo animado (zombie2.glb) para que todos os zumbis tenham esqueleto e caminhada fluida!
+  const chosen = GLB_ZOMBIE_ASSETS.animatedGLTF || GLB_ZOMBIE_ASSETS.staticGLTF;
   if (!chosen) return;
 
   // Oculta os blocos procedurais mantendo as 3 hitboxes anatômicas rápidas (head, torso, limb)!
@@ -1497,24 +1505,22 @@ function attachZombieGLBVisual(zObj) {
   });
 
   if (isSkinned) {
-    // zombie2.glb já tem 1.70m reais via inverseBindMatrices!
-    cloned.scale.setScalar(1.03);
+    // Variação orgânica de altura e porte físico (0.95x a 1.10x)
+    const scaleVar = 0.96 + ((zObj.variantIdx % 7) / 6) * 0.14;
+    cloned.scale.setScalar(scaleVar);
     holder.add(cloned);
     const mixer = new THREE.AnimationMixer(cloned);
-    const action = mixer.clipAction(chosen.animations[0]);
+    const clip = chosen.animations[0];
+    const action = mixer.clipAction(clip);
     action.play();
-    mixer.update((zObj.phase % 2.0) * 0.5);
+    // Dessincroniza os passos para que os zumbis não andem em marcha robótica idêntica
+    action.time = ((zObj.phase + zObj.variantIdx * 0.4) % Math.max(0.5, clip.duration || 2.0));
+    mixer.update(0.01);
 
-    let hipsBone = null;
-    cloned.traverse((n) => { if (!hipsBone && n.isBone && /Hips/i.test(n.name)) hipsBone = n; });
     zObj.mixer = mixer;
-    zObj.hipsBone = hipsBone;
-    if (hipsBone) {
-      zObj.hipsRestX = hipsBone.position.x;
-      zObj.hipsRestZ = hipsBone.position.z;
-    }
+    zObj.animClip = clip;
   } else {
-    // zombie.glb estático tem 1.132m -> escala para 1.74m!
+    // Fallback para zombie.glb estático caso o modelo animado ainda esteja carregando
     cloned.scale.setScalar(1.54);
     holder.add(cloned);
     zObj.isStaticGLB = true;
@@ -1795,27 +1801,47 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
   g.rotation.y = [0, Math.PI * 0.5, Math.PI, -Math.PI * 0.5][dir];
   worldGroup.add(g);
 
+  // Grupos dedicados para LOD & Streaming inteligente de performance
+  const interiorGroup = new THREE.Group();
+  const detailGroup = new THREE.Group();
+  g.add(interiorGroup, detailGroup);
+
+  const houseObj = {
+    group: g,
+    center: new THREE.Vector3(ox, 0, oz),
+    interiorGroup,
+    detailGroup,
+    exteriorMeshes: [],
+    shadowsActive: true
+  };
+  streamingHouses.push(houseObj);
+
   const W = Math.min(lotW - 5, 8.6 + rng() * 3.0), D = Math.min(lotD - 6.5, 8.0 + rng() * 2.5);
   const fY = 0.18, wH = 2.95, topY = fY + wH, wT = 0.20;
   const extMat = rng() < 0.28 ? Mats.brick : regD(new THREE.MeshStandardMaterial({ map: Tex.siding, color: HOUSE_COLORS[(rng() * HOUSE_COLORS.length) | 0], roughness: 0.88 }));
   roofZones.push(localAABB(0, 1.6, 0, W, 3.2, D, ox, oz, dir, 'wood'));
 
-  const piece = (lx, ly, lz, lw, lh, ld, mat, surf = 'wood', col = true, camB = true) => {
+  const piece = (lx, ly, lz, lw, lh, ld, mat, surf = 'wood', col = true, camB = true, isInterior = false) => {
     const m = new THREE.Mesh(regD(createWorldBoxGeo(lw, lh, ld, 1.5, Math.max(0, ly - lh * 0.5))), mat);
     m.position.set(lx, ly, lz); m.castShadow = camB; m.receiveShadow = true; m.userData.surface = surf;
-    g.add(m);
+    if (isInterior) {
+      interiorGroup.add(m);
+    } else {
+      g.add(m);
+      houseObj.exteriorMeshes.push(m);
+    }
     if (col) colliders.push(localAABB(lx, ly, lz, lw, lh, ld, ox, oz, dir, surf));
     shootableMeshes.push(m);
     if (camB) camCollideMeshes.push(m);
     return m;
   };
 
-  piece(0, fY * 0.5, 0, W + 0.16, fY, D + 0.16, Mats.concrete, 'wood', true, false);
-  piece(0, fY + 0.01, 0, W - 0.12, 0.02, D - 0.12, Mats.woodFloor, 'wood', false, false);
+  piece(0, fY * 0.5, 0, W + 0.16, fY, D + 0.16, Mats.concrete, 'wood', true, false, false);
+  piece(0, fY + 0.01, 0, W - 0.12, 0.02, D - 0.12, Mats.woodFloor, 'wood', false, false, true);
 
   const doorX = (rng() - 0.5) * (W * 0.30);
   const walkL = lotD * 0.5 - D * 0.5;
-  if (walkL > 0.4) piece(doorX, 0.02, D * 0.5 + walkL * 0.5, 1.4, 0.04, walkL, Mats.concrete, 'asphalt', false, false);
+  if (walkL > 0.4) piece(doorX, 0.02, D * 0.5 + walkL * 0.5, 1.4, 0.04, walkL, Mats.concrete, 'asphalt', false, false, false);
 
   // Ponto de spawn de jogador na frente/quintal da casa
   spawnCandidates.push(localPointToWorld(doorX, 0.12, D * 0.5 + 2.8, ox, oz, dir));
@@ -1823,12 +1849,13 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
   const makeWindow = (cx, cz, alongX, winW = 1.32) => {
     const sTop = 0.88, hBot = 2.38, winH = hBot - sTop;
     const ws = alongX ? winW : wT, ds = alongX ? wT : winW;
-    piece(cx, fY + (sTop - fY) * 0.5, cz, ws, sTop - fY, ds, extMat);
-    piece(cx, hBot + (topY - hBot) * 0.5, cz, ws, topY - hBot, ds, extMat);
-    piece(cx, sTop + 0.025, cz, alongX ? winW + 0.05 : wT + 0.05, 0.05, alongX ? wT + 0.05 : winW + 0.05, Mats.trimWood, 'wood', false, false);
+    piece(cx, fY + (sTop - fY) * 0.5, cz, ws, sTop - fY, ds, extMat, 'wood', true, true, false);
+    piece(cx, hBot + (topY - hBot) * 0.5, cz, ws, topY - hBot, ds, extMat, 'wood', true, true, false);
+    const trim = piece(cx, sTop + 0.025, cz, alongX ? winW + 0.05 : wT + 0.05, 0.05, alongX ? wT + 0.05 : winW + 0.05, Mats.trimWood, 'wood', false, false, false);
+    detailGroup.add(trim);
 
     const pane = new THREE.Mesh(regD(new THREE.BoxGeometry(alongX ? winW - 0.06 : 0.03, winH - 0.06, alongX ? 0.03 : winW - 0.06)), Mats.glass);
-    pane.position.set(cx, sTop + winH * 0.5, cz); g.add(pane);
+    pane.position.set(cx, sTop + winH * 0.5, cz); detailGroup.add(pane);
     const gCol = localAABB(cx, sTop + winH * 0.5, cz, alongX ? winW : 0.14, winH, alongX ? 0.14 : winW, ox, oz, dir, 'glass');
     colliders.push(gCol);
 
@@ -1849,7 +1876,7 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
 
   const makeDoor = (cx, cz, inSign) => {
     const dW = 1.24, dH = 2.20, hBot = fY + dH;
-    piece(cx, hBot + (topY - hBot) * 0.5, cz, dW, topY - hBot, wT, extMat);
+    piece(cx, hBot + (topY - hBot) * 0.5, cz, dW, topY - hBot, wT, extMat, 'wood', true, true, false);
     const hinge = new THREE.Group(); hinge.position.set(cx - dW * 0.5 + 0.03, fY, cz); g.add(hinge);
     const leaf = new THREE.Mesh(regD(createWorldBoxGeo(dW - 0.04, dH - 0.03, 0.065, 1.2, 0)), Mats.doorWood);
     leaf.position.set((dW - 0.04) * 0.5, dH * 0.5, 0); leaf.castShadow = true; leaf.userData.surface = 'wood';
@@ -1877,18 +1904,18 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
     let cur = -W * 0.5;
     for (const op of ops) {
       const s = op.pos - op.w * 0.5, e = op.pos + op.w * 0.5;
-      if (s - cur > 0.05) piece((cur + s) * 0.5, fY + wH * 0.5, zC, s - cur, wH, wT, extMat);
+      if (s - cur > 0.05) piece((cur + s) * 0.5, fY + wH * 0.5, zC, s - cur, wH, wT, extMat, 'wood', true, true, false);
       if (op.t === 'door') makeDoor(op.pos, zC, inSign); else makeWindow(op.pos, zC, true, op.w);
       cur = e;
     }
-    if (W * 0.5 - cur > 0.05) piece((cur + W * 0.5) * 0.5, fY + wH * 0.5, zC, W * 0.5 - cur, wH, wT, extMat);
+    if (W * 0.5 - cur > 0.05) piece((cur + W * 0.5) * 0.5, fY + wH * 0.5, zC, W * 0.5 - cur, wH, wT, extMat, 'wood', true, true, false);
   };
 
   const wallZ = (xC, winZ) => {
     const s = winZ - 0.66, e = winZ + 0.66, lim = D * 0.5 - wT;
-    piece(xC, fY + wH * 0.5, (-lim + s) * 0.5, wT, wH, s - (-lim), extMat);
+    piece(xC, fY + wH * 0.5, (-lim + s) * 0.5, wT, wH, s - (-lim), extMat, 'wood', true, true, false);
     makeWindow(xC, winZ, false, 1.32);
-    piece(xC, fY + wH * 0.5, (e + lim) * 0.5, wT, wH, lim - e, extMat);
+    piece(xC, fY + wH * 0.5, (e + lim) * 0.5, wT, wH, lim - e, extMat, 'wood', true, true, false);
   };
 
   wallX(D * 0.5 - wT * 0.5, [{ pos: doorX, w: 1.24, t: 'door' }, { pos: doorX > 0 ? -W * 0.28 : W * 0.28, w: 1.32, t: 'win' }], -1);
@@ -1896,16 +1923,17 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
   wallZ(-W * 0.5 + wT * 0.5, 0);
   wallZ(W * 0.5 - wT * 0.5, (rng() - 0.5) * 1.8);
 
-  piece(0, topY + 0.06, 0, W + 0.35, 0.12, D + 0.35, Mats.drywall);
+  piece(0, topY + 0.06, 0, W + 0.35, 0.12, D + 0.35, Mats.drywall, 'wood', false, false, false);
   const pitch = 0.42, hSpan = W * 0.5 + 0.42, sLen = hSpan / Math.cos(pitch), rise = hSpan * Math.tan(pitch);
   const rGeo = regD(createWorldBoxGeo(sLen, 0.14, D + 0.65, 1.4, 0));
   const rL = new THREE.Mesh(rGeo, Mats.roof); rL.position.set(-hSpan * 0.5, topY + 0.12 + rise * 0.5, 0); rL.rotation.z = pitch; rL.castShadow = true;
   const rR = new THREE.Mesh(rGeo, Mats.roof); rR.position.set(hSpan * 0.5, topY + 0.12 + rise * 0.5, 0); rR.rotation.z = -pitch; rR.castShadow = true;
   g.add(rL, rR); shootableMeshes.push(rL, rR); camCollideMeshes.push(rL, rR);
+  houseObj.exteriorMeshes.push(rL, rR);
 
   // Mesa e balcão internos + 6 a 7 itens de LOOT dentro da casa!
-  piece(-W * 0.24, fY + 0.40, 0, 1.5, 0.80, 0.9, Mats.darkWood, 'wood', true, false);
-  piece(W * 0.26, fY + 0.43, -D * 0.30, 2.0, 0.86, 0.6, Mats.darkWood, 'wood', true, false);
+  piece(-W * 0.24, fY + 0.40, 0, 1.5, 0.80, 0.9, Mats.darkWood, 'wood', true, false, true);
+  piece(W * 0.26, fY + 0.43, -D * 0.30, 2.0, 0.86, 0.6, Mats.darkWood, 'wood', true, false, true);
 
   const localLootSpots = [
     [-W * 0.24, fY + 0.81, 0],           // Em cima da mesa da sala
@@ -1927,13 +1955,90 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
 
 function buildTree(x, z, rng) {
   const g = new THREE.Group(); g.position.set(x, 0, z); g.scale.setScalar(0.85 + rng() * 0.6); worldGroup.add(g);
-  const tr = new THREE.Mesh(regD(new THREE.CylinderGeometry(0.18, 0.26, 2.4, 7)), Mats.trunk); tr.position.y = 1.2; tr.castShadow = true; g.add(tr);
+  const meshes = [];
+  const tr = new THREE.Mesh(regD(new THREE.CylinderGeometry(0.18, 0.26, 2.4, 7)), Mats.trunk); tr.position.y = 1.2; tr.castShadow = true; g.add(tr); meshes.push(tr);
   if (rng() < 0.6) {
-    for (let i = 0; i < 3; i++) { const cn = new THREE.Mesh(regD(new THREE.ConeGeometry(1.75 - i * 0.38, 2.4, 7)), Mats.pine); cn.position.y = 2.7 + i * 1.25; cn.castShadow = true; g.add(cn); }
+    for (let i = 0; i < 3; i++) {
+      const cn = new THREE.Mesh(regD(new THREE.ConeGeometry(1.75 - i * 0.38, 2.4, 7)), Mats.pine);
+      cn.position.y = 2.7 + i * 1.25; cn.castShadow = true; g.add(cn); meshes.push(cn);
+    }
   } else {
-    const cr = new THREE.Mesh(regD(new THREE.DodecahedronGeometry(1.85, 0)), Mats.oak); cr.position.y = 3.5; cr.castShadow = true; g.add(cr);
+    const cr = new THREE.Mesh(regD(new THREE.DodecahedronGeometry(1.85, 0)), Mats.oak);
+    cr.position.y = 3.5; cr.castShadow = true; g.add(cr); meshes.push(cr);
   }
   colliders.push({ minX: x - 0.3, maxX: x + 0.3, minY: 0, maxY: 3.0, minZ: z - 0.3, maxZ: z + 0.3, surface: 'wood', active: true });
+  streamingTrees.push({ group: g, pos: new THREE.Vector3(x, 0, z), meshes, shadowActive: true });
+}
+
+/* ============================================================================
+   SISTEMA DE STREAMING DE CENÁRIO, LOD & DRAW DISTANCE
+   (Elimina lag ao olhar para a cidade culling objetos distantes e sombras)
+   ============================================================================ */
+let streamingTimer = 0;
+function updateSceneStreamingAndLOD(dt) {
+  streamingTimer -= dt;
+  if (streamingTimer > 0) return;
+  streamingTimer = 0.08; // 12 verificações por segundo
+
+  const px = player.pos.x, pz = player.pos.z;
+  const drawDistSq = currentDrawDistance * currentDrawDistance;
+  const nearDistSq = 44 * 44; // Interior visível a até 44m
+  const detailDistSq = 62 * 62;
+
+  // 1. Streaming & LOD de Casas da Cidade
+  for (let i = 0; i < streamingHouses.length; i++) {
+    const h = streamingHouses[i];
+    const dx = h.center.x - px, dz = h.center.z - pz;
+    const dSq = dx * dx + dz * dz;
+
+    if (dSq > drawDistSq) {
+      if (h.group.visible) h.group.visible = false;
+      continue;
+    }
+    if (!h.group.visible) h.group.visible = true;
+
+    if (dSq > nearDistSq) {
+      if (h.interiorGroup.visible) h.interiorGroup.visible = false;
+      if (dSq > detailDistSq && h.detailGroup.visible) h.detailGroup.visible = false;
+      if (h.shadowsActive) {
+        for (let m = 0; m < h.exteriorMeshes.length; m++) h.exteriorMeshes[m].castShadow = false;
+        h.shadowsActive = false;
+      }
+    } else {
+      if (!h.interiorGroup.visible) h.interiorGroup.visible = true;
+      if (!h.detailGroup.visible) h.detailGroup.visible = true;
+      if (!h.shadowsActive) {
+        for (let m = 0; m < h.exteriorMeshes.length; m++) h.exteriorMeshes[m].castShadow = true;
+        h.shadowsActive = true;
+      }
+    }
+  }
+
+  // 2. Streaming de Árvores e Vegetação
+  for (let i = 0; i < streamingTrees.length; i++) {
+    const tr = streamingTrees[i];
+    const dx = tr.pos.x - px, dz = tr.pos.z - pz;
+    const dSq = dx * dx + dz * dz;
+    if (dSq > drawDistSq * 1.05) {
+      if (tr.group.visible) tr.group.visible = false;
+    } else {
+      if (!tr.group.visible) tr.group.visible = true;
+      const sh = dSq < (42 * 42);
+      if (tr.shadowActive !== sh) {
+        tr.shadowActive = sh;
+        for (let m = 0; m < tr.meshes.length; m++) tr.meshes[m].castShadow = sh;
+      }
+    }
+  }
+
+  // 3. Distance Culling de Loot no Chão
+  for (let i = 0; i < lootItems.length; i++) {
+    const it = lootItems[i];
+    if (it.taken) continue;
+    const dx = it.pos.x - px, dz = it.pos.z - pz;
+    const vis = (dx * dx + dz * dz) < (48 * 48);
+    if (it.mesh.visible !== vis) it.mesh.visible = vis;
+  }
 }
 
 function clearMap() {
@@ -1944,6 +2049,7 @@ function clearMap() {
   for (const o of mapDisposables) if (o && typeof o.dispose === 'function') o.dispose();
   colliders = []; shootableMeshes = []; camCollideMeshes = []; interactiveDoors = []; interactiveWindows = [];
   roofZones = []; zombies = []; lootItems = []; vehicles = []; spawnCandidates = [];
+  streamingHouses = []; streamingTrees = [];
   activeParticles = []; activeTracers = []; decalPool = []; mapDisposables = [];
   zombiesKilled = 0;
 }
@@ -3726,6 +3832,12 @@ function handleNetworkPacket(pkt, fromConn = null) {
     return;
   }
 
+  if (pkt.t === 'server_closed') {
+    showToast(`O HOST ENCERROU O SERVIDOR: ${pkt.reason || 'Partida finalizada.'}`);
+    disconnectSession();
+    return;
+  }
+
   if (pkt.t === 'welcome' && netState.isClient) {
     if (pkt.seed && pkt.seed !== currentSeed) {
       generateProceduralMap(pkt.seed);
@@ -3864,6 +3976,14 @@ function createOnlineServer() {
       netState.isClient = false;
       netState.roomCode = id;
       document.getElementById('hud-net-status').textContent = `HOST // SALA: ${id}`;
+      const hudStop = document.getElementById('hud-stop-server-btn');
+      if (hudStop) hudStop.style.display = 'inline-block';
+      const stopBtn = document.getElementById('btn-stop-server');
+      if (stopBtn) stopBtn.style.display = 'inline-block';
+      const escStop = document.getElementById('btn-esc-stop-server');
+      if (escStop) escStop.style.display = 'block';
+      const hostBtn = document.getElementById('btn-host-server');
+      if (hostBtn) hostBtn.style.display = 'none';
       document.getElementById('menu-net-info').textContent = `Hospedando: ${netState.serverName} | Código: ${id}`;
       showToast(`SERVIDOR ONLINE CRIADO! CÓDIGO: ${id}`);
       postVercelServerHeartbeat('upsert');
@@ -3956,6 +4076,23 @@ function disconnectSession() {
   netState.clientConns.clear();
   for (const id of Array.from(remotePlayers.keys())) removeRemotePlayer(id);
   document.getElementById('hud-net-status').textContent = 'OFFLINE // SOLO';
+  const hudStop = document.getElementById('hud-stop-server-btn');
+  if (hudStop) hudStop.style.display = 'none';
+  const stopBtn = document.getElementById('btn-stop-server');
+  if (stopBtn) stopBtn.style.display = 'none';
+  const escStop = document.getElementById('btn-esc-stop-server');
+  if (escStop) escStop.style.display = 'none';
+  const hostBtn = document.getElementById('btn-host-server');
+  if (hostBtn) hostBtn.style.display = 'inline-block';
+  document.getElementById('menu-net-info').textContent = 'Modo atual: Sessão Local Pronta';
+}
+
+function stopHostedServer() {
+  if (!netState.isHost) return;
+  netBroadcast({ t: 'server_closed', reason: 'A partida foi finalizada pelo anfitrião.' });
+  disconnectSession();
+  showToast('SERVIDOR MULTIPLAYER ENCERRADO COM SUCESSO!');
+  refreshServerListUI();
 }
 
 /* Busca dupla de Servidores (API Vercel /api/servers + Scan Direto WebRTC nos Slots Públicos!) */
@@ -4279,29 +4416,47 @@ function updateZombies(dt) {
     const sw = Math.sin(z.phase);
 
     if (z.mixer) {
-      // Atualiza esqueleto animado do zombie2.glb sincronizado com a velocidade!
-      z.mixer.timeScale = Math.max(0.45, moveSpd * 0.85);
+      // Animação esquelética fluida e orgânica sincronizada com a velocidade real:
+      // Se correndo/alertado: 1.30x a 1.45x (passada agressiva e frenética)
+      // Se patrulhando: 0.88x a 0.98x (caminhada rastejante natural)
+      // Se ferido na perna: 0.65x (manco assimétrico)
+      const targetTimeScale = z.alertT > 0
+        ? (z.legHit ? 0.65 : 1.35)
+        : (z.legHit ? 0.50 : 0.92);
+      z.mixer.timeScale = THREE.MathUtils.lerp(z.mixer.timeScale || 1.0, targetTimeScale, Math.min(1, dt * 5.0));
       z.mixer.update(dt);
-      if (z.hipsBone) {
-        z.hipsBone.position.x = z.hipsRestX;
-        z.hipsBone.position.z = z.hipsRestZ;
-      }
+
       if (z.glbHolder) {
-        z.glbHolder.rotation.z = z.legHit ? (0.14 + sw * 0.06) : 0;
-        z.glbHolder.rotation.x = z.stagger > 0 ? 0.22 : 0;
+        // Postura grotesca e viva:
+        // Tronco projeta para frente na perseguição (estilo DayZ)
+        const targetTiltX = z.stagger > 0 ? 0.38 : (z.alertT > 0 ? 0.22 : 0.06);
+        const targetSwayZ = (z.legHit ? 0.18 : 0.08) * sw;
+        z.glbHolder.rotation.x = THREE.MathUtils.lerp(z.glbHolder.rotation.x, targetTiltX, Math.min(1, dt * 6.0));
+        z.glbHolder.rotation.z = THREE.MathUtils.lerp(z.glbHolder.rotation.z, targetSwayZ, Math.min(1, dt * 6.0));
+        // Bobbing vertical dinâmico nos passos
+        z.glbHolder.position.y = Math.abs(sw) * 0.032;
       }
     } else if (z.isStaticGLB && z.glbHolder) {
-      // Balanço orgânico de caminhada zumbi para o modelo zombie.glb!
-      z.glbHolder.position.y = Math.abs(Math.cos(z.phase)) * 0.035;
-      z.glbHolder.rotation.z = sw * (z.legHit ? 0.14 : 0.06);
-      z.glbHolder.rotation.x = z.stagger > 0 ? 0.22 : (z.alertT > 0 ? -0.10 : -0.03);
+      // Balanço orgânico para modelo estático
+      z.glbHolder.position.y = Math.abs(sw) * 0.045;
+      z.glbHolder.rotation.z = sw * (z.legHit ? 0.18 : 0.10);
+      z.glbHolder.rotation.x = z.stagger > 0 ? 0.30 : (z.alertT > 0 ? 0.16 : 0.05);
     }
 
-    z.parts.spine.rotation.x = z.alertT > 0 ? -0.25 : -0.14;
-    z.parts.armL.rotation.x = (z.alertT > 0 ? 1.38 : 0.5) + sw * 0.16;
-    z.parts.armR.rotation.x = (z.alertT > 0 ? 1.38 : 0.5) - sw * 0.16;
-    z.parts.legL.rotation.x = sw * Math.min(0.65, moveSpd * 0.32);
-    z.parts.legR.rotation.x = -sw * Math.min(0.65, moveSpd * (z.legHit ? 0.14 : 0.32));
+    // Camada anatômica secundária com articulação natural completa
+    const spinePitch = z.alertT > 0 ? -0.30 : -0.14;
+    z.parts.spine.rotation.x = THREE.MathUtils.lerp(z.parts.spine.rotation.x, spinePitch, Math.min(1, dt * 6.0));
+    z.parts.spine.rotation.y = sw * 0.12;
+
+    const armBase = z.alertT > 0 ? 1.42 : 0.40;
+    z.parts.armL.rotation.x = armBase + sw * 0.28;
+    z.parts.armR.rotation.x = armBase - sw * 0.28;
+    z.parts.armL.rotation.z = 0.12 + Math.sin(z.phase * 1.5) * 0.06;
+    z.parts.armR.rotation.z = -0.12 - Math.sin(z.phase * 1.5) * 0.06;
+
+    const legAmp = z.alertT > 0 ? 0.75 : 0.45;
+    z.parts.legL.rotation.x = sw * (z.legHit ? legAmp * 0.4 : legAmp);
+    z.parts.legR.rotation.x = -sw * (z.legHit ? legAmp * 0.2 : legAmp);
   }
 }
 
@@ -4775,6 +4930,9 @@ const startOrResumePlay = () => {
 document.getElementById('btn-play').onclick = startOrResumePlay;
 document.getElementById('btn-play-resume').onclick = startOrResumePlay;
 document.getElementById('btn-host-server').onclick = () => { sfx.init(); createOnlineServer(); };
+document.getElementById('btn-stop-server').onclick = () => stopHostedServer();
+document.getElementById('btn-esc-stop-server').onclick = () => stopHostedServer();
+document.getElementById('hud-stop-server-btn').onclick = () => stopHostedServer();
 document.getElementById('btn-refresh-servers').onclick = () => { sfx.init(); refreshServerListUI(); };
 document.getElementById('btn-join-code').onclick = () => {
   sfx.init();
@@ -4789,6 +4947,16 @@ document.getElementById('btn-new-map').onclick = () => {
 document.getElementById('btn-close-inv').onclick = () => toggleInventoryModal(false);
 document.getElementById('btn-open-party-from-inv').onclick = () => togglePartyModal(true);
 document.getElementById('btn-close-party').onclick = () => togglePartyModal(false);
+document.getElementById('draw-dist-slider').oninput = (e) => {
+  currentDrawDistance = parseFloat(e.target.value);
+  camera.far = currentDrawDistance + 25;
+  camera.updateProjectionMatrix();
+  if (scene.fog) {
+    scene.fog.near = currentDrawDistance * 0.45;
+    scene.fog.far = currentDrawDistance + 18;
+  }
+  showToast(`DRAW DISTANCE: ${Math.round(currentDrawDistance)}M`);
+};
 document.getElementById('sens-slider').oninput = (e) => { mouseSensitivity = parseFloat(e.target.value); };
 document.getElementById('step-vol-slider').oninput = (e) => { sfx.stepVolMult = parseFloat(e.target.value); };
 
@@ -4903,7 +5071,7 @@ function preloadAllProjectGLBModels() {
     });
   }
 
-  // 2. Carrega os 2 modelos de Zumbis da pasta ./MODELOS PERSONAGENS/
+  // 2. Carrega os modelos de Zumbis da pasta ./MODELOS PERSONAGENS/
   gltfLoader.load('./MODELOS%20PERSONAGENS/zombie2.glb', (gltf) => {
     GLB_ZOMBIE_ASSETS.animatedGLTF = gltf;
     for (const z of zombies) attachZombieGLBVisual(z);
@@ -4912,8 +5080,8 @@ function preloadAllProjectGLBModels() {
 
   gltfLoader.load('./MODELOS%20PERSONAGENS/zombie.glb', (gltf) => {
     GLB_ZOMBIE_ASSETS.staticGLTF = gltf;
-    for (const z of zombies) {
-      if (!z.glbHolder || (z.variantIdx % 3) === 2) attachZombieGLBVisual(z);
+    if (!GLB_ZOMBIE_ASSETS.animatedGLTF) {
+      for (const z of zombies) attachZombieGLBVisual(z);
     }
     markProgress('ZOMBIE 1');
   }, undefined, () => markProgress('ZOMBIE 1'));
@@ -4979,6 +5147,8 @@ function animate() {
     sunLight.target.position.set(player.pos.x, 0, player.pos.z);
     sunLight.position.set(player.pos.x + currentSunOffset.x, currentSunOffset.y, player.pos.z + currentSunOffset.z);
   }
+
+  updateSceneStreamingAndLOD(dt);
 
   renderer.render(scene, camera);
 }
