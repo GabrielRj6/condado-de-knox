@@ -1903,7 +1903,7 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
   const rR = new THREE.Mesh(rGeo, Mats.roof); rR.position.set(hSpan * 0.5, topY + 0.12 + rise * 0.5, 0); rR.rotation.z = -pitch; rR.castShadow = true;
   g.add(rL, rR); shootableMeshes.push(rL, rR); camCollideMeshes.push(rL, rR);
 
-  // Mesa e balcão internos + 3 a 4 itens de LOOT dentro da casa!
+  // Mesa e balcão internos + 6 a 7 itens de LOOT dentro da casa!
   piece(-W * 0.24, fY + 0.40, 0, 1.5, 0.80, 0.9, Mats.darkWood, 'wood', true, false);
   piece(W * 0.26, fY + 0.43, -D * 0.30, 2.0, 0.86, 0.6, Mats.darkWood, 'wood', true, false);
 
@@ -1911,10 +1911,13 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
     [-W * 0.24, fY + 0.81, 0],           // Em cima da mesa da sala
     [W * 0.26,  fY + 0.87, -D * 0.30],   // Em cima do balcão
     [0.2,       fY + 0.02, -D * 0.12],   // No chão do cômodo
-    [-W * 0.15, 0.03,      -D * 0.5 - 2] // Quintal dos fundos
+    [-W * 0.15, 0.03,      -D * 0.5 - 2], // Quintal dos fundos
+    [W * 0.12,  fY + 0.02, D * 0.22],    // No chão do segundo cômodo
+    [-W * 0.32, fY + 0.81, -D * 0.15],   // Em cima da mesa - segundo item
+    [W * 0.08,  fY + 0.02, -D * 0.38]    // Perto do balcão no chão
   ];
   for (const [lx, ly, lz] of localLootSpots) {
-    if (rng() < 0.78) {
+    if (rng() < 0.92) {
       const wp = localPointToWorld(lx, ly, lz, ox, oz, dir);
       const entry = rollRandomLootEntry(rng, lootCounterObj.n++, highTier);
       spawnLootObject(entry.uid, entry.kind, entry.subId, entry.name, entry.qty, wp.x, wp.y, wp.z, entry.extra);
@@ -2021,10 +2024,16 @@ function generateProceduralMap(seedVal = null) {
   addWorldBox(0.32, 4.1, 0.32, gasX + 8.5, 2.05,  4.2, Mats.poleMetal, 'metal', 1, true, false);
   addWorldBox(0.9, 1.5, 1.8, gasX + 8.5, 0.75, 0, Mats.brick, 'metal', 1, true, false);
 
-  // Loot garantido perto das bombas e viaturas para facilitar teste de miras e fuzis!
+  // Loot garantido perto das bombas, viaturas, calçadas e cruzamentos!
   [
     [gasX + 6.8, 0.03, -2.5], [gasX + 6.8, 0.03, 2.5],
-    [mainRoadX - 3.5, 0.03, 132], [mainRoadX + 3.5, 0.03, -125]
+    [gasX + 2.0, 0.03, -5.0], [gasX + 10.5, 0.03, 0],
+    [mainRoadX - 3.5, 0.03, 132], [mainRoadX + 3.5, 0.03, -125],
+    [mainRoadX - 4.2, 0.03, 100], [mainRoadX + 4.2, 0.03, -95],
+    [mainRoadX - 3.0, 0.03, 160], [mainRoadX + 3.0, 0.03, -160],
+    [mainRoadX - 5.5, 0.03, 85],  [mainRoadX + 5.5, 0.03, -110],
+    [mainRoadX - 2.0, 0.03, 115], [mainRoadX + 2.0, 0.03, -140],
+    [mainRoadX - 6.0, 0.03, -88], [mainRoadX + 6.0, 0.03, 90]
   ].forEach(([lx, ly, lz]) => {
     const entry = rollRandomLootEntry(rng, lootCounter.n++, true);
     spawnLootObject(entry.uid, entry.kind, entry.subId, entry.name, entry.qty, lx, ly, lz, entry.extra);
@@ -3189,22 +3198,41 @@ function updateVehicles(dt) {
       }
 
       // ATROPELAMENTO (Roadkill) em Zumbis e Jogadores Rivais!
+      // Usa hitbox retangular orientada na direção do carro (frente/trás + lateral)
+      // para garantir atropelamento frontal, traseiro E lateral!
       const absSpd = Math.abs(v.speed);
-      if (absSpd > 4.2) {
+      if (absSpd > 2.8) {
+        const carFwdX = -Math.sin(v.yaw), carFwdZ = -Math.cos(v.yaw);
+        const carRightX = Math.cos(v.yaw), carRightZ = -Math.sin(v.yaw);
+        // Hitbox: 3.2m de comprimento (frente-trás) x 2.2m de largura
+        const hitLenFront = 2.6, hitLenBack = 1.2, hitHalfW = 1.1;
+
         for (const z of zombies) {
           if (z.dead) continue;
-          if (Math.hypot(z.root.position.x - v.pos.x, z.root.position.z - v.pos.z) < 1.95) {
+          const relX = z.root.position.x - v.pos.x;
+          const relZ = z.root.position.z - v.pos.z;
+          // Projeta no sistema local do carro
+          const localFwd = relX * carFwdX + relZ * carFwdZ;    // eixo frente (+) / trás (-)
+          const localSide = relX * carRightX + relZ * carRightZ; // eixo lateral
+          const inFront = localFwd > -hitLenBack && localFwd < hitLenFront;
+          const inSide = Math.abs(localSide) < hitHalfW;
+          if (inFront && inSide) {
             sfx.playCrashImpact(0.45);
-            damageZombie(z, absSpd * 11, 'torso', new THREE.Vector3(fwdX * Math.sign(v.speed), 0.2, fwdZ * Math.sign(v.speed)), z.root.position);
-            damageVehicle(v, 3.5, player.id, true);
+            const knockDir = new THREE.Vector3(carFwdX * Math.sign(v.speed) + localSide * 0.3, 0.35, carFwdZ * Math.sign(v.speed)).normalize();
+            damageZombie(z, absSpd * 14, 'torso', knockDir, z.root.position);
+            damageVehicle(v, 2.8, player.id, true);
           }
         }
         for (const rp of remotePlayers.values()) {
           if (rp.dead || rp.inCarId) continue;
-          if (Math.hypot(rp.pos.x - v.pos.x, rp.pos.z - v.pos.z) < 1.85) {
+          const relX = rp.pos.x - v.pos.x;
+          const relZ = rp.pos.z - v.pos.z;
+          const localFwd = relX * carFwdX + relZ * carFwdZ;
+          const localSide = relX * carRightX + relZ * carRightZ;
+          if (localFwd > -hitLenBack && localFwd < hitLenFront && Math.abs(localSide) < hitHalfW) {
             sfx.playCrashImpact(0.55);
-            applyPvPDamageToRemote(rp, Math.round(absSpd * 7.5), false, rp.pos);
-            damageVehicle(v, 5.0, player.id, true);
+            applyPvPDamageToRemote(rp, Math.round(absSpd * 9), false, rp.pos);
+            damageVehicle(v, 4.5, player.id, true);
           }
         }
       }
