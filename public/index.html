@@ -234,6 +234,7 @@
     <div class="watch-sub">
       <span id="hud-kills">ZUMBIS: 0</span>
       <span id="hud-seed">SEED #0000</span>
+      <button id="hud-dev-btn" style="font-size:9.5px;background:#384232;color:#d8e8c8;border:1px solid #758a68;padding:1px 6px;border-radius:2px;cursor:pointer;font-family:'JetBrains Mono',monospace;">DEV [F1]</button>
     </div>
   </div>
 
@@ -273,11 +274,19 @@
 
   <div class="status-panel">
     <div class="posture-row">
-      <span id="hud-posture">OMNI // EM PÉ</span>
+      <span id="hud-posture">SWAT // EM PÉ</span>
       <span id="hud-cam-mode">3ª PESSOA</span>
     </div>
-    <div class="bar-track"><div id="hp-fill"></div></div>
+    <div class="posture-row" style="margin-bottom:2px;font-size:9.5px;">
+      <span style="color:#a8b89c;">VIDA DO SOBREVIVENTE</span>
+      <span id="hp-value-text" style="font-weight:700;color:#cde8b5;">200 / 200 HP</span>
+    </div>
+    <div class="bar-track"><div id="hp-fill" style="width:100%;"></div></div>
     <div class="bar-track"><div id="stamina-fill"></div></div>
+    <div id="injury-indicators" style="display:flex;gap:5px;margin-top:4px;font-size:9px;">
+      <span id="injury-arm" style="padding:1px 5px;background:rgba(20,22,18,0.85);border:1px solid #4a5240;color:#859078;">BRAÇO: OK</span>
+      <span id="injury-leg" style="padding:1px 5px;background:rgba(20,22,18,0.85);border:1px solid #4a5240;color:#859078;">PERNA: OK</span>
+    </div>
     <div class="hotbar-row">
       <div class="hb-slot active" id="hb-1">[1] FACA KA-BAR</div>
       <div class="hb-slot" id="hb-2">[2] VAZIO</div>
@@ -299,6 +308,26 @@
 <div id="seed-toast">NOTIFICAÇÃO</div>
 
 <!-- Modal de Inventário Estilo DayZ (Proximidade / Attachments da Arma / Mochila) -->
+<!-- Painel Dev & Dono da Sala (Gerenciador de Zumbis & Partida) -->
+<div id="dev-panel" style="position:fixed;top:80px;right:20px;z-index:35;background:rgba(12,15,12,0.96);border:1px solid var(--amb);border-top:3px solid var(--amb);padding:12px 16px;width:300px;display:none;box-shadow:0 6px 24px rgba(0,0,0,0.85);backdrop-filter:blur(3px);">
+  <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--bd);padding-bottom:6px;margin-bottom:10px;">
+    <span style="font-family:'Oswald',sans-serif;font-size:14px;letter-spacing:1.5px;color:var(--amb);">DEV // GERENCIADOR DA SALA</span>
+    <button class="mini-btn" id="btn-close-dev" style="padding:2px 7px;">✕</button>
+  </div>
+  <div style="font-size:10px;color:var(--dim);margin-bottom:8px;">Controle em tempo real de Zumbis, Sobrevivência e Partida (Host/Admin)</div>
+  <div style="display:flex;flex-direction:column;gap:6px;">
+    <button class="mini-btn red" id="dev-btn-clear-zombies" style="font-weight:700;">LIMPAR TODOS OS ZUMBIS DO MAPA</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+      <button class="mini-btn" id="dev-btn-spawn-5">+5 ZUMBIS</button>
+      <button class="mini-btn" id="dev-btn-spawn-20">+20 ZUMBIS</button>
+    </div>
+    <button class="mini-btn" id="dev-btn-spawn-50">+50 ZUMBIS (HORDA GIGANTE)</button>
+    <button class="mini-btn" id="dev-btn-toggle-spawns">SPAWN AUTOMÁTICO: ATIVO</button>
+    <button class="mini-btn" id="dev-btn-heal-full" style="border-color:#6f8b52;color:#a5d888;font-weight:700;">RESTAURAR 200 HP + CURAR FRATURAS</button>
+  </div>
+  <div style="margin-top:8px;font-size:9px;color:var(--dim);text-align:right;">Atalho: Pressione <b>F1</b> para abrir/fechar</div>
+</div>
+
 <div id="inventory-modal">
   <div class="inv-container">
     <div class="inv-header">
@@ -419,6 +448,10 @@
         <button class="t-btn pri" id="btn-play"><span id="btn-play-label">ENTRAR NA PARTIDA</span><span style="font-size:10px;color:var(--dim)">[CLIQUE]</span></button>
         <button class="t-btn" id="btn-new-map"><span>GERAR OUTRO MAPA (NOVA SEED)</span><span style="font-size:10px;color:var(--dim)">[TECLA N]</span></button>
         <button class="t-btn" id="btn-esc-stop-server" style="display:none;background:#75221c;border-color:#b5392e;color:#fff;"><span>ENCERRAR MEU SERVIDOR ONLINE</span><span style="font-size:10px;color:#ffa39b">[FINALIZAR]</span></button>
+      </div>
+      <div class="slider-box" style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;">
+        <span>ZUMBIS NA PARTIDA</span>
+        <button class="mini-btn" id="btn-toggle-menu-zombies" style="padding:6px 14px;font-weight:700;background:#3d4a34;border-color:#7a9468;color:#d8ecc5;">ATIVADOS (PADRÃO)</button>
       </div>
       <div class="slider-box"><span>DISTÂNCIA DE VISÃO / DRAW DISTANCE (LOD)</span><input type="range" id="draw-dist-slider" min="65" max="160" step="15" value="110" /></div>
       <div class="slider-box"><span>SENSIBILIDADE DO MOUSE</span><input type="range" id="sens-slider" min="0.3" max="2.4" step="0.05" value="1.0" /></div>
@@ -961,9 +994,8 @@ function buildOmniCharacter(jacketTint = null) {
     return m;
   };
 
-  // Pelve + Cinto Social (Mixamo Hips)
+  // Pelve + Cinto Social
   const pelvis = new THREE.Group();
-  pelvis.name = 'Hips';
   pelvis.position.set(0, 0.93, 0);
   root.add(pelvis);
 
@@ -978,19 +1010,10 @@ function buildOmniCharacter(jacketTint = null) {
     mk(new THREE.BoxGeometry(0.018, 0.005, 0.018), Mats.gunSilver, 0.006, 0.066, -0.115)
   );
 
-  // Coluna + Jaqueta Xadrez Vinho Aberta + Camisa Cinza + Golas (Mixamo Spine -> Spine01 -> Spine02)
+  // Coluna + Jaqueta Xadrez Vinho Aberta + Camisa Cinza + Golas
   const spine = new THREE.Group();
-  spine.name = 'Spine';
   spine.position.set(0, 0.06, 0);
   pelvis.add(spine);
-
-  const spine01 = new THREE.Group();
-  spine01.name = 'Spine01';
-  spine.add(spine01);
-
-  const spine02 = new THREE.Group();
-  spine02.name = 'Spine02';
-  spine01.add(spine02);
 
   const torsoVisuals = new THREE.Group();
   spine.add(torsoVisuals);
@@ -1031,15 +1054,10 @@ function buildOmniCharacter(jacketTint = null) {
     torsoVisuals.add(mk(snapGeo, Mats.gunSilver, 0.066, sy, -0.117, Math.PI * 0.5, 0, 0));
   });
 
-  // Cabeça + Óculos Wayfarer + Chapéu Pork-Pie (Mixamo neck -> Head)
-  const neck = new THREE.Group();
-  neck.name = 'neck';
-  neck.position.set(0, 0.465, 0);
-  spine02.add(neck);
-
+  // Cabeça + Óculos Wayfarer + Chapéu Pork-Pie
   const headPivot = new THREE.Group();
-  headPivot.name = 'Head';
-  neck.add(headPivot);
+  headPivot.position.set(0, 0.465, 0);
+  spine.add(headPivot);
 
   const headMesh = mk(sculptedHeadGeo, [skinMat, skinMat, skinMat, skinMat, skinMat, faceMat], 0, 0.156, 0);
   const noseTip = mk(new THREE.SphereGeometry(0.013, 8, 8), skinMat, 0, 0.138, -0.114);
@@ -1085,33 +1103,21 @@ function buildOmniCharacter(jacketTint = null) {
     noseTip, glasses, hat
   );
 
-  // Braços Esculpidos (Mixamo RightShoulder/RightArm/RightForeArm/RightHand e Left)
+  // Braços Esculpidos
   const buildArm = (side) => {
-    const isRight = side > 0;
     const shoulder = new THREE.Group();
-    shoulder.name = isRight ? 'RightShoulder' : 'LeftShoulder';
-    shoulder.position.set(side * 0.12, 0.405, 0.005);
-    spine02.add(shoulder);
-
-    const upperArm = new THREE.Group();
-    upperArm.name = isRight ? 'RightArm' : 'LeftArm';
-    upperArm.position.set(side * 0.095, 0, 0);
-    shoulder.add(upperArm);
-
+    shoulder.position.set(side * 0.215, 0.405, 0.005);
+    spine.add(shoulder);
     const upperSleeve = mk(new THREE.CylinderGeometry(0.060, 0.052, 0.25, 10), jacketMat, 0, -0.125, 0);
     upperSleeve.scale.set(0.95, 1, 1.06);
-    upperArm.add(mk(new THREE.SphereGeometry(0.061, 10, 8), jacketMat, 0, -0.01, 0), upperSleeve);
+    shoulder.add(mk(new THREE.SphereGeometry(0.061, 10, 8), jacketMat, 0, -0.01, 0), upperSleeve);
 
     const elbow = new THREE.Group();
-    elbow.name = isRight ? 'RightForeArm' : 'LeftForeArm';
     elbow.position.set(0, -0.245, 0);
-    upperArm.add(elbow);
-
+    shoulder.add(elbow);
     const foreSleeve = mk(new THREE.CylinderGeometry(0.052, 0.044, 0.21, 10), jacketMat, 0, -0.105, 0);
     foreSleeve.scale.set(0.95, 1, 1.05);
-
     const handGroup = new THREE.Group();
-    handGroup.name = isRight ? 'RightHand' : 'LeftHand';
     handGroup.position.set(0, -0.262, 0);
     handGroup.add(
       mk(new THREE.BoxGeometry(0.062, 0.058, 0.036), skinMat, 0, 0, 0),
@@ -1129,16 +1135,14 @@ function buildOmniCharacter(jacketTint = null) {
     const weaponMount = new THREE.Group();
     weaponMount.position.set(0, -0.275, -0.03);
     weaponMount.rotation.x = -Math.PI * 0.5;
-    handGroup.add(weaponMount);
-    return { shoulder, upperArm, elbow, handGroup, weaponMount };
+    elbow.add(weaponMount);
+    return { shoulder, elbow, weaponMount };
   };
   const leftArm = buildArm(-1), rightArm = buildArm(1);
 
-  // Pernas com comprimentos exatos L1=0.42m (Coxa), L2=0.41m (Canela) + Junta ANKLE (Tornozelo) (Mixamo RightUpLeg/RightLeg/RightFoot/RightToeBase)
+  // Pernas com comprimentos exatos L1=0.42m (Coxa), L2=0.41m (Canela) + Junta ANKLE (Tornozelo) com sola em -0.06m!
   const buildLeg = (side) => {
-    const isRight = side > 0;
     const hip = new THREE.Group();
-    hip.name = isRight ? 'RightUpLeg' : 'LeftUpLeg';
     hip.position.set(side * 0.095, -0.04, 0);
     pelvis.add(hip);
 
@@ -1147,7 +1151,6 @@ function buildOmniCharacter(jacketTint = null) {
     hip.add(thigh);
 
     const knee = new THREE.Group();
-    knee.name = isRight ? 'RightLeg' : 'LeftLeg';
     knee.position.set(0, -0.42, 0);
     hip.add(knee);
 
@@ -1159,14 +1162,8 @@ function buildOmniCharacter(jacketTint = null) {
 
     // Junta real do Tornozelo (Ankle) -> mantém a sola 100% paralela ao chão!
     const ankle = new THREE.Group();
-    ankle.name = isRight ? 'RightFoot' : 'LeftFoot';
     ankle.position.set(0, -0.41, 0);
     knee.add(ankle);
-
-    const toeBase = new THREE.Group();
-    toeBase.name = isRight ? 'RightToeBase' : 'LeftToeBase';
-    toeBase.position.set(0, -0.03, -0.10);
-    ankle.add(toeBase);
 
     const shoe = new THREE.Group();
     shoe.position.set(0, -0.012, -0.038);
@@ -1183,50 +1180,233 @@ function buildOmniCharacter(jacketTint = null) {
     shoe.add(sole, heelBlock, upperHeel, instep, toeCap);
     ankle.add(shoe);
 
-    return { hip, knee, ankle, toeBase, headMesh };
+    return { hip, knee, ankle, headMesh };
   };
+
+  return {
+    root, pelvis, spine, torsoVisuals, headPivot, headMesh,
+    leftArm, rightArm,
+    leftLeg: buildLeg(-1), rightLeg: buildLeg(1)
+  };
+}
+
+/* ============================================================================
+   5.1 MODELO 3D DO POLICIAL DA SWAT & ANIMAÇÕES MIXAMO NATIVAS
+   ============================================================================ */
+let swatTemplateScene = null;
+let swatLoaded = false;
+let swatPlayer = null;
+
+function buildSwatEntity() {
+  if (!swatTemplateScene) return null;
+  const root = SkeletonUtils.clone(swatTemplateScene);
+  root.scale.set(0.0098, 0.0098, 0.0098); // Proporção humana exata (1.78m)
+
+  let headBone = null, spineBone = null, rightHand = null;
+  let leftArm = null, rightArm = null, leftLeg = null, rightLeg = null;
+
+  root.traverse(child => {
+    if (child.isBone) {
+      if (child.name === 'mixamorigHead') headBone = child;
+      if (child.name === 'mixamorigSpine1' || child.name === 'mixamorigSpine2') spineBone = child;
+      if (child.name === 'mixamorigRightHand') rightHand = child;
+      if (child.name === 'mixamorigLeftArm') leftArm = child;
+      if (child.name === 'mixamorigRightArm') rightArm = child;
+      if (child.name === 'mixamorigLeftUpLeg') leftLeg = child;
+      if (child.name === 'mixamorigRightUpLeg') rightLeg = child;
+    }
+  });
+
+  // Ponto de montagem da arma na mão direita do Policial SWAT
+  const weaponMount = new THREE.Group();
+  weaponMount.scale.set(102, 102, 102);
+  weaponMount.position.set(0.06, 0.14, -0.02);
+  weaponMount.rotation.set(-Math.PI * 0.45, 0, Math.PI * 0.5);
+  if (rightHand) rightHand.add(weaponMount);
 
   const mixer = new THREE.AnimationMixer(root);
+  const actions = {};
+  for (const id in PLAYER_ANIM_CLIPS) {
+    actions[id] = mixer.clipAction(PLAYER_ANIM_CLIPS[id]);
+  }
+
+  const defaultAction = actions['rifle_idle'];
+  if (defaultAction) {
+    defaultAction.play();
+  }
+
   return {
-    root, pelvis, spine, spine01, spine02, neck, torsoVisuals, headPivot, headMesh,
-    leftArm, rightArm,
-    leftLeg: buildLeg(-1), rightLeg: buildLeg(1),
-    mixer,
-    actions: {},
-    activeAction: null,
-    currentAnim: null
+    root, headBone, spineBone, rightHand, leftArm, rightArm, leftLeg, rightLeg,
+    weaponMount, mixer, actions, activeAction: defaultAction, currentAnim: 'rifle_idle'
   };
 }
 
-function setupPlayerActions(rig) {
-  if (!rig || !rig.mixer) return;
-  rig.actions = {};
-  for (const id in PLAYER_ANIM_CLIPS) {
-    rig.actions[id] = rig.mixer.clipAction(PLAYER_ANIM_CLIPS[id]);
-  }
-  const defaultAction = rig.actions['rifle_idle'];
-  if (defaultAction) {
-    defaultAction.play();
-    rig.activeAction = defaultAction;
-    rig.currentAnim = 'rifle_idle';
-  }
-}
-
-function transitionPlayerAnim(rig, targetClipId, fadeDuration = 0.18, loopMode = THREE.LoopRepeat, clampWhenFinished = false) {
-  if (!rig || !rig.actions || !rig.actions[targetClipId]) return;
-  const nextAction = rig.actions[targetClipId];
-  if (rig.activeAction === nextAction) return;
+function transitionSwatAnim(swat, targetAnim, fade = 0.16, loopMode = THREE.LoopRepeat, clamp = false) {
+  if (!swat || !swat.actions || !swat.actions[targetAnim]) return;
+  const nextAction = swat.actions[targetAnim];
+  if (swat.activeAction === nextAction) return;
 
   nextAction.reset();
   nextAction.setLoop(loopMode);
-  nextAction.clampWhenFinished = clampWhenFinished;
+  nextAction.clampWhenFinished = clamp;
   nextAction.play();
 
-  if (rig.activeAction) {
-    rig.activeAction.crossFadeTo(nextAction, fadeDuration, true);
+  if (swat.activeAction) {
+    swat.activeAction.crossFadeTo(nextAction, fade, true);
   }
-  rig.activeAction = nextAction;
-  rig.currentAnim = targetClipId;
+  swat.activeAction = nextAction;
+  swat.currentAnim = targetAnim;
+}
+
+function animateSwatCharacter(swat, state, dt) {
+  if (!swat || !swat.root) return;
+  const {
+    pos, bodyYaw, lookYaw, pitch, hSpeed, localFwdVel, localStrVel,
+    crouchAlpha, landSquash, onGround, sprinting, inCombat,
+    weaponId, reloading, reloadProgress, recoilKick, meleeSwingT, pumpTimer, isDying, deathAnimId
+  } = state;
+
+  swat.root.position.copy(pos);
+  swat.root.rotation.set(0, bodyYaw, state.turnLeanZ || 0);
+
+  let targetAnim = 'rifle_idle';
+  let loopMode = THREE.LoopRepeat;
+  let clamp = false;
+  let fade = 0.16;
+
+  if (isDying) {
+    targetAnim = deathAnimId || 'death_front';
+    loopMode = THREE.LoopOnce;
+    clamp = true;
+    fade = 0.10;
+  } else if (reloading && swat.actions['rifle_reload']) {
+    targetAnim = 'rifle_reload';
+    fade = 0.15;
+  } else if ((recoilKick || 0) > 0.04 && swat.actions['rifle_fire']) {
+    targetAnim = 'rifle_fire';
+    fade = 0.05;
+  } else if (crouchAlpha > 0.45 && hSpeed < 0.25 && swat.actions['crouch_kneel']) {
+    targetAnim = 'crouch_kneel';
+    fade = 0.20;
+  } else if (hSpeed > 0.25) {
+    if (localFwdVel < -0.3) {
+      targetAnim = (sprinting || Math.abs(localFwdVel) > 3.0) && swat.actions['run_back'] ? 'run_back' : 'walk_back';
+    } else if (Math.abs(localStrVel) > 0.35 && Math.abs(localFwdVel) < 0.6) {
+      targetAnim = localStrVel < 0 ? 'strafe_left' : 'strafe_right';
+    } else if (localFwdVel > 0.3) {
+      targetAnim = (sprinting || localFwdVel > 3.2) && swat.actions['run_fwd'] ? 'run_fwd' : 'walk_fwd';
+    } else {
+      targetAnim = 'walk_fwd';
+    }
+  } else {
+    targetAnim = 'rifle_idle';
+  }
+
+  transitionSwatAnim(swat, targetAnim, fade, loopMode, clamp);
+  if (swat.mixer) swat.mixer.update(dt);
+
+  if (swat.headBone && !isDying) {
+    const aimPitch = inCombat ? pitch : pitch * 0.45;
+    let headDiffYaw = ((lookYaw - bodyYaw + Math.PI) % (Math.PI * 2)) - Math.PI;
+    if (headDiffYaw < -Math.PI) headDiffYaw += Math.PI * 2;
+    headDiffYaw = THREE.MathUtils.clamp(headDiffYaw, -0.65, 0.65);
+    swat.headBone.rotation.x = THREE.MathUtils.lerp(swat.headBone.rotation.x, aimPitch * 0.5, Math.min(1, dt * 15));
+    swat.headBone.rotation.y = THREE.MathUtils.lerp(swat.headBone.rotation.y, headDiffYaw * 0.6, Math.min(1, dt * 15));
+  }
+}
+
+function initSwatForLocalPlayer() {
+  if (!swatLoaded || swatPlayer) return;
+  swatPlayer = buildSwatEntity();
+  if (!swatPlayer) return;
+
+  scene.add(swatPlayer.root);
+  omni.root.visible = false;
+
+  for (const key of Object.keys(WEAPON_DEFS)) {
+    if (tpWeaponMeshes[key] && tpWeaponMeshes[key].root) {
+      swatPlayer.weaponMount.add(tpWeaponMeshes[key].root);
+    }
+  }
+  swatPlayer.weaponMount.add(tpFlashMesh);
+
+  // Hitboxes anatômicas precisas no esqueleto do SWAT para PvP e Zumbis
+  const mkHB = (bone, w, h, d, py, zone) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), zInvisibleHitMat);
+    m.position.y = py;
+    if (bone) bone.add(m);
+    m.userData.isLocalPlayer = true;
+    m.userData.hitZone = zone;
+    return m;
+  };
+  mkHB(swatPlayer.headBone, 24, 28, 24, 12, 'head');
+  mkHB(swatPlayer.spineBone, 38, 48, 26, 15, 'torso');
+  mkHB(swatPlayer.leftArm, 18, 40, 18, -15, 'arm');
+  mkHB(swatPlayer.rightArm, 18, 40, 18, -15, 'arm');
+  mkHB(swatPlayer.leftLeg, 20, 50, 20, -25, 'leg');
+  mkHB(swatPlayer.rightLeg, 20, 50, 20, -25, 'leg');
+}
+
+function initSwatForRemotePlayer(rp) {
+  if (!swatLoaded || rp.swat) return;
+  rp.swat = buildSwatEntity();
+  if (!rp.swat) return;
+  scene.add(rp.swat.root);
+  rp.rig.root.visible = false;
+  for (const k of Object.keys(WEAPON_DEFS)) {
+    if (rp.remWeapons[k] && rp.remWeapons[k].root) {
+      rp.swat.weaponMount.add(rp.remWeapons[k].root);
+    }
+  }
+  const mkHB = (bone, w, h, d, py, zone) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), zInvisibleHitMat);
+    m.position.y = py;
+    if (bone) bone.add(m);
+    m.userData.remotePlayer = rp;
+    m.userData.hitZone = zone;
+    rp.hitboxes.push(m);
+    return m;
+  };
+  mkHB(rp.swat.headBone, 24, 28, 24, 12, 'head');
+  mkHB(rp.swat.spineBone, 38, 48, 26, 15, 'torso');
+  mkHB(rp.swat.leftArm, 18, 40, 18, -15, 'arm');
+  mkHB(rp.swat.rightArm, 18, 40, 18, -15, 'arm');
+  mkHB(rp.swat.leftLeg, 20, 50, 20, -25, 'leg');
+  mkHB(rp.swat.rightLeg, 20, 50, 20, -25, 'leg');
+}
+
+function clearAllZombies(broadcast = true) {
+  for (const z of zombies) {
+    z.dead = true;
+    worldGroup.remove(z.root);
+  }
+  zombies.length = 0;
+  zombiesKilled = 0;
+  document.getElementById('hud-kills').textContent = 'ZUMBIS: 0 / 0';
+  showToast('DEV // TODOS OS ZUMBIS FORAM REMOVIDOS DO MAPA!');
+  if (broadcast) netBroadcast({ t: 'dev_clear_z' });
+}
+
+function spawnZombiesNearPlayer(count = 5, broadcast = true) {
+  const rng = mulberry32(Date.now() + Math.random() * 1000);
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 14 + Math.random() * 28;
+    const zx = player.pos.x + Math.sin(angle) * dist;
+    const zz = player.pos.z + Math.cos(angle) * dist;
+    const zEnt = buildZombieEntity(`z-dev-${Date.now()}-${i}`, zx, zz, rng);
+    if (zombieAnimsLoaded) setupZombieActions(zEnt);
+    worldGroup.add(zEnt.root);
+    zombies.push(zEnt);
+  }
+  document.getElementById('hud-kills').textContent = `ZUMBIS: ${zombiesKilled} / ${zombies.length}`;
+  showToast(`DEV // +${count} ZUMBIS SPAWNADOS AO REDOR!`);
+  if (broadcast) netBroadcast({ t: 'dev_spawn_z', count, px: player.pos.x, pz: player.pos.z });
+}
+
+function toggleDevPanel() {
+  const p = document.getElementById('dev-panel');
+  if (p) p.style.display = p.style.display === 'none' || !p.style.display ? 'block' : 'none';
 }
 
 /* Solver Analítico de IK 2-Ossos (Lei dos Cossenos) -> Impede 100% o pé de entrar no chão! */
@@ -2340,13 +2520,15 @@ function generateProceduralMap(seedVal = null) {
     buildTree(84 + rng() * 10, z, rng);
   }
 
-  // Horda de Zumbis espalhada
-  for (let i = 0; i < 42; i++) {
-    const zz = -175 + rng() * 350;
-    const zx = mainRoadX + (rng() - 0.5) * 38;
-    const zEnt = buildZombieEntity(`z-${i}`, zx, zz, rng);
-    worldGroup.add(zEnt.root);
-    zombies.push(zEnt);
+  // Horda de Zumbis espalhada (se ativado pelo dev/sala!)
+  if (gameConfig.enableZombies) {
+    for (let i = 0; i < 42; i++) {
+      const zz = -175 + rng() * 350;
+      const zx = mainRoadX + (rng() - 0.5) * 38;
+      const zEnt = buildZombieEntity(`z-${i}`, zx, zz, rng);
+      worldGroup.add(zEnt.root);
+      zombies.push(zEnt);
+    }
   }
 
   // Pontos extras de spawn espalhados estilo DayZ
@@ -2380,9 +2562,14 @@ let mouseDownLeft = false;
 let mouseDownRight = false;
 let mouseSensitivity = 1.0;
 
+const gameConfig = {
+  enableZombies: true,
+  autoSpawnZombies: true
+};
+
 const player = {
   id: 'local-' + Math.random().toString(36).slice(2, 8),
-  nick: 'Omni',
+  nick: 'Policial SWAT',
   teamId: null,
   pos: new THREE.Vector3(0, 0.12, 150),
   vel: new THREE.Vector3(),
@@ -2393,7 +2580,12 @@ const player = {
   orbitBlend: 0,
   bodyYaw: 0,
   turnLeanZ: 0,
-  hp: 100,
+  hp: 200,
+  maxHp: 200,
+  armInjured: false,
+  injuryArmTimer: 0,
+  legInjured: false,
+  injuryLegTimer: 0,
   dead: false,
   damageFlash: 0,
   stamina: 100,
@@ -2469,14 +2661,17 @@ function respawnLocalSurvivor(resetItems = true) {
   player.yaw = Math.random() * Math.PI * 2;
   player.pitch = -0.04;
   player.bodyYaw = player.yaw;
-  player.hp = 100;
+  player.hp = player.maxHp || 200;
   player.dead = false;
   player.deathT = 0;
+  player.armInjured = false;
+  player.injuryArmTimer = 0;
+  player.legInjured = false;
+  player.injuryLegTimer = 0;
   player.stamina = 100;
   player.crouching = false;
   player.crouchAlpha = 0;
-  document.getElementById('hp-fill').style.width = '100%';
-  document.getElementById('hp-fill').style.backgroundColor = '#6f8b52';
+  updateHealthBarUI();
   document.getElementById('menu-main-title').textContent = 'CONDADO DE KNOX';
   const deathScreen = document.getElementById('death-screen');
   if (deathScreen) deathScreen.classList.remove('active');
@@ -2523,59 +2718,7 @@ function animateCharacterRig(rig, state, dt) {
   rig.root.position.copy(pos);
   rig.root.rotation.set(0, bodyYaw, state.turnLeanZ || 0);
 
-  // Se o pacote de animações reais do personagem estiver carregado, usa a máquina de estados Mixamo:
-  if (playerAnimsLoaded && rig.actions && Object.keys(rig.actions).length > 0) {
-    let targetAnim = 'rifle_idle';
-    let loopMode = THREE.LoopRepeat;
-    let clamp = false;
-    let fade = 0.18;
-
-    if (state.isDying) {
-      targetAnim = state.deathAnimId || player.deathAnimId || 'death_front';
-      loopMode = THREE.LoopOnce;
-      clamp = true;
-      fade = 0.10;
-    } else if (reloading && rig.actions['rifle_reload']) {
-      targetAnim = 'rifle_reload';
-      fade = 0.15;
-    } else if ((recoilKick || 0) > 0.04 && rig.actions['rifle_fire']) {
-      targetAnim = 'rifle_fire';
-      fade = 0.05;
-    } else if (crouchAlpha > 0.45 && hSpeed < 0.25 && rig.actions['crouch_kneel']) {
-      targetAnim = 'crouch_kneel';
-      fade = 0.20;
-    } else if (hSpeed > 0.25) {
-      if (localFwdVel < -0.3) {
-        // Marcha Ré com Rifle / Corrida para trás
-        targetAnim = (sprinting || Math.abs(localFwdVel) > 3.0) && rig.actions['run_back'] ? 'run_back' : 'walk_back';
-      } else if (Math.abs(localStrVel) > 0.35 && Math.abs(localFwdVel) < 0.6) {
-        // Passo lateral (Strafe) esquerda / direita
-        targetAnim = localStrVel < 0 ? 'strafe_left' : 'strafe_right';
-      } else if (localFwdVel > 0.3) {
-        // Avanço frontal (Corrida / Caminhada)
-        targetAnim = (sprinting || localFwdVel > 3.2) && rig.actions['run_fwd'] ? 'run_fwd' : 'walk_fwd';
-      } else {
-        targetAnim = 'walk_fwd';
-      }
-    } else {
-      // Parado mirando
-      targetAnim = 'rifle_idle';
-    }
-
-    transitionPlayerAnim(rig, targetAnim, fade, loopMode, clamp);
-    if (rig.mixer) rig.mixer.update(dt);
-
-    // Ajuste sutil de inclinação de mira da cabeça
-    const aimPitch = inCombat ? pitch : pitch * 0.35;
-    let headDiffYaw = ((lookYaw - bodyYaw + Math.PI) % (Math.PI * 2)) - Math.PI;
-    if (headDiffYaw < -Math.PI) headDiffYaw += Math.PI * 2;
-    headDiffYaw = THREE.MathUtils.clamp(headDiffYaw, -0.65, 0.65);
-    if (rig.headPivot) {
-      rig.headPivot.rotation.x = THREE.MathUtils.lerp(rig.headPivot.rotation.x, aimPitch * 0.45, Math.min(1, dt * 15));
-      rig.headPivot.rotation.y = THREE.MathUtils.lerp(rig.headPivot.rotation.y, headDiffYaw, Math.min(1, dt * 15));
-    }
-    return;
-  }
+// Omni usa rig procedural e IK 2-ossos perfeito sem distorção;
 
   // Morte física e dramática do personagem (Death From Front / Death From Right / Dying)
   if (state.isDying) {
@@ -2799,8 +2942,27 @@ function updateLocalPlayer(dt) {
       moveDir.set(-sy * fwd + cy * str, 0, -cy * fwd - sy * str).normalize();
     }
 
+    // Atualização de ferimentos no corpo ao longo do tempo:
+    if (player.legInjured) {
+      player.injuryLegTimer -= dt;
+      if (player.injuryLegTimer <= 0) {
+        player.legInjured = false;
+        showToast('RECUPERAÇÃO // PERNA RECUPERADA!');
+        updateHealthBarUI();
+      }
+    }
+    if (player.armInjured) {
+      player.injuryArmTimer -= dt;
+      if (player.injuryArmTimer <= 0) {
+        player.armInjured = false;
+        showToast('RECUPERAÇÃO // BRAÇO RECUPERADO!');
+        updateHealthBarUI();
+      }
+    }
+
     const isAimingAny = mouseDownRight || player.adsFirstPersonToggle;
-    const wantsSprint = keys['ShiftLeft'] && fwd > 0 && !player.crouching && !isAimingAny && !gunState.reloading;
+    // Se a perna estiver quebrada: IMPOSSIBILITADO DE CORRER / SPRINT!
+    const wantsSprint = !player.legInjured && keys['ShiftLeft'] && fwd > 0 && !player.crouching && !isAimingAny && !gunState.reloading;
     if (wantsSprint && player.stamina > 3) {
       player.sprinting = true;
       player.stamina = Math.max(0, player.stamina - dt * 15);
@@ -2809,7 +2971,10 @@ function updateLocalPlayer(dt) {
       player.stamina = Math.min(100, player.stamina + dt * 14);
     }
 
-    const targetSpd = player.crouching ? 2.40 : (player.sprinting ? 7.15 : (isAimingAny ? 3.05 : 4.55));
+    // Se a perna estiver quebrada: velocidade de caminhada cortada pela metade (mancando!)
+    const legSpdMult = player.legInjured ? 0.48 : 1.0;
+    const baseSpd = player.crouching ? 2.40 : (player.sprinting ? 7.15 : (isAimingAny ? 3.05 : 4.55));
+    const targetSpd = baseSpd * legSpdMult;
     const accelRate = (fwd !== 0 || str !== 0) ? 11.5 : 13.5; // Inércia orgânica de aceleração e parada!
     player.vel.x = THREE.MathUtils.lerp(player.vel.x, moveDir.x * targetSpd, Math.min(1, dt * accelRate));
     player.vel.z = THREE.MathUtils.lerp(player.vel.z, moveDir.z * targetSpd, Math.min(1, dt * accelRate));
@@ -2891,7 +3056,7 @@ function updateLocalPlayer(dt) {
   const wDef = WEAPON_DEFS[wInst.id];
   const relProg = gunState.reloading && wDef.rDur > 0 ? (1 - gunState.reloadT / wDef.rDur) : 0;
 
-  animateCharacterRig(omni, {
+  const charState = {
     pos: player.pos,
     bodyYaw: player.bodyYaw,
     lookYaw: player.yaw,
@@ -2911,8 +3076,20 @@ function updateLocalPlayer(dt) {
     recoilKick: gunState.recoilKick,
     meleeSwingT: gunState.meleeSwingT,
     pumpTimer: gunState.pumpTimer,
-    walkPhase: player.walkPhase
-  }, dt);
+    walkPhase: player.walkPhase,
+    isDying: false
+  };
+
+  const useFirstPerson = player.firstPerson || player.adsFirstPersonToggle || ((mouseDownRight || player.adsFirstPersonToggle) && opticCfg && opticCfg.overlay);
+
+  if (swatPlayer && swatLoaded) {
+    swatPlayer.root.visible = !useFirstPerson;
+    omni.root.visible = false;
+    animateSwatCharacter(swatPlayer, charState, dt);
+  } else {
+    omni.root.visible = !useFirstPerson;
+    animateCharacterRig(omni, charState, dt);
+  }
 }
 
 /* ============================================================================
@@ -2926,10 +3103,16 @@ function updateCameraAndWeaponViewmodel(dt) {
   // Caso 0: Morte Cinematográfica em 3ª Pessoa (Mostra o corpo caindo e a mensagem "SE FUDEU OTARIO")
   if (player.dead) {
     document.getElementById('scope-overlay').style.display = 'none';
-    omni.headPivot.visible = true;
-    omni.torsoVisuals.visible = true;
-    omni.leftArm.shoulder.visible = true;
-    omni.rightArm.shoulder.visible = true;
+    if (swatPlayer && swatLoaded) {
+      swatPlayer.root.visible = true;
+      omni.root.visible = false;
+    } else {
+      omni.root.visible = true;
+      omni.headPivot.visible = true;
+      omni.torsoVisuals.visible = true;
+      omni.leftArm.shoulder.visible = true;
+      omni.rightArm.shoulder.visible = true;
+    }
     fpWeaponRig.visible = false;
 
     const deathT = player.deathT || 0;
@@ -2997,10 +3180,9 @@ function updateCameraAndWeaponViewmodel(dt) {
 
   if (useFirstPersonView) {
     // --- CÂMERA 1ª PESSOA + VIEWMODEL COM MIRAS REAIS ALINHADAS NO CENTRO (0, 0)! ---
-    omni.headPivot.visible = false;
-    omni.torsoVisuals.visible = false;
-    omni.leftArm.shoulder.visible = false;
-    omni.rightArm.shoulder.visible = false;
+    // Oculta 100% de todo o corpo 3D (SWAT e Omni) para JAMAIS vazar braço/roupa na tela!
+    if (swatPlayer) swatPlayer.root.visible = false;
+    omni.root.visible = false;
     fpWeaponRig.visible = !showScopeOverlay;
 
     const hSpeed = Math.hypot(player.vel.x, player.vel.z);
@@ -3055,10 +3237,16 @@ function updateCameraAndWeaponViewmodel(dt) {
     gunState.muzzleBlocked = false;
   } else {
     // --- CÂMERA 3ª PESSOA OVER-THE-SHOULDER + SISTEMA DE MIRA TÁTICA 3P ---
-    omni.headPivot.visible = true;
-    omni.torsoVisuals.visible = true;
-    omni.leftArm.shoulder.visible = true;
-    omni.rightArm.shoulder.visible = true;
+    if (swatPlayer && swatLoaded) {
+      swatPlayer.root.visible = true;
+      omni.root.visible = false;
+    } else {
+      omni.root.visible = true;
+      omni.headPivot.visible = true;
+      omni.torsoVisuals.visible = true;
+      omni.leftArm.shoulder.visible = true;
+      omni.rightArm.shoulder.visible = true;
+    }
     fpWeaponRig.visible = false;
 
     const holdingAlt = !!(keys['AltLeft'] || keys['AltRight']);
@@ -3791,21 +3979,24 @@ function useConsumableFromBag(bagIdx) {
   const it = inventory.bagItems[bagIdx];
   if (!it) return;
   if (it.kind === 'medkit') {
-    const heal = it.id === 'bandage' ? 35 : 55;
-    player.hp = Math.min(100, player.hp + heal);
+    const heal = it.id === 'bandage' ? 60 : 120;
+    player.hp = Math.min(player.maxHp || 200, player.hp + heal);
+    player.armInjured = false;
+    player.injuryArmTimer = 0;
+    player.legInjured = false;
+    player.injuryLegTimer = 0;
     updateHealthBarUI();
     inventory.bagItems.splice(bagIdx, 1);
     sfx.playClick(2200, 0.18);
-    showToast(`RECUPEROU +${heal} HP`);
+    showToast(`TRATAMENTO MÉDICO (+${heal} HP // OSSOS E FERIMENTOS TRATADOS!)`);
   } else if (it.kind === 'food') {
     player.stamina = 100;
-    player.hp = Math.min(100, player.hp + 15);
+    player.hp = Math.min(player.maxHp || 200, player.hp + 25);
     updateHealthBarUI();
     inventory.bagItems.splice(bagIdx, 1);
     sfx.playClick(2000, 0.18);
-    showToast('VIGOR 100% RESTAURADO!');
+    showToast('ALIMENTO CONSUMIDO (+25 HP / VIGOR RESTAURADO!)');
   }
-  renderDayZInventoryUI();
 }
 
 function dropBagItemOnGround(bagIdx) {
@@ -4693,7 +4884,9 @@ function updateZombies(dt) {
         transitionZombieAnim(z, z.runAnimId, 0.20, THREE.LoopRepeat);
       } else if (z.atkCd <= 0 && !player.drivingCar && Math.abs(player.pos.y - zp.y) < 1.35) {
         z.atkCd = 1.15;
-        damageLocalPlayer(14, 'MORDIDA DE ZUMBI');
+        const hitZones = ['torso', 'torso', 'arm', 'arm', 'leg', 'leg', 'head'];
+        const chosenZone = hitZones[Math.floor(Math.random() * hitZones.length)];
+        damageLocalPlayer(16, 'ATAQUE DE ZUMBI', chosenZone);
         // ATAQUE: Ataca com socos, mordida no pescoço ou chute!
         transitionZombieAnim(z, z.attackAnimId, 0.15, THREE.LoopRepeat);
       } else {
@@ -4756,15 +4949,72 @@ function updateZombies(dt) {
 
 function updateHealthBarUI() {
   const hpEl = document.getElementById('hp-fill');
-  hpEl.style.width = `${player.hp}%`;
-  hpEl.style.backgroundColor = player.hp <= 30 ? '#c23d33' : (player.hp <= 60 ? '#c97e38' : '#6f8b52');
+  const maxH = player.maxHp || 200;
+  const pct = Math.max(0, Math.min(100, (player.hp / maxH) * 100));
+  hpEl.style.width = `${pct}%`;
+  hpEl.style.backgroundColor = player.hp <= 50 ? '#c23d33' : (player.hp <= 110 ? '#c97e38' : '#6f8b52');
+
+  const valEl = document.getElementById('hp-value-text');
+  if (valEl) valEl.textContent = `${Math.round(player.hp)} / ${maxH} HP`;
+
+  const armEl = document.getElementById('injury-arm');
+  if (armEl) {
+    if (player.armInjured) {
+      armEl.textContent = `BRAÇO: MACHUCADO (${Math.ceil(player.injuryArmTimer)}s)`;
+      armEl.style.borderColor = '#c97e38';
+      armEl.style.color = '#ffaa55';
+      armEl.style.background = 'rgba(45,24,12,0.92)';
+    } else {
+      armEl.textContent = 'BRAÇO: OK';
+      armEl.style.borderColor = '#4a5240';
+      armEl.style.color = '#859078';
+      armEl.style.background = 'rgba(20,22,18,0.85)';
+    }
+  }
+
+  const legEl = document.getElementById('injury-leg');
+  if (legEl) {
+    if (player.legInjured) {
+      legEl.textContent = `PERNA: QUEBRADA (${Math.ceil(player.injuryLegTimer)}s)`;
+      legEl.style.borderColor = '#c23d33';
+      legEl.style.color = '#ff6b5e';
+      legEl.style.background = 'rgba(50,16,14,0.92)';
+    } else {
+      legEl.textContent = 'PERNA: OK';
+      legEl.style.borderColor = '#4a5240';
+      legEl.style.color = '#859078';
+      legEl.style.background = 'rgba(20,22,18,0.85)';
+    }
+  }
 }
 
-function damageLocalPlayer(amount, cause = 'COMBATE') {
+function damageLocalPlayer(amount, cause = 'COMBATE', zone = 'torso') {
   if (player.dead) return;
-  player.hp = Math.max(0, player.hp - amount);
+
+  let mult = 1.0;
+  if (zone === 'head') {
+    mult = 2.5; // Cabeça dá mais dano!
+    sfx.playFleshHit(true);
+    showToast('CRÍTICO // TIRO NA CABEÇA RECEBIDO!');
+  } else if (zone === 'arm') {
+    mult = 0.75;
+    player.armInjured = true;
+    player.injuryArmTimer = Math.max(player.injuryArmTimer, 28);
+    sfx.playFleshHit(false);
+    showToast('FERIMENTO // BRAÇO MACHUCADO! MIRA INSTÁVEL E RECUO ALTO');
+  } else if (zone === 'leg') {
+    mult = 0.75;
+    player.legInjured = true;
+    player.injuryLegTimer = Math.max(player.injuryLegTimer, 28);
+    sfx.playFleshHit(false);
+    showToast('FERIMENTO // PERNA QUEBRADA! VELOCIDADE REDUZIDA (MANCANDO)');
+  } else {
+    sfx.playFleshHit(false);
+  }
+
+  const finalDmg = Math.round(amount * mult);
+  player.hp = Math.max(0, player.hp - finalDmg);
   player.damageFlash = 1.0;
-  sfx.playFleshHit(false);
   updateHealthBarUI();
 
   if (player.hp <= 0) {
@@ -4772,8 +5022,8 @@ function damageLocalPlayer(amount, cause = 'COMBATE') {
     player.deathT = 0;
     const deathOptions = ['death_front', 'death_right', 'death_dying'];
     player.deathAnimId = deathOptions[Math.floor(Math.random() * deathOptions.length)];
-    if (playerAnimsLoaded && omni.actions && omni.actions[player.deathAnimId]) {
-      transitionPlayerAnim(omni, player.deathAnimId, 0.12, THREE.LoopOnce, true);
+    if (swatPlayer && swatLoaded && swatPlayer.actions && swatPlayer.actions[player.deathAnimId]) {
+      transitionSwatAnim(swatPlayer, player.deathAnimId, 0.12, THREE.LoopOnce, true);
     }
     mouseDownLeft = false; mouseDownRight = false;
     player.adsFirstPersonToggle = false;
@@ -4786,7 +5036,7 @@ function damageLocalPlayer(amount, cause = 'COMBATE') {
       deathScreen.classList.add('active');
       const causeEl = document.getElementById('death-cause-text');
       if (causeEl) {
-        causeEl.textContent = `VOCÊ SUCUMBIU AOS PERIGOS DE KNOX COUNTY // CAUSA: ${cause.toUpperCase()} // SEU CORPO FICOU PARA OS ZUMBIS`;
+        causeEl.textContent = `VOCÊ SUCUMBIU AOS PERIGOS DE KNOX COUNTY // CAUSA: ${cause.toUpperCase()} (${zone.toUpperCase()}) // SEU CORPO FICOU PARA OS ZUMBIS`;
       }
     }
     document.getElementById('menu-main-title').textContent = 'VOCÊ CAIU EM KNOX';
@@ -5252,6 +5502,76 @@ document.getElementById('btn-respawn-now').onclick = () => {
   respawnLocalSurvivor(true);
   try { canvas.requestPointerLock(); } catch (_) {}
 };
+
+// Controles do Painel Dev e Gerenciador de Zumbis
+const devBtn = document.getElementById('hud-dev-btn');
+if (devBtn) devBtn.onclick = () => toggleDevPanel();
+const closeDev = document.getElementById('btn-close-dev');
+if (closeDev) closeDev.onclick = () => toggleDevPanel();
+
+const devClearZ = document.getElementById('dev-btn-clear-zombies');
+if (devClearZ) devClearZ.onclick = () => clearAllZombies(true);
+const devSpawn5 = document.getElementById('dev-btn-spawn-5');
+if (devSpawn5) devSpawn5.onclick = () => spawnZombiesNearPlayer(5, true);
+const devSpawn20 = document.getElementById('dev-btn-spawn-20');
+if (devSpawn20) devSpawn20.onclick = () => spawnZombiesNearPlayer(20, true);
+const devSpawn50 = document.getElementById('dev-btn-spawn-50');
+if (devSpawn50) devSpawn50.onclick = () => spawnZombiesNearPlayer(50, true);
+
+const devToggleSpawns = document.getElementById('dev-btn-toggle-spawns');
+if (devToggleSpawns) {
+  devToggleSpawns.onclick = () => {
+    gameConfig.autoSpawnZombies = !gameConfig.autoSpawnZombies;
+    devToggleSpawns.textContent = gameConfig.autoSpawnZombies ? 'SPAWN AUTOMÁTICO: ATIVO' : 'SPAWN AUTOMÁTICO: DESLIGADO';
+    showToast(gameConfig.autoSpawnZombies ? 'DEV // SPAWN AUTOMÁTICO ATIVADO' : 'DEV // SPAWN AUTOMÁTICO DESLIGADO');
+  };
+}
+
+const devHealFull = document.getElementById('dev-btn-heal-full');
+if (devHealFull) {
+  devHealFull.onclick = () => {
+    player.hp = player.maxHp;
+    player.armInjured = false;
+    player.injuryArmTimer = 0;
+    player.legInjured = false;
+    player.injuryLegTimer = 0;
+    updateHealthBarUI();
+    showToast('DEV // VIDA TOTAL (200 HP) E OSSOS RECUPERADOS!');
+  };
+}
+
+const toggleMenuZombies = document.getElementById('btn-toggle-menu-zombies');
+if (toggleMenuZombies) {
+  toggleMenuZombies.onclick = () => {
+    gameConfig.enableZombies = !gameConfig.enableZombies;
+    if (gameConfig.enableZombies) {
+      toggleMenuZombies.textContent = 'ATIVADOS (PADRÃO)';
+      toggleMenuZombies.style.background = '#3d4a34';
+      toggleMenuZombies.style.borderColor = '#7a9468';
+      toggleMenuZombies.style.color = '#d8ecc5';
+      showToast('SALA // ZUMBIS ATIVADOS NA PARTIDA');
+    } else {
+      toggleMenuZombies.textContent = 'DESATIVADOS (SEM ZUMBIS)';
+      toggleMenuZombies.style.background = '#542220';
+      toggleMenuZombies.style.borderColor = '#993e38';
+      toggleMenuZombies.style.color = '#ffb3ad';
+      showToast('SALA // PARTIDA SEM ZUMBIS (MODO LIMPO)');
+    }
+  };
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'F1' || e.code === 'F2') {
+    e.preventDefault();
+    toggleDevPanel();
+  }
+  if (player.dead && (e.code === 'Space' || e.code === 'Enter')) {
+    e.preventDefault();
+    sfx.init();
+    respawnLocalSurvivor(true);
+    try { canvas.requestPointerLock(); } catch (_) {}
+  }
+});
 document.getElementById('btn-host-server').onclick = () => { sfx.init(); createOnlineServer(); };
 document.getElementById('btn-stop-server').onclick = () => stopHostedServer();
 document.getElementById('btn-esc-stop-server').onclick = () => stopHostedServer();
@@ -5434,12 +5754,34 @@ function preloadAllProjectGLBModels() {
       }
       playerAnimsLoaded = true;
       console.log('Pacote de Animações de Personagens Ativo:', Object.keys(PLAYER_ANIM_CLIPS).length, 'animações');
-      setupPlayerActions(omni);
-      for (const rp of remotePlayers.values()) {
-        if (rp.rig) setupPlayerActions(rp.rig);
-      }
     })
     .catch(err => console.warn('Aviso: player_anims.json:', err));
+
+  // Carrega o Modelo 3D Oficial do Policial SWAT com Texturas Reais
+  gltfLoader.load('./swat.glb', (gltf) => {
+    swatTemplateScene = gltf.scene;
+    const texLoader = new THREE.TextureLoader();
+    const headTex = texLoader.load('./swat_head_diffuse.jpg');
+    const bodyTex = texLoader.load('./swat_body_diffuse.jpg');
+
+    swatTemplateScene.traverse(child => {
+      if (child.isSkinnedMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        if (Array.isArray(child.material)) {
+          if (child.material[0]) { child.material[0].map = headTex; child.material[0].needsUpdate = true; }
+          if (child.material[1]) { child.material[1].map = bodyTex; child.material[1].needsUpdate = true; }
+        }
+      }
+    });
+
+    swatLoaded = true;
+    console.log('Modelo 3D do Policial SWAT carregado com sucesso!');
+    initSwatForLocalPlayer();
+    for (const rp of remotePlayers.values()) {
+      initSwatForRemotePlayer(rp);
+    }
+  }, undefined, (err) => console.warn('Aviso: carregando swat.glb:', err));
 }
 
 generateProceduralMap();

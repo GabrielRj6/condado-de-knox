@@ -1,6 +1,10 @@
 # Node
 node_modules/
 
+# Raw 3D files over 100MB (GitHub 100MB limit)
+PERSONAGEM PRINCIPAL MODELO/
+*.fbx
+
 # Backups / arquivos antigos
 ai_studio_code (2).html
 
