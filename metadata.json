@@ -1,0 +1,5 @@
+{
+  "name": "KNOX // DayZ Survival Multiplayer",
+  "description": "3D tactical survival multiplayer game (Three.js WebGL + WebRTC PeerJS)",
+  "requestFramePermissions": []
+}

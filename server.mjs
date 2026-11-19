@@ -18,14 +18,25 @@ const MIME = {
   '.gltf': 'model/gltf+json',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg'
+  '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.fbx': 'application/octet-stream'
 };
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
+const HOST = '0.0.0.0';
 
 const server = http.createServer((req, res) => {
-  const urlObj = new URL(req.url, `http://localhost:${PORT}`);
-  const pathname = decodeURIComponent(urlObj.pathname);
+  let pathname;
+  try {
+    const urlObj = new URL(req.url, `http://localhost:${PORT}`);
+    pathname = decodeURIComponent(urlObj.pathname);
+  } catch {
+    res.writeHead(400);
+    res.end('Bad Request');
+    return;
+  }
 
   if (pathname === '/api/servers') {
     let rawBody = '';
@@ -43,7 +54,13 @@ const server = http.createServer((req, res) => {
           end: () => { res.statusCode = code; res.end(); }
         })
       };
-      apiServersHandler(req, fakeRes);
+      try {
+        apiServersHandler(req, fakeRes);
+      } catch {
+        res.statusCode = 400;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Invalid request body' }));
+      }
     });
     return;
   }
@@ -66,13 +83,17 @@ const server = http.createServer((req, res) => {
       'Content-Type': MIME[ext] || 'application/octet-stream',
       'Cache-Control': 'no-cache'
     });
+    if (req.method === 'HEAD') {
+      res.end();
+      return;
+    }
     fs.createReadStream(safePath).pipe(res);
   });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
   console.log(`\n======================================================`);
   console.log(`  KNOX // DayZ Survival Server rodando em:`);
-  console.log(`  http://localhost:${PORT}`);
+  console.log(`  http://${HOST}:${PORT}`);
   console.log(`======================================================\n`);
 });

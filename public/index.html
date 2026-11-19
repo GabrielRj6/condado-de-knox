@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>KNOX // DayZ Survival Multiplayer [Build 0.3]</title>
+<title>KNOX // DayZ Survival Multiplayer</title>
+<meta name="description" content="3D tactical survival multiplayer game (Three.js WebGL + WebRTC PeerJS)" />
+<meta property="og:title" content="KNOX // DayZ Survival Multiplayer" />
+<meta property="og:description" content="3D tactical survival multiplayer game (Three.js WebGL + WebRTC PeerJS)" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -274,7 +277,7 @@
 
   <div class="status-panel">
     <div class="posture-row">
-      <span id="hud-posture">SWAT // EM PÉ</span>
+      <span id="hud-posture">OMNI // EM PÉ</span>
       <span id="hud-cam-mode">3ª PESSOA</span>
     </div>
     <div class="posture-row" style="margin-bottom:2px;font-size:9.5px;">
@@ -388,13 +391,9 @@
 <!-- Menu Inicial & Aba de Servidores Online (Pronto para Vercel) -->
 <div id="menu-overlay">
   <div class="menu-col">
-    <div class="tag">BUILD 0.3.1 // MODELOS 3D (.GLB) + DAYZ MULTIPLAYER + CARROS</div>
+    <div class="tag">BUILD 0.4 // PERSONAGEM OMNI + ZUMBIS PROCEDURAIS + DAYZ MULTIPLAYER</div>
     <h1 class="title" id="menu-main-title">CONDADO DE KNOX</h1>
-    <p class="sub">Você nasce espalhado apenas com sua <b>Faca KA-BAR</b>. Vasculhe casas pelas 10 armas 3D, pentes e miras, dirija veículos, forme time no <b>P</b> ou lute cada um por si.</p>
-    <div id="asset-load-box" style="margin-top:8px;background:rgba(18,22,16,0.92);border:1px solid var(--bd-hi);padding:6px 10px;font-size:10px;color:#b8d49c;display:flex;justify-content:space-between;align-items:center;">
-      <span id="asset-load-label">CARREGANDO MODELOS 3D (.GLB)...</span>
-      <span id="asset-load-pct">0 / 12</span>
-    </div>
+    <p class="sub">Você nasce espalhado apenas com sua <b>Faca KA-BAR</b>. Vasculhe casas por armas, pentes e miras, dirija veículos, forme time no <b>P</b> ou lute cada um por si.</p>
 
     <div class="tab-bar">
       <button class="tab-btn active" id="tab-btn-servers">SERVIDORES ONLINE</button>
@@ -469,11 +468,6 @@
 
 <script type="module">
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-
-const gltfLoader = new GLTFLoader();
-window.KNOX_GLTF_LOADER = gltfLoader;
 
 /* ============================================================================
    0. PRNG DETERMINÍSTICO & UTILITÁRIOS
@@ -840,6 +834,53 @@ const Tex = {
     ctx.stroke();
     ctx.strokeStyle = '#5c3326'; ctx.lineWidth = 3.5;
     ctx.beginPath(); ctx.moveTo(w * 0.36, 189); ctx.quadraticCurveTo(w * 0.5, 184, w * 0.64, 189); ctx.stroke();
+  }, false),
+  zombieFace: makeTex(256, 256, (ctx, w, h) => {
+    ctx.fillStyle = '#6f7c63'; ctx.fillRect(0, 0, w, h);
+    const rad = ctx.createRadialGradient(w * 0.5, h * 0.46, 18, w * 0.5, h * 0.5, w * 0.64);
+    rad.addColorStop(0, 'rgba(136, 148, 118, 0.32)');
+    rad.addColorStop(1, 'rgba(38, 44, 34, 0.72)');
+    ctx.fillStyle = rad; ctx.fillRect(0, 0, w, h);
+    // Sujeira e hematomas necróticos
+    for (let i = 0; i < 60; i++) {
+      ctx.fillStyle = i % 3 === 0 ? 'rgba(65, 22, 18, 0.24)' : 'rgba(28, 34, 24, 0.22)';
+      ctx.beginPath();
+      ctx.arc(Math.random() * w, Math.random() * h, 6 + Math.random() * 14, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Olheiras profundas e olhos pálidos
+    ctx.fillStyle = '#1b1d18';
+    ctx.fillRect(42, 66, 58, 34); ctx.fillRect(w - 100, 66, 58, 34);
+    ctx.fillStyle = '#c8cc9c';
+    ctx.beginPath();
+    ctx.arc(71, 83, 8, 0, Math.PI * 2);
+    ctx.arc(w - 71, 83, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#241816';
+    ctx.beginPath();
+    ctx.arc(71, 83, 3.2, 0, Math.PI * 2);
+    ctx.arc(w - 71, 83, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+    // Nariz afundado e boca aberta ensanguentada
+    ctx.fillStyle = 'rgba(28, 30, 24, 0.65)';
+    ctx.fillRect(w * 0.45, 110, w * 0.10, 32);
+    ctx.fillStyle = '#3c100e';
+    ctx.beginPath();
+    ctx.ellipse(w * 0.5, 184, 46, 26, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#180606';
+    ctx.beginPath();
+    ctx.ellipse(w * 0.5, 184, 34, 17, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Dentes irregulares
+    ctx.fillStyle = '#c4b898';
+    for (let tx = -24; tx <= 24; tx += 12) {
+      ctx.fillRect(w * 0.5 + tx - 3, 169, 6, 9);
+      ctx.fillRect(w * 0.5 + tx - 2, 191, 5, 8);
+    }
+    // Mancha de sangue no queixo
+    ctx.fillStyle = 'rgba(110, 18, 16, 0.55)';
+    ctx.fillRect(w * 0.36, 204, w * 0.28, 38);
   }, false)
 };
 
@@ -1191,230 +1232,8 @@ function buildOmniCharacter(jacketTint = null) {
 }
 
 /* ============================================================================
-   5.1 MODELO 3D DO POLICIAL DA SWAT & ANIMAÇÕES MIXAMO NATIVAS
+   4.1 GERENCIADOR DEV DE ZUMBIS
    ============================================================================ */
-let swatTemplateScene = null;
-let swatLoaded = false;
-let swatPlayer = null;
-
-let swatHeadTexGlobal = null;
-let swatBodyTexGlobal = null;
-
-function getSwatTextures() {
-  if (!swatHeadTexGlobal) {
-    const texLoader = new THREE.TextureLoader();
-    swatHeadTexGlobal = texLoader.load('./swat_head_diffuse.jpg');
-    swatHeadTexGlobal.flipY = false;
-    swatBodyTexGlobal = texLoader.load('./swat_body_diffuse.jpg');
-    swatBodyTexGlobal.flipY = false;
-  }
-  return { headTex: swatHeadTexGlobal, bodyTex: swatBodyTexGlobal };
-}
-
-function applySwatTextures(mesh) {
-  const { headTex, bodyTex } = getSwatTextures();
-  mesh.traverse(child => {
-    if (child.isSkinnedMesh && child.material) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-      const mats = Array.isArray(child.material) ? child.material : [child.material];
-      for (const m of mats) {
-        if (!m) continue;
-        const isHead = m.name && m.name.toLowerCase().includes('head');
-        m.map = isHead ? headTex : bodyTex;
-        m.color.setHex(0xffffff);
-        m.roughness = 0.75;
-        m.metalness = 0.15;
-        m.needsUpdate = true;
-      }
-    }
-  });
-}
-
-function buildSwatEntity() {
-  if (!swatTemplateScene) return null;
-  const root = new THREE.Group();
-  const swatMesh = SkeletonUtils.clone(swatTemplateScene);
-  swatMesh.scale.set(0.0098, 0.0098, 0.0098); // Proporção humana real (1.78m)
-  swatMesh.rotation.y = Math.PI; // Alinha o Policial SWAT de frente para -Z (mesma direção da câmera e mira!)
-  root.add(swatMesh);
-
-  // Aplica texturas reais oficiais da SWAT
-  applySwatTextures(swatMesh);
-
-  let headBone = null, spineBone = null, rightHand = null;
-  let leftArm = null, rightArm = null, leftLeg = null, rightLeg = null;
-
-  swatMesh.traverse(child => {
-    if (child.isBone) {
-      if (child.name === 'mixamorigHead') headBone = child;
-      if (child.name === 'mixamorigSpine1' || child.name === 'mixamorigSpine2') spineBone = child;
-      if (child.name === 'mixamorigRightHand') rightHand = child;
-      if (child.name === 'mixamorigLeftArm') leftArm = child;
-      if (child.name === 'mixamorigRightArm') rightArm = child;
-      if (child.name === 'mixamorigLeftUpLeg') leftLeg = child;
-      if (child.name === 'mixamorigRightUpLeg') rightLeg = child;
-    }
-  });
-
-  // Ponto de montagem da arma perfeitamente alinhada na mão direita apontando para a frente (-Z)
-  const weaponMount = new THREE.Group();
-  weaponMount.scale.set(102, 102, 102);
-  weaponMount.position.set(0.05, 0.12, -0.01);
-  weaponMount.quaternion.set(0.4901147, 0.4904769, -0.4565714, 0.5574608);
-  if (rightHand) rightHand.add(weaponMount);
-
-  const mixer = new THREE.AnimationMixer(swatMesh);
-  const actions = {};
-  for (const id in PLAYER_ANIM_CLIPS) {
-    actions[id] = mixer.clipAction(PLAYER_ANIM_CLIPS[id]);
-  }
-
-  const defaultAction = actions['rifle_idle'];
-  if (defaultAction) {
-    defaultAction.play();
-  }
-
-  return {
-    root, swatMesh, headBone, spineBone, rightHand, leftArm, rightArm, leftLeg, rightLeg,
-    weaponMount, mixer, actions, activeAction: defaultAction, currentAnim: 'rifle_idle'
-  };
-}
-
-function transitionSwatAnim(swat, targetAnim, fade = 0.16, loopMode = THREE.LoopRepeat, clamp = false) {
-  if (!swat || !swat.actions || !swat.actions[targetAnim]) return;
-  const nextAction = swat.actions[targetAnim];
-  if (swat.activeAction === nextAction) return;
-
-  nextAction.reset();
-  nextAction.setLoop(loopMode);
-  nextAction.clampWhenFinished = clamp;
-  nextAction.play();
-
-  if (swat.activeAction) {
-    swat.activeAction.crossFadeTo(nextAction, fade, true);
-  }
-  swat.activeAction = nextAction;
-  swat.currentAnim = targetAnim;
-}
-
-function animateSwatCharacter(swat, state, dt) {
-  if (!swat || !swat.root) return;
-  const {
-    pos, bodyYaw, lookYaw, pitch, hSpeed, localFwdVel, localStrVel,
-    crouchAlpha, landSquash, onGround, sprinting, inCombat,
-    weaponId, reloading, reloadProgress, recoilKick, meleeSwingT, pumpTimer, isDying, deathAnimId
-  } = state;
-
-  swat.root.position.copy(pos);
-  swat.root.rotation.set(0, bodyYaw, state.turnLeanZ || 0);
-
-  let targetAnim = 'rifle_idle';
-  let loopMode = THREE.LoopRepeat;
-  let clamp = false;
-  let fade = 0.16;
-
-  if (isDying) {
-    targetAnim = deathAnimId || 'death_front';
-    loopMode = THREE.LoopOnce;
-    clamp = true;
-    fade = 0.10;
-  } else if (reloading && swat.actions['rifle_reload']) {
-    targetAnim = 'rifle_reload';
-    fade = 0.15;
-  } else if ((recoilKick || 0) > 0.04 && swat.actions['rifle_fire']) {
-    targetAnim = 'rifle_fire';
-    fade = 0.05;
-  } else if (crouchAlpha > 0.45 && hSpeed < 0.25 && swat.actions['crouch_kneel']) {
-    targetAnim = 'crouch_kneel';
-    fade = 0.20;
-  } else if (hSpeed > 0.25) {
-    if (localFwdVel < -0.3) {
-      targetAnim = (sprinting || Math.abs(localFwdVel) > 3.0) && swat.actions['run_back'] ? 'run_back' : 'walk_back';
-    } else if (Math.abs(localStrVel) > 0.35 && Math.abs(localFwdVel) < 0.6) {
-      targetAnim = localStrVel < 0 ? 'strafe_left' : 'strafe_right';
-    } else if (localFwdVel > 0.3) {
-      targetAnim = (sprinting || localFwdVel > 3.2) && swat.actions['run_fwd'] ? 'run_fwd' : 'walk_fwd';
-    } else {
-      targetAnim = 'walk_fwd';
-    }
-  } else {
-    targetAnim = 'rifle_idle';
-  }
-
-  transitionSwatAnim(swat, targetAnim, fade, loopMode, clamp);
-  if (swat.mixer) swat.mixer.update(dt);
-
-  if (swat.headBone && !isDying) {
-    const aimPitch = inCombat ? pitch : pitch * 0.45;
-    let headDiffYaw = ((lookYaw - bodyYaw + Math.PI) % (Math.PI * 2)) - Math.PI;
-    if (headDiffYaw < -Math.PI) headDiffYaw += Math.PI * 2;
-    headDiffYaw = THREE.MathUtils.clamp(headDiffYaw, -0.65, 0.65);
-    swat.headBone.rotation.x = THREE.MathUtils.lerp(swat.headBone.rotation.x, aimPitch * 0.5, Math.min(1, dt * 15));
-    swat.headBone.rotation.y = THREE.MathUtils.lerp(swat.headBone.rotation.y, headDiffYaw * 0.6, Math.min(1, dt * 15));
-  }
-}
-
-function initSwatForLocalPlayer() {
-  if (!swatLoaded || swatPlayer) return;
-  swatPlayer = buildSwatEntity();
-  if (!swatPlayer) return;
-
-  scene.add(swatPlayer.root);
-  omni.root.visible = false;
-
-  for (const key of Object.keys(WEAPON_DEFS)) {
-    if (tpWeaponMeshes[key] && tpWeaponMeshes[key].root) {
-      swatPlayer.weaponMount.add(tpWeaponMeshes[key].root);
-    }
-  }
-  swatPlayer.weaponMount.add(tpFlashMesh);
-
-  // Hitboxes anatômicas precisas no esqueleto do SWAT para PvP e Zumbis
-  const mkHB = (bone, w, h, d, py, zone) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), zInvisibleHitMat);
-    m.position.y = py;
-    if (bone) bone.add(m);
-    m.userData.isLocalPlayer = true;
-    m.userData.hitZone = zone;
-    return m;
-  };
-  mkHB(swatPlayer.headBone, 24, 28, 24, 12, 'head');
-  mkHB(swatPlayer.spineBone, 38, 48, 26, 15, 'torso');
-  mkHB(swatPlayer.leftArm, 18, 40, 18, -15, 'arm');
-  mkHB(swatPlayer.rightArm, 18, 40, 18, -15, 'arm');
-  mkHB(swatPlayer.leftLeg, 20, 50, 20, -25, 'leg');
-  mkHB(swatPlayer.rightLeg, 20, 50, 20, -25, 'leg');
-}
-
-function initSwatForRemotePlayer(rp) {
-  if (!swatLoaded || rp.swat) return;
-  rp.swat = buildSwatEntity();
-  if (!rp.swat) return;
-  scene.add(rp.swat.root);
-  rp.rig.root.visible = false;
-  for (const k of Object.keys(WEAPON_DEFS)) {
-    if (rp.remWeapons[k] && rp.remWeapons[k].root) {
-      rp.swat.weaponMount.add(rp.remWeapons[k].root);
-    }
-  }
-  const mkHB = (bone, w, h, d, py, zone) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), zInvisibleHitMat);
-    m.position.y = py;
-    if (bone) bone.add(m);
-    m.userData.remotePlayer = rp;
-    m.userData.hitZone = zone;
-    rp.hitboxes.push(m);
-    return m;
-  };
-  mkHB(rp.swat.headBone, 24, 28, 24, 12, 'head');
-  mkHB(rp.swat.spineBone, 38, 48, 26, 15, 'torso');
-  mkHB(rp.swat.leftArm, 18, 40, 18, -15, 'arm');
-  mkHB(rp.swat.rightArm, 18, 40, 18, -15, 'arm');
-  mkHB(rp.swat.leftLeg, 20, 50, 20, -25, 'leg');
-  mkHB(rp.swat.rightLeg, 20, 50, 20, -25, 'leg');
-}
-
 function clearAllZombies(broadcast = true) {
   for (const z of zombies) {
     z.dead = true;
@@ -1435,7 +1254,6 @@ function spawnZombiesNearPlayer(count = 5, broadcast = true) {
     const zx = player.pos.x + Math.sin(angle) * dist;
     const zz = player.pos.z + Math.cos(angle) * dist;
     const zEnt = buildZombieEntity(`z-dev-${Date.now()}-${i}`, zx, zz, rng);
-    if (zombieAnimsLoaded) setupZombieActions(zEnt);
     worldGroup.add(zEnt.root);
     zombies.push(zEnt);
   }
@@ -1504,69 +1322,22 @@ const AMMO_TYPES = {
   '308':  { id:'308',  name:'Caixa .308 / AWP',  pack:10, color:0x4a5e6e }
 };
 
-// TODAS as 10 Armas 3D (.GLB) da sua pasta GUNS + Faca Inicial KA-BAR!
+// Catálogo completo de armas procedurais detalhadas + Faca Inicial KA-BAR!
 const WEAPON_DEFS = {
-  knife:     { id:'knife',     name:'FACA KA-BAR',             cal:'LÂMINA DE COMBATE',    ammoType:null,  melee:true,  mode:'semi', sound:'knife',   twoHand:false, dmg:55,  delay:0.38, rDur:0,    range:2.35, pellets:1,  spread:0,     adsSpread:0,      recoil:0,     noise:4,  magSize:0,  shellCol:0,        hipPos:[0.19,-0.17,-0.30], sightY:0.05,  adsZ:-0.25, allowedSlots:[] },
-  m9:        { id:'m9',        name:'MAGNUM .44 REVOLVER',     cal:'.44 MAGNUM // REVOLVER',ammoType:'9mm', melee:false, mode:'semi', sound:'pistol',  twoHand:false, dmg:64,  delay:0.28, rDur:1.65, range:105,  pellets:1,  spread:0.014, adsSpread:0.0020, recoil:0.044, noise:48, magSize:6,  shellCol:0xc89d46, hipPos:[0.19,-0.17,-0.33], sightY:0.068, adsZ:-0.23, allowedSlots:['optic','muzzle'], glb:'./GUNS/psx-magnum-44.glb', glbRotY:-Math.PI*0.5, targetLen:0.29, gripRatio:0.86 },
-  mp5:       { id:'mp5',       name:'H&K MP5-A3 SMG',          cal:'9x19MM // AUTO',       ammoType:'9mm', melee:false, mode:'auto', sound:'smg',     twoHand:true,  dmg:33,  delay:0.080,rDur:1.65, range:115,  pellets:1,  spread:0.020, adsSpread:0.0042, recoil:0.018, noise:38, magSize:30, shellCol:0xc89d46, hipPos:[0.20,-0.17,-0.30], sightY:0.072, adsZ:-0.22, allowedSlots:['optic','muzzle','under'], glb:'./GUNS/hk-mp5-smg.glb', glbRotY:0, targetLen:0.66, gripRatio:0.68 },
-  sawnoff:   { id:'sawnoff',   name:'CANO SERRADO SAWN-OFF',   cal:'12 GAUGE // CURTA',    ammoType:'12g', melee:false, mode:'semi', sound:'shotgun', twoHand:false, dmg:28,  delay:0.32, rDur:1.55, range:38,   pellets:9,  spread:0.082, adsSpread:0.052,  recoil:0.082, noise:72, magSize:2,  shellCol:0xa83228, hipPos:[0.20,-0.17,-0.30], sightY:0.062, adsZ:-0.24, allowedSlots:['optic'], glb:'./GUNS/ps1-style-sawn-off-shotgun.glb', glbRotY:0, targetLen:0.54, gripRatio:0.76 },
-  shotgun:   { id:'shotgun',   name:'CANO DUPLO 1840',         cal:'12 GAUGE // PESADA',   ammoType:'12g', melee:false, mode:'semi', sound:'shotgun', twoHand:true,  dmg:30,  delay:0.52, rDur:1.85, range:58,   pellets:8,  spread:0.056, adsSpread:0.032,  recoil:0.072, noise:70, magSize:2,  shellCol:0xa83228, hipPos:[0.21,-0.17,-0.28], sightY:0.065, adsZ:-0.23, allowedSlots:['optic','muzzle'], glb:'./GUNS/ps1-double-barrel-shotgun-1840.glb', glbRotY:Math.PI*0.5, targetLen:0.90, gripRatio:0.70 },
-  m4:        { id:'m4',        name:'COLT M4A1 CARBINE',       cal:'5.56x45MM // AUTO',    ammoType:'556', melee:false, mode:'auto', sound:'rifle',   twoHand:true,  dmg:46,  delay:0.094,rDur:1.80, range:195,  pellets:1,  spread:0.017, adsSpread:0.0026, recoil:0.023, noise:58, magSize:30, shellCol:0xc89d46, hipPos:[0.20,-0.17,-0.29], sightY:0.078, adsZ:-0.21, allowedSlots:['optic','muzzle','under'], glb:'./GUNS/assault-rifle-m4a1.glb', glbRotY:Math.PI, targetLen:0.84, gripRatio:0.70 },
-  ar15:      { id:'ar15',      name:'AR-15 TÁTICO',            cal:'5.56x45MM // PRECISO', ammoType:'556', melee:false, mode:'semi', sound:'rifle',   twoHand:true,  dmg:52,  delay:0.125,rDur:1.75, range:220,  pellets:1,  spread:0.013, adsSpread:0.0018, recoil:0.020, noise:56, magSize:30, shellCol:0xc89d46, hipPos:[0.20,-0.17,-0.29], sightY:0.082, adsZ:-0.21, allowedSlots:['optic','muzzle','under'], glb:'./GUNS/ar-15-style-rifle.glb', glbRotY:Math.PI, targetLen:0.86, gripRatio:0.70 },
-  lr300:     { id:'lr300',     name:'ZM LR-300 ASSAULT',       cal:'5.56x45MM // RÁPIDO',  ammoType:'556', melee:false, mode:'auto', sound:'rifle',   twoHand:true,  dmg:44,  delay:0.084,rDur:1.70, range:185,  pellets:1,  spread:0.016, adsSpread:0.0024, recoil:0.019, noise:55, magSize:30, shellCol:0xc89d46, hipPos:[0.20,-0.17,-0.29], sightY:0.076, adsZ:-0.21, allowedSlots:['optic','muzzle','under'], glb:'./GUNS/lr-300-ml-a-assault-rifle.glb', glbRotY:0, targetLen:0.84, gripRatio:0.68 },
-  ak47:      { id:'ak47',      name:'AKM 7.62 CLÁSSICA',       cal:'7.62x39MM // AUTO',    ammoType:'762', melee:false, mode:'auto', sound:'ak',      twoHand:true,  dmg:58,  delay:0.112,rDur:1.95, range:185,  pellets:1,  spread:0.022, adsSpread:0.0036, recoil:0.032, noise:65, magSize:30, shellCol:0xb59a4a, hipPos:[0.20,-0.17,-0.29], sightY:0.070, adsZ:-0.21, allowedSlots:['optic','muzzle','under'], glb:'./GUNS/akm-assault-rifle-game-ready-model.glb', glbRotY:0, targetLen:0.88, gripRatio:0.70 },
-  aktac:     { id:'aktac',     name:'AK-47 TÁTICA SUPRIMIDA',  cal:'7.62x39MM // SPEC-OPS',ammoType:'762', melee:false, mode:'auto', sound:'ak',      twoHand:true,  dmg:56,  delay:0.105,rDur:1.85, range:190,  pellets:1,  spread:0.018, adsSpread:0.0028, recoil:0.025, noise:18, magSize:30, shellCol:0xb59a4a, hipPos:[0.20,-0.17,-0.29], sightY:0.070, adsZ:-0.21, allowedSlots:['optic','under'], builtInSuppressed:true, glb:'./GUNS/ak-47-tactical-upgrade.glb', glbRotY:Math.PI, targetLen:0.94, gripRatio:0.68 },
-  sniper:    { id:'sniper',    name:'AWP MAGNUM SNIPER',       cal:'.308 MAGNUM // BOLT',  ammoType:'308', melee:false, mode:'semi', sound:'sniper',  twoHand:true,  dmg:185, delay:1.02, rDur:2.20, range:340,  pellets:1,  spread:0.028, adsSpread:0.0004, recoil:0.084, noise:94, magSize:5,  shellCol:0xc89d46, hipPos:[0.21,-0.17,-0.27], sightY:0.075, adsZ:-0.22, allowedSlots:['optic','muzzle'], glb:'./GUNS/ps1-style-awp-sniper.glb', glbRotY:0, targetLen:1.12, gripRatio:0.70 }
+  knife:     { id:'knife',     name:'FACA KA-BAR',             cal:'LÂMINA DE COMBATE',    ammoType:null,  melee:true,  mode:'semi', sound:'knife',   twoHand:false, dmg:55,  delay:0.38, rDur:0,    range:2.35, pellets:1,  spread:0,     adsSpread:0,      recoil:0,     noise:4,  magSize:0,  shellCol:0,        hipPos:[0.19,-0.17,-0.30], sightY:0.055, adsZ:-0.25, allowedSlots:[] },
+  m9:        { id:'m9',        name:'MAGNUM .44 REVOLVER',     cal:'.44 MAGNUM // REVOLVER',ammoType:'9mm', melee:false, mode:'semi', sound:'pistol',  twoHand:false, dmg:64,  delay:0.28, rDur:1.65, range:105,  pellets:1,  spread:0.014, adsSpread:0.0020, recoil:0.044, noise:48, magSize:6,  shellCol:0xc89d46, hipPos:[0.19,-0.17,-0.33], sightY:0.066, adsZ:-0.23, allowedSlots:['optic','muzzle'] },
+  mp5:       { id:'mp5',       name:'H&K MP5-A3 SMG',          cal:'9x19MM // AUTO',       ammoType:'9mm', melee:false, mode:'auto', sound:'smg',     twoHand:true,  dmg:33,  delay:0.080,rDur:1.65, range:115,  pellets:1,  spread:0.020, adsSpread:0.0042, recoil:0.018, noise:38, magSize:30, shellCol:0xc89d46, hipPos:[0.20,-0.17,-0.30], sightY:0.074, adsZ:-0.22, allowedSlots:['optic','muzzle','under'] },
+  sawnoff:   { id:'sawnoff',   name:'CANO SERRADO SAWN-OFF',   cal:'12 GAUGE // CURTA',    ammoType:'12g', melee:false, mode:'semi', sound:'shotgun', twoHand:false, dmg:28,  delay:0.32, rDur:1.55, range:38,   pellets:9,  spread:0.082, adsSpread:0.052,  recoil:0.082, noise:72, magSize:2,  shellCol:0xa83228, hipPos:[0.20,-0.17,-0.30], sightY:0.056, adsZ:-0.24, allowedSlots:['optic'] },
+  shotgun:   { id:'shotgun',   name:'CANO DUPLO 1840',         cal:'12 GAUGE // PESADA',   ammoType:'12g', melee:false, mode:'semi', sound:'shotgun', twoHand:true,  dmg:30,  delay:0.52, rDur:1.85, range:58,   pellets:8,  spread:0.056, adsSpread:0.032,  recoil:0.072, noise:70, magSize:2,  shellCol:0xa83228, hipPos:[0.21,-0.17,-0.28], sightY:0.062, adsZ:-0.23, allowedSlots:['optic','muzzle'] },
+  m4:        { id:'m4',        name:'COLT M4A1 CARBINE',       cal:'5.56x45MM // AUTO',    ammoType:'556', melee:false, mode:'auto', sound:'rifle',   twoHand:true,  dmg:46,  delay:0.094,rDur:1.80, range:195,  pellets:1,  spread:0.017, adsSpread:0.0026, recoil:0.023, noise:58, magSize:30, shellCol:0xc89d46, hipPos:[0.20,-0.17,-0.29], sightY:0.078, adsZ:-0.21, allowedSlots:['optic','muzzle','under'] },
+  ar15:      { id:'ar15',      name:'AR-15 TÁTICO',            cal:'5.56x45MM // PRECISO', ammoType:'556', melee:false, mode:'semi', sound:'rifle',   twoHand:true,  dmg:52,  delay:0.125,rDur:1.75, range:220,  pellets:1,  spread:0.013, adsSpread:0.0018, recoil:0.020, noise:56, magSize:30, shellCol:0xc89d46, hipPos:[0.20,-0.17,-0.29], sightY:0.080, adsZ:-0.21, allowedSlots:['optic','muzzle','under'] },
+  lr300:     { id:'lr300',     name:'ZM LR-300 ASSAULT',       cal:'5.56x45MM // RÁPIDO',  ammoType:'556', melee:false, mode:'auto', sound:'rifle',   twoHand:true,  dmg:44,  delay:0.084,rDur:1.70, range:185,  pellets:1,  spread:0.016, adsSpread:0.0024, recoil:0.019, noise:55, magSize:30, shellCol:0xc89d46, hipPos:[0.20,-0.17,-0.29], sightY:0.076, adsZ:-0.21, allowedSlots:['optic','muzzle','under'] },
+  ak47:      { id:'ak47',      name:'AKM 7.62 CLÁSSICA',       cal:'7.62x39MM // AUTO',    ammoType:'762', melee:false, mode:'auto', sound:'ak',      twoHand:true,  dmg:58,  delay:0.112,rDur:1.95, range:185,  pellets:1,  spread:0.022, adsSpread:0.0036, recoil:0.032, noise:65, magSize:30, shellCol:0xb59a4a, hipPos:[0.20,-0.17,-0.29], sightY:0.072, adsZ:-0.21, allowedSlots:['optic','muzzle','under'] },
+  aktac:     { id:'aktac',     name:'AK-47 TÁTICA SUPRIMIDA',  cal:'7.62x39MM // SPEC-OPS',ammoType:'762', melee:false, mode:'auto', sound:'ak',      twoHand:true,  dmg:56,  delay:0.105,rDur:1.85, range:190,  pellets:1,  spread:0.018, adsSpread:0.0028, recoil:0.025, noise:18, magSize:30, shellCol:0xb59a4a, hipPos:[0.20,-0.17,-0.29], sightY:0.074, adsZ:-0.21, allowedSlots:['optic','under'], builtInSuppressed:true },
+  sniper:    { id:'sniper',    name:'AWP MAGNUM SNIPER',       cal:'.308 MAGNUM // BOLT',  ammoType:'308', melee:false, mode:'semi', sound:'sniper',  twoHand:true,  dmg:185, delay:1.02, rDur:2.20, range:340,  pellets:1,  spread:0.028, adsSpread:0.0004, recoil:0.084, noise:94, magSize:5,  shellCol:0xc89d46, hipPos:[0.21,-0.17,-0.27], sightY:0.080, adsZ:-0.22, allowedSlots:['optic','muzzle'] }
 };
 
-// Cache global dos modelos .GLB normalizados de Armas e Zumbis
-const GLB_GUN_TEMPLATES = {}; // weaponId -> { templateGroup, muzzleZ, topSightY, opticZ }
-const GLB_ZOMBIE_ASSETS = {
-  animatedGLTF: null, // zombie2.glb (SkinnedMesh + AnimationClip)
-  staticGLTF: null    // zombie.glb
-};
-const ZOMBIE_ANIM_CLIPS = {}; // id -> THREE.AnimationClip retargeted para zombie2.glb
-const PLAYER_ANIM_CLIPS = {}; // id -> THREE.AnimationClip
-let zombieAnimsLoaded = false;
-let playerAnimsLoaded = false;
-const registeredGunAssemblies = [];
-
-function applyGunGLBToAssembly(assembly, type, withFirstPersonHands) {
-  const tpl = GLB_GUN_TEMPLATES[type];
-  if (!tpl) return;
-  while (assembly.gunVisualGroup.children.length) {
-    assembly.gunVisualGroup.remove(assembly.gunVisualGroup.children[0]);
-  }
-  const cloned = tpl.templateGroup.clone(true);
-  cloned.traverse((ch) => {
-    if (ch.isMesh) {
-      ch.castShadow = !withFirstPersonHands && !assembly.isLoot;
-      ch.receiveShadow = !withFirstPersonHands;
-    }
-  });
-  assembly.gunVisualGroup.add(cloned);
-  assembly.muzzleZ = tpl.muzzleZ;
-  assembly.baseSightY = tpl.topSightY;
-  assembly.opticSightY = tpl.topSightY;
-  assembly.opticZ = tpl.opticZ;
-  assembly.magMesh = null;
-  assembly.boltMesh = null;
-
-  // Adiciona micro-pontos de trítio na linha de mira superior para ADS 1ª Pessoa cristalino em qualquer modelo!
-  assembly.ironSightRear.clear();
-  const rearDotL = new THREE.Mesh(new THREE.BoxGeometry(0.0022, 0.0022, 0.002), Mats.tritium);
-  rearDotL.position.set(-0.0065, tpl.topSightY, tpl.opticZ + 0.05);
-  const rearDotR = rearDotL.clone(); rearDotR.position.x = 0.0065;
-  const frontDot = new THREE.Mesh(new THREE.BoxGeometry(0.0024, 0.0024, 0.002), Mats.tritium);
-  frontDot.position.set(0, tpl.topSightY, tpl.muzzleZ * 0.78);
-  assembly.ironSightRear.add(rearDotL, rearDotR, frontDot);
-
-  if (assembly.lastAttachments) {
-    rebuildAttachmentVisuals(assembly, type, assembly.lastAttachments);
-  }
-}
-
-/* Constrói Arma/Faca (usa imediatamente o .GLB real da pasta GUNS ou fallback enquanto carrega!) */
+/* Constrói Arma/Faca Procedural Detalhada (1ª Pessoa, 3ª Pessoa e Loot com Miras de Trítio + Pente/Ferrolho Animáveis!) */
 function buildWeaponAssembly(type, withFirstPersonHands = false, isLoot = false) {
   const g = new THREE.Group();
   const gunVisualGroup = new THREE.Group();
@@ -1577,12 +1348,14 @@ function buildWeaponAssembly(type, withFirstPersonHands = false, isLoot = false)
     m.position.set(x, y, z);
     if (rx || ry || rz) m.rotation.set(rx, ry, rz);
     m.castShadow = !withFirstPersonHands && !isLoot;
+    m.receiveShadow = !withFirstPersonHands;
     parent.add(m); return m;
   };
-  const cylTo = (parent, r1, r2, len, mat, x, y, z, rotX = Math.PI * 0.5) => {
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, len, 10), mat);
+  const cylTo = (parent, r1, r2, len, mat, x, y, z, rotX = Math.PI * 0.5, segs = 10) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, len, segs), mat);
     m.rotation.x = rotX; m.position.set(x, y, z);
     m.castShadow = !withFirstPersonHands && !isLoot;
+    m.receiveShadow = !withFirstPersonHands;
     parent.add(m); return m;
   };
 
@@ -1590,47 +1363,192 @@ function buildWeaponAssembly(type, withFirstPersonHands = false, isLoot = false)
   const ironSightRear = new THREE.Group();
   g.add(ironSightRear);
   const def = WEAPON_DEFS[type] || WEAPON_DEFS.knife;
-  let opticZ = -0.06, baseSightY = def.sightY;
+  let opticZ = -0.05, baseSightY = def.sightY;
+
+  const addIronSights = (rearZ, frontZ, topY, rearSpread = 0.0085) => {
+    // Alça traseira + pontos de trítio verde
+    boxTo(ironSightRear, 0.004, 0.015, 0.012, Mats.gunBlack, -rearSpread, topY - 0.004, rearZ);
+    boxTo(ironSightRear, 0.004, 0.015, 0.012, Mats.gunBlack,  rearSpread, topY - 0.004, rearZ);
+    boxTo(ironSightRear, rearSpread * 2 + 0.004, 0.005, 0.012, Mats.gunBlack, 0, topY - 0.011, rearZ);
+    boxTo(ironSightRear, 0.0024, 0.0024, 0.002, Mats.tritium, -rearSpread, topY - 0.001, rearZ + 0.0065);
+    boxTo(ironSightRear, 0.0024, 0.0024, 0.002, Mats.tritium,  rearSpread, topY - 0.001, rearZ + 0.0065);
+    // Massa de mira dianteira + ponto de trítio central
+    boxTo(ironSightRear, 0.0034, 0.018, 0.012, Mats.gunBlack, 0, topY - 0.005, frontZ);
+    boxTo(ironSightRear, 0.0026, 0.0032, 0.002, Mats.tritium, 0, topY, frontZ + 0.0065);
+  };
 
   if (type === 'knife') {
     cylTo(gunVisualGroup, 0.013, 0.014, 0.115, Mats.darkWood, 0, -0.01, 0.03, 0.25);
-    boxTo(gunVisualGroup, 0.044, 0.008, 0.016, Mats.gunBlack, 0, 0.042, 0.012, 0.25);
+    cylTo(gunVisualGroup, 0.015, 0.015, 0.014, Mats.gunBlack, 0, -0.068, 0.044, 0.25);
+    boxTo(gunVisualGroup, 0.046, 0.008, 0.018, Mats.gunBlack, 0, 0.042, 0.012, 0.25);
     const blade = boxTo(gunVisualGroup, 0.005, 0.175, 0.028, Mats.gunSilver, 0, 0.128, -0.01, 0.25);
+    boxTo(gunVisualGroup, 0.006, 0.12, 0.007, Mats.gunSteel, 0, 0.12, -0.004, 0.25);
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.048, 4), Mats.gunSilver);
     tip.position.set(0, 0.228, -0.035); tip.rotation.set(0.25, Math.PI * 0.25, 0);
     gunVisualGroup.add(tip);
     muzzleZ = -0.18;
-    // 1P Knife View: Sem blocos flutuantes, visão limpa
-    return { root: g, gunVisualGroup, magMesh: null, boltMesh: blade, muzzleZ, ironSightRear, attachGroup: new THREE.Group(), opticZ, baseSightY, opticSightY: baseSightY, isLoot };
+    return { root: g, gunVisualGroup, magMesh: null, boltMesh: blade, muzzleZ, ironSightRear, attachGroup: new THREE.Group(), opticZ, baseSightY, opticSightY: baseSightY, isLoot, lastAttachments: null };
   }
 
-  // Fallback leve imediato até o .GLB correspondente terminar o streaming
-  if (!def.twoHand) {
-    boxTo(gunVisualGroup, 0.032, 0.034, 0.22, Mats.gunSilver, 0, 0.032, -0.06);
-    boxTo(gunVisualGroup, 0.030, 0.10, 0.045, Mats.darkWood, 0, -0.028, 0.02, 0.24);
-    muzzleZ = -0.20; opticZ = -0.03;
-  } else {
-    boxTo(gunVisualGroup, 0.044, 0.062, 0.26, Mats.gunSteel, 0, 0.030, -0.05);
-    boxTo(gunVisualGroup, 0.038, 0.078, 0.24, Mats.gunBlack, 0, 0.012, 0.18);
-    cylTo(gunVisualGroup, 0.011, 0.012, 0.48, Mats.gunSteel, 0, 0.038, -0.38);
-    muzzleZ = -0.62; opticZ = -0.05;
+  if (type === 'm9') {
+    // Magnum .44 Revolver em aço escovado + empunhadura de madeira + tambor canelado
+    boxTo(gunVisualGroup, 0.026, 0.095, 0.044, Mats.gunWood, 0, -0.036, 0.024, 0.28);
+    boxTo(gunVisualGroup, 0.030, 0.044, 0.115, Mats.gunSilver, 0, 0.022, -0.032);
+    boxTo(gunVisualGroup, 0.018, 0.004, 0.042, Mats.gunSteel, 0, -0.014, -0.032); // guarda-mato
+    magMesh = cylTo(gunVisualGroup, 0.022, 0.022, 0.048, Mats.gunSteel, 0, 0.024, -0.034, Math.PI * 0.5, 12);
+    magMesh.userData.restY = 0.024;
+    cylTo(gunVisualGroup, 0.011, 0.011, 0.175, Mats.gunSilver, 0, 0.036, -0.165);
+    boxTo(gunVisualGroup, 0.010, 0.013, 0.168, Mats.gunSilver, 0, 0.047, -0.162); // trilho ventilado superior
+    cylTo(gunVisualGroup, 0.006, 0.006, 0.145, Mats.gunSteel, 0, 0.019, -0.155); // vareta extratora
+    boltMesh = boxTo(gunVisualGroup, 0.010, 0.020, 0.022, Mats.gunSteel, 0, 0.044, 0.028, -0.35);
+    boltMesh.userData.restZ = 0.028;
+    muzzleZ = -0.255; opticZ = -0.05; baseSightY = 0.066;
+    addIronSights(0.012, -0.238, baseSightY, 0.0065);
+  } else if (type === 'sawnoff') {
+    // Escopeta Cano Serrado 12G (duplo cano curto + coronha cortada de nogueira)
+    boxTo(gunVisualGroup, 0.034, 0.052, 0.135, Mats.gunWood, 0, -0.022, 0.065, 0.34);
+    boxTo(gunVisualGroup, 0.042, 0.044, 0.105, Mats.gunSteel, 0, 0.020, -0.032);
+    boxTo(gunVisualGroup, 0.038, 0.032, 0.135, Mats.gunWood, 0, 0.004, -0.152);
+    cylTo(gunVisualGroup, 0.0125, 0.0125, 0.32, Mats.gunSteel, -0.0135, 0.032, -0.235);
+    cylTo(gunVisualGroup, 0.0125, 0.0125, 0.32, Mats.gunSteel,  0.0135, 0.032, -0.235);
+    boxTo(gunVisualGroup, 0.010, 0.005, 0.30, Mats.gunBlack, 0, 0.043, -0.232);
+    boltMesh = boxTo(gunVisualGroup, 0.014, 0.012, 0.038, Mats.gunSilver, 0, 0.046, 0.008);
+    boltMesh.userData.restZ = 0.008;
+    muzzleZ = -0.398; opticZ = -0.05; baseSightY = 0.056;
+    addIronSights(-0.02, -0.382, baseSightY, 0.007);
+  } else if (type === 'shotgun') {
+    // Cano Duplo / Escopeta Pesada 1840 (coronha cheia de madeira + telha animada + canos longos)
+    boxTo(gunVisualGroup, 0.038, 0.095, 0.28, Mats.gunWood, 0, -0.014, 0.21, 0.14);
+    boxTo(gunVisualGroup, 0.034, 0.042, 0.095, Mats.gunWood, 0, 0.005, 0.048, 0.26);
+    boxTo(gunVisualGroup, 0.044, 0.052, 0.16, Mats.gunSteel, 0, 0.024, -0.055);
+    cylTo(gunVisualGroup, 0.013, 0.013, 0.56, Mats.gunSteel, -0.014, 0.036, -0.39);
+    cylTo(gunVisualGroup, 0.013, 0.013, 0.56, Mats.gunSteel,  0.014, 0.036, -0.39);
+    boxTo(gunVisualGroup, 0.010, 0.006, 0.54, Mats.gunBlack, 0, 0.048, -0.385);
+    boltMesh = boxTo(gunVisualGroup, 0.044, 0.036, 0.19, Mats.gunWood, 0, 0.008, -0.26);
+    boltMesh.userData.restZ = -0.26;
+    muzzleZ = -0.675; opticZ = -0.05; baseSightY = 0.062;
+    addIronSights(-0.02, -0.655, baseSightY, 0.0075);
+  } else if (type === 'mp5') {
+    // H&K MP5-A3 SMG (coronha retrátil + carregador curvo 9mm + guarda-mão angular + alça tambor)
+    boxTo(gunVisualGroup, 0.028, 0.088, 0.040, Mats.gunBlack, 0, -0.036, 0.012, 0.22);
+    boxTo(gunVisualGroup, 0.040, 0.056, 0.26, Mats.gunBlack, 0, 0.026, -0.075);
+    cylTo(gunVisualGroup, 0.016, 0.016, 0.24, Mats.gunSteel, 0, 0.042, -0.19);
+    boxTo(gunVisualGroup, 0.038, 0.044, 0.165, Mats.gunBlack, 0, 0.018, -0.245); // guarda-mão MP5
+    cylTo(gunVisualGroup, 0.010, 0.010, 0.13, Mats.gunSteel, 0, 0.036, -0.365);
+    // Coronha retrátil de hastes metálicas
+    cylTo(gunVisualGroup, 0.005, 0.005, 0.22, Mats.gunSteel, -0.018, 0.024, 0.155);
+    cylTo(gunVisualGroup, 0.005, 0.005, 0.22, Mats.gunSteel,  0.018, 0.024, 0.155);
+    boxTo(gunVisualGroup, 0.042, 0.095, 0.024, Mats.gunBlack, 0, 0.008, 0.265);
+    // Carregador curvo 9mm
+    magMesh = new THREE.Group();
+    magMesh.position.set(0, -0.075, -0.125);
+    magMesh.userData.restY = -0.075;
+    boxTo(magMesh, 0.024, 0.145, 0.036, Mats.gunSteel, 0, 0, 0, -0.16);
+    gunVisualGroup.add(magMesh);
+    boltMesh = boxTo(gunVisualGroup, 0.018, 0.010, 0.016, Mats.gunSilver, -0.026, 0.046, -0.255);
+    boltMesh.userData.restZ = -0.255;
+    muzzleZ = -0.435; opticZ = -0.06; baseSightY = 0.074;
+    addIronSights(0.012, -0.335, baseSightY, 0.008);
+  } else if (type === 'm4' || type === 'ar15' || type === 'lr300') {
+    const isAR = type === 'ar15';
+    const isLR = type === 'lr300';
+    const bodyMat = isLR ? Mats.gunOlive : Mats.gunSteel;
+    const handguardMat = isAR ? Mats.gunSteel : Mats.gunBlack;
+    // Empunhadura + Receptor superior/inferior + Trilho Picatinny
+    boxTo(gunVisualGroup, 0.028, 0.096, 0.042, Mats.gunBlack, 0, -0.038, 0.012, 0.24);
+    boxTo(gunVisualGroup, 0.042, 0.064, 0.245, bodyMat, 0, 0.028, -0.065);
+    boxTo(gunVisualGroup, 0.024, 0.010, 0.235, Mats.gunBlack, 0, 0.062, -0.065); // trilho picatinny
+    // Coronha (telescópica M4 / precisão AR-15 / esqueleto LR-300)
+    if (isLR) {
+      boxTo(gunVisualGroup, 0.012, 0.012, 0.23, Mats.gunBlack, 0, 0.042, 0.175);
+      boxTo(gunVisualGroup, 0.012, 0.012, 0.22, Mats.gunBlack, 0, -0.018, 0.17, 0.12);
+      boxTo(gunVisualGroup, 0.036, 0.105, 0.026, Mats.gunBlack, 0, 0.012, 0.285);
+    } else {
+      cylTo(gunVisualGroup, 0.015, 0.015, 0.23, Mats.gunBlack, 0, 0.036, 0.168);
+      boxTo(gunVisualGroup, 0.038, 0.105, 0.125, isAR ? Mats.gunBlack : Mats.gunBlack, 0, 0.012, 0.235);
+      if (isAR) boxTo(gunVisualGroup, 0.026, 0.016, 0.11, Mats.gunOlive, 0, 0.056, 0.235);
+    }
+    // Guarda-mão + Cano + Quebra-chamas
+    const hgLen = isAR ? 0.30 : (isLR ? 0.22 : 0.24);
+    boxTo(gunVisualGroup, 0.040, 0.046, hgLen, handguardMat, 0, 0.030, -0.185 - hgLen * 0.5);
+    const barLen = isAR ? 0.30 : 0.22;
+    const barZ = -0.185 - hgLen - barLen * 0.36;
+    cylTo(gunVisualGroup, 0.010, 0.011, barLen, isAR ? Mats.gunSilver : Mats.gunSteel, 0, 0.034, barZ);
+    cylTo(gunVisualGroup, 0.013, 0.013, 0.048, Mats.gunBlack, 0, 0.034, barZ - barLen * 0.52);
+    // Carregador STANAG 5.56
+    magMesh = new THREE.Group();
+    magMesh.position.set(0, -0.072, -0.125);
+    magMesh.userData.restY = -0.072;
+    boxTo(magMesh, 0.024, 0.145, 0.052, Mats.gunSteel, 0, 0, 0, -0.12);
+    gunVisualGroup.add(magMesh);
+    // Janela do ferrolho
+    boltMesh = boxTo(gunVisualGroup, 0.008, 0.016, 0.068, Mats.gunSilver, 0.022, 0.038, -0.068);
+    boltMesh.userData.restZ = -0.068;
+    muzzleZ = barZ - barLen * 0.55 - 0.025;
+    opticZ = -0.06;
+    baseSightY = isAR ? 0.080 : (isLR ? 0.076 : 0.078);
+    addIronSights(0.02, -0.185 - hgLen + 0.02, baseSightY, 0.0085);
+  } else if (type === 'ak47' || type === 'aktac') {
+    const isTac = type === 'aktac';
+    const furnMat = isTac ? Mats.gunBlack : Mats.gunWood;
+    const magMat = isTac ? Mats.gunBlack : Mats.bakelite;
+    // Coronha + Empunhadura + Receptor AK estampado
+    boxTo(gunVisualGroup, 0.036, 0.095, 0.25, furnMat, 0, 0.004, 0.195, 0.10);
+    boxTo(gunVisualGroup, 0.026, 0.092, 0.040, isTac ? Mats.gunBlack : Mats.bakelite, 0, -0.036, 0.015, 0.24);
+    boxTo(gunVisualGroup, 0.042, 0.060, 0.255, Mats.gunSteel, 0, 0.026, -0.065);
+    boxTo(gunVisualGroup, 0.036, 0.016, 0.23, Mats.gunBlack, 0, 0.056, -0.055); // tampa do receptor
+    // Guarda-mão + Tubo de gás superior + Cano
+    boxTo(gunVisualGroup, 0.038, 0.046, 0.215, furnMat, 0, 0.026, -0.295);
+    cylTo(gunVisualGroup, 0.009, 0.009, 0.19, Mats.gunSteel, 0, 0.052, -0.285); // tubo de gás
+    cylTo(gunVisualGroup, 0.010, 0.011, 0.28, Mats.gunSteel, 0, 0.030, -0.455);
+    if (isTac) {
+      // Supressor integrado Spec-Ops
+      cylTo(gunVisualGroup, 0.018, 0.018, 0.20, Mats.gunBlack, 0, 0.030, -0.665, Math.PI * 0.5, 12);
+      muzzleZ = -0.768;
+    } else {
+      cylTo(gunVisualGroup, 0.012, 0.012, 0.045, Mats.gunBlack, 0, 0.030, -0.605);
+      muzzleZ = -0.630;
+    }
+    // Carregador banana curvo 7.62
+    magMesh = new THREE.Group();
+    magMesh.position.set(0, -0.082, -0.145);
+    magMesh.userData.restY = -0.082;
+    boxTo(magMesh, 0.025, 0.11, 0.054, magMat, 0, 0.018, 0, -0.18);
+    boxTo(magMesh, 0.025, 0.095, 0.052, magMat, 0, -0.062, -0.026, -0.38);
+    gunVisualGroup.add(magMesh);
+    // Ferrolho lateral clássico AK
+    boltMesh = boxTo(gunVisualGroup, 0.024, 0.010, 0.042, Mats.gunSilver, 0.026, 0.040, -0.095);
+    boltMesh.userData.restZ = -0.095;
+    opticZ = -0.06;
+    baseSightY = isTac ? 0.074 : 0.072;
+    addIronSights(-0.12, -0.545, baseSightY, 0.0075);
+  } else if (type === 'sniper') {
+    // AWP Magnum Sniper (chassi verde-oliva thumbhole + cano pesado flutuante + ferrolho + freio de boca)
+    boxTo(gunVisualGroup, 0.042, 0.105, 0.28, Mats.gunOlive, 0, 0.006, 0.195);
+    boxTo(gunVisualGroup, 0.038, 0.022, 0.12, Mats.gunBlack, 0, 0.064, 0.185); // apoio de bochecha
+    boxTo(gunVisualGroup, 0.028, 0.092, 0.042, Mats.gunOlive, 0, -0.036, 0.015, 0.18);
+    boxTo(gunVisualGroup, 0.046, 0.062, 0.44, Mats.gunOlive, 0, 0.022, -0.145);
+    boxTo(gunVisualGroup, 0.034, 0.028, 0.22, Mats.gunBlack, 0, 0.056, -0.065); // ação + trilho
+    cylTo(gunVisualGroup, 0.013, 0.016, 0.56, Mats.gunSteel, 0, 0.042, -0.555, Math.PI * 0.5, 12);
+    boxTo(gunVisualGroup, 0.030, 0.026, 0.065, Mats.gunBlack, 0, 0.042, -0.845); // muzzle brake
+    magMesh = new THREE.Group();
+    magMesh.position.set(0, -0.055, -0.125);
+    magMesh.userData.restY = -0.055;
+    boxTo(magMesh, 0.026, 0.095, 0.066, Mats.gunBlack, 0, 0, 0);
+    gunVisualGroup.add(magMesh);
+    boltMesh = boxTo(gunVisualGroup, 0.034, 0.014, 0.018, Mats.gunSilver, 0.032, 0.052, -0.015);
+    boltMesh.userData.restZ = -0.015;
+    muzzleZ = -0.880; opticZ = -0.07; baseSightY = 0.080;
+    addIronSights(-0.01, -0.78, baseSightY, 0.008);
   }
-
-  // 1P Guns View: Sem blocos flutuantes de manga/mão bloqueando a visão ou a mira ADS!
 
   const attachGroup = new THREE.Group();
   g.add(attachGroup);
 
-  const assembly = {
+  return {
     root: g, gunVisualGroup, magMesh, boltMesh, muzzleZ, ironSightRear,
     attachGroup, opticZ, baseSightY, opticSightY: baseSightY, isLoot, lastAttachments: null
   };
-
-  if (GLB_GUN_TEMPLATES[type]) {
-    applyGunGLBToAssembly(assembly, type, withFirstPersonHands);
-  }
-  registeredGunAssemblies.push({ assembly, type, withFirstPersonHands });
-  return assembly;
 }
 
 function rebuildAttachmentVisuals(assembly, gunType, attachments) {
@@ -1801,149 +1719,136 @@ let zombiesKilled = 0;
 function regD(o) { mapDisposables.push(o); return o; }
 
 const ZGeo = {
-  pelvis: new THREE.BoxGeometry(0.30, 0.16, 0.20),
-  torso:  new THREE.BoxGeometry(0.34, 0.45, 0.21),
-  head:   new THREE.BoxGeometry(0.22, 0.24, 0.22),
-  arm:    new THREE.BoxGeometry(0.10, 0.52, 0.10),
-  leg:    new THREE.BoxGeometry(0.13, 0.84, 0.13)
+  pelvis:   new THREE.CylinderGeometry(0.155, 0.145, 0.16, 10),
+  belt:     new THREE.CylinderGeometry(0.160, 0.158, 0.032, 10),
+  torso:    new THREE.BoxGeometry(0.33, 0.44, 0.195),
+  stain:    new THREE.BoxGeometry(0.15, 0.17, 0.202),
+  neck:     new THREE.CylinderGeometry(0.054, 0.064, 0.09, 8),
+  hair:     new THREE.BoxGeometry(0.202, 0.075, 0.214),
+  upperArm: new THREE.CylinderGeometry(0.054, 0.045, 0.25, 8),
+  foreArm:  new THREE.CylinderGeometry(0.044, 0.036, 0.23, 8),
+  hand:     new THREE.BoxGeometry(0.054, 0.072, 0.034),
+  thigh:    new THREE.CylinderGeometry(0.070, 0.058, 0.42, 8),
+  shin:     new THREE.CylinderGeometry(0.058, 0.048, 0.41, 8),
+  shoe:     new THREE.BoxGeometry(0.098, 0.072, 0.215),
+  joint:    new THREE.SphereGeometry(0.050, 7, 7)
 };
-const Z_SHIRTS = [0x4c5448, 0x5c3a36, 0x3b4856, 0x6b6556, 0x3e3942, 0x734f38];
-const Z_PANTS  = [0x2b3440, 0x2c2a28, 0x3b362e, 0x23262b];
-
-function attachZombieGLBVisual(zObj) {
-  // Prioriza SEMPRE o modelo animado (zombie2.glb) para que todos os zumbis tenham esqueleto e caminhada fluida!
-  const chosen = GLB_ZOMBIE_ASSETS.animatedGLTF || GLB_ZOMBIE_ASSETS.staticGLTF;
-  if (!chosen) return;
-
-  // Oculta os blocos procedurais mantendo as 3 hitboxes anatômicas rápidas (head, torso, limb)!
-  for (const hb of zObj.hitboxes) hb.material = zInvisibleHitMat;
-
-  if (zObj.glbHolder) zObj.root.remove(zObj.glbHolder);
-  const holder = new THREE.Group();
-  zObj.root.add(holder);
-  zObj.glbHolder = holder;
-
-  const isSkinned = chosen === GLB_ZOMBIE_ASSETS.animatedGLTF && chosen.animations && chosen.animations.length > 0;
-  const cloned = isSkinned ? SkeletonUtils.clone(chosen.scene) : chosen.scene.clone(true);
-  cloned.rotation.y = Math.PI; // Modelos GLTF olham para +Z -> gira 180° para olhar para -Z!
-
-  cloned.traverse((ch) => {
-    if (ch.isMesh) {
-      ch.castShadow = true;
-      ch.receiveShadow = true;
-      ch.frustumCulled = false;
-    }
-  });
-
-  if (isSkinned) {
-    // Variação orgânica de altura e porte físico (0.95x a 1.10x)
-    const scaleVar = 0.96 + ((zObj.variantIdx % 7) / 6) * 0.14;
-    cloned.scale.setScalar(scaleVar);
-    holder.add(cloned);
-    const mixer = new THREE.AnimationMixer(cloned);
-    zObj.mixer = mixer;
-    zObj.skinnedRoot = cloned;
-
-    if (zombieAnimsLoaded && Object.keys(ZOMBIE_ANIM_CLIPS).length > 0) {
-      setupZombieActions(zObj);
-    } else {
-      const clip = chosen.animations[0];
-      const action = mixer.clipAction(clip);
-      action.play();
-      action.time = ((zObj.phase + zObj.variantIdx * 0.4) % Math.max(0.5, clip.duration || 2.0));
-      zObj.activeAction = action;
-      zObj.currentAnim = 'default';
-    }
-    mixer.update(0.01);
-  } else {
-    // Fallback para zombie.glb estático caso o modelo animado ainda esteja carregando
-    cloned.scale.setScalar(1.54);
-    holder.add(cloned);
-    zObj.isStaticGLB = true;
-  }
-}
-
-function setupZombieActions(zObj) {
-  if (!zObj.mixer) return;
-  zObj.actions = {};
-  for (const id in ZOMBIE_ANIM_CLIPS) {
-    zObj.actions[id] = zObj.mixer.clipAction(ZOMBIE_ANIM_CLIPS[id]);
-  }
-  if (zObj.activeAction) {
-    zObj.activeAction.stop();
-  }
-  const targetId = zObj.walkAnimId || 'walk_1';
-  if (zObj.actions[targetId]) {
-    const act = zObj.actions[targetId];
-    act.play();
-    act.time = ((zObj.phase + zObj.variantIdx * 0.4) % Math.max(0.5, act.getClip().duration || 2.0));
-    zObj.activeAction = act;
-    zObj.currentAnim = targetId;
-  }
-}
-
-function transitionZombieAnim(z, targetClipId, fadeDuration = 0.22, loopMode = THREE.LoopRepeat, clampWhenFinished = false) {
-  if (!z.actions || !z.actions[targetClipId]) return;
-  const nextAction = z.actions[targetClipId];
-  if (z.activeAction === nextAction) return;
-
-  nextAction.reset();
-  nextAction.setLoop(loopMode);
-  nextAction.clampWhenFinished = clampWhenFinished;
-  nextAction.play();
-
-  if (z.activeAction) {
-    z.activeAction.crossFadeTo(nextAction, fadeDuration, true);
-  }
-  z.activeAction = nextAction;
-  z.currentAnim = targetClipId;
-}
-
-const zInvisibleHitMat = new THREE.MeshBasicMaterial({ visible: false });
+const Z_SHIRTS = [0x4c5448, 0x5c3a36, 0x3b4856, 0x6b6556, 0x3e3942, 0x734f38, 0x4b564a, 0x52363c];
+const Z_PANTS  = [0x2b3440, 0x2c2a28, 0x3b362e, 0x23262b, 0x2f2d34];
+const Z_HAIR   = [0x1c1917, 0x342820, 0x4a453f, 0x29221d];
+const Z_BLOOD_MAT = new THREE.MeshStandardMaterial({ color: 0x4c1412, roughness: 0.92 });
+const Z_SHOE_MAT  = new THREE.MeshStandardMaterial({ color: 0x201d1a, roughness: 0.90 });
+const Z_BELT_MAT  = new THREE.MeshStandardMaterial({ color: 0x1a1614, roughness: 0.72 });
 
 function buildZombieEntity(id, x, z, rng) {
-  const root = new THREE.Group(); root.position.set(x, 0, z);
-  const zSkin = regD(new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(0.26 + (rng() - 0.5) * 0.08, 0.24, 0.40 + rng() * 0.1), roughness: 0.88 }));
+  const root = new THREE.Group();
+  root.position.set(x, 0, z);
+  const scaleVar = 0.95 + rng() * 0.11;
+  root.scale.setScalar(scaleVar);
+
+  const skinTint = new THREE.Color().setHSL(0.26 + (rng() - 0.5) * 0.07, 0.22, 0.42 + rng() * 0.12);
+  const zSkin = regD(new THREE.MeshStandardMaterial({ color: skinTint, roughness: 0.88 }));
+  const zFaceMat = regD(new THREE.MeshStandardMaterial({ map: Tex.zombieFace, color: skinTint.clone().multiplyScalar(1.35), roughness: 0.84 }));
   const zShirt = regD(new THREE.MeshStandardMaterial({ color: Z_SHIRTS[(rng() * Z_SHIRTS.length) | 0], roughness: 0.92 }));
   const zPants = regD(new THREE.MeshStandardMaterial({ color: Z_PANTS[(rng() * Z_PANTS.length) | 0], roughness: 0.92 }));
+  const zHairMat = regD(new THREE.MeshStandardMaterial({ color: Z_HAIR[(rng() * Z_HAIR.length) | 0], roughness: 0.95 }));
 
   const vIdx = (rng() * 100) | 0;
-  const zObj = {
-    id, root, variantIdx: vIdx,
-    hp: 100, dead: false, deathT: 0, yaw: rng() * Math.PI * 2,
-    wanderTimer: 2, speed: 1.3 + rng() * 0.8, legHit: false,
-    alertT: 0, stagger: 0, knockX: 0, knockZ: 0, atkCd: 0,
-    phase: rng() * 10, hitboxes: [], glbHolder: null, mixer: null, hipsBone: null,
-    walkAnimId: 'walk_' + (1 + (vIdx % 3)), // 3 caminhadas aleatórias 100% eretas (walking, walking2, zombiewalk)
-    runAnimId: 'run_' + (1 + (vIdx % 2)),   // Corrida garantida para todos ao perseguir (run_1, run_2)
-    deathAnimId: 'death_' + (1 + (vIdx % 4)), // 4 mortes aleatorizadas (apenas quando hp <= 0!)
-    attackAnimId: (['attack_punch', 'attack_bite', 'attack_punch2', 'attack_kick'])[vIdx % 4],
-    currentAnim: null, actions: {}, activeAction: null
-  };
-  const addP = (parent, geo, mat, px, py, pz, zone) => {
-    const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); m.castShadow = true;
-    m.userData.zombie = zObj; m.userData.hitZone = zone;
-    parent.add(m); zObj.hitboxes.push(m);
-  };
-  const pelvis = new THREE.Group(); pelvis.position.y = 0.92; root.add(pelvis);
-  addP(pelvis, ZGeo.pelvis, zPants, 0, 0, 0, 'torso');
-  const spine = new THREE.Group(); spine.position.y = 0.06; pelvis.add(spine);
-  addP(spine, ZGeo.torso, zShirt, 0, 0.22, 0, 'torso');
-  const head = new THREE.Group(); head.position.set(0, 0.47, 0); spine.add(head);
-  addP(head, ZGeo.head, zSkin, 0, 0.13, 0, 'head');
-  const armL = new THREE.Group(); armL.position.set(-0.22, 0.40, 0); spine.add(armL);
-  addP(armL, ZGeo.arm, zSkin, 0, -0.23, 0, 'limb');
-  const armR = new THREE.Group(); armR.position.set(0.22, 0.40, 0); spine.add(armR);
-  addP(armR, ZGeo.arm, zSkin, 0, -0.23, 0, 'limb');
-  const legL = new THREE.Group(); legL.position.set(-0.09, -0.04, 0); pelvis.add(legL);
-  addP(legL, ZGeo.leg, zPants, 0, -0.42, 0, 'limb');
-  const legR = new THREE.Group(); legR.position.set(0.09, -0.04, 0); pelvis.add(legR);
-  addP(legR, ZGeo.leg, zPants, 0, -0.42, 0, 'limb');
-  zObj.parts = { pelvis, spine, head, armL, armR, legL, legR };
+  // 3 arquétipos distintos: 0 = Shambler (manco lento), 1 = Walker (clássico), 2 = Sprinter (agressivo)
+  const archetype = vIdx % 3;
+  const baseSpeed = archetype === 2 ? (1.85 + rng() * 0.65) : (archetype === 0 ? (1.10 + rng() * 0.40) : (1.42 + rng() * 0.52));
 
-  if (GLB_ZOMBIE_ASSETS.animatedGLTF || GLB_ZOMBIE_ASSETS.staticGLTF) {
-    attachZombieGLBVisual(zObj);
+  const zObj = {
+    id, root, variantIdx: vIdx, archetype,
+    hp: 100, dead: false, deathT: 0, deathStyle: vIdx % 3, deathDirX: 0, deathDirZ: 1,
+    yaw: rng() * Math.PI * 2,
+    wanderTimer: 2 + rng() * 3, speed: baseSpeed, legHit: false,
+    alertT: 0, stagger: 0, knockX: 0, knockZ: 0, atkCd: 0, atkAnimT: 0,
+    phase: rng() * 10, limpSide: rng() < 0.5 ? -1 : 1,
+    slouchBias: (rng() - 0.5) * 0.18,
+    hitboxes: []
+  };
+
+  const addP = (parent, geo, mat, px, py, pz, zone, rx = 0, ry = 0, rz = 0) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(px, py, pz);
+    if (rx || ry || rz) m.rotation.set(rx, ry, rz);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    if (zone) {
+      m.userData.zombie = zObj;
+      m.userData.hitZone = zone;
+      zObj.hitboxes.push(m);
+    }
+    parent.add(m);
+    return m;
+  };
+
+  // Pelve + Cinto (altura base 0.90m, solas dos pés em y=0.00m)
+  const pelvis = new THREE.Group();
+  pelvis.position.set(0, 0.90, 0);
+  root.add(pelvis);
+  const hipMesh = addP(pelvis, ZGeo.pelvis, zPants, 0, 0, 0, 'torso');
+  hipMesh.scale.set(1.0, 1.0, 0.68);
+  const beltMesh = addP(pelvis, ZGeo.belt, Z_BELT_MAT, 0, 0.062, 0, null);
+  beltMesh.scale.set(1.0, 1.0, 0.69);
+
+  // Coluna + Tronco com manchas de sangue / roupas rasgadas
+  const spine = new THREE.Group();
+  spine.position.set(0, 0.06, 0);
+  pelvis.add(spine);
+  addP(spine, ZGeo.torso, zShirt, 0, 0.225, 0, 'torso');
+  addP(spine, ZGeo.stain, Z_BLOOD_MAT, (rng() - 0.5) * 0.08, 0.21 + (rng() - 0.5) * 0.08, -0.004, null);
+
+  // Cabeça esculpida cadavérica com rosto zumbi procedural + cabelo opcional
+  const head = new THREE.Group();
+  head.position.set(0, 0.455, 0);
+  spine.add(head);
+  addP(head, ZGeo.neck, zSkin, 0, 0.032, -0.006, 'head');
+  const headMesh = addP(head, sculptedHeadGeo, [zSkin, zSkin, zSkin, zSkin, zSkin, zFaceMat], 0, 0.150, 0, 'head');
+  headMesh.scale.set(0.95, 1.02, 0.96);
+  if (rng() > 0.28) {
+    addP(head, ZGeo.hair, zHairMat, 0, 0.245, 0.008, null);
   }
+
+  // Braços articulados em 2 segmentos (Ombro + Cotovelo + Mão)
+  const buildZArm = (side) => {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(side * 0.205, 0.395, 0);
+    spine.add(shoulder);
+    addP(shoulder, ZGeo.joint, zShirt, 0, -0.01, 0, null);
+    addP(shoulder, ZGeo.upperArm, zShirt, 0, -0.125, 0, 'limb');
+
+    const elbow = new THREE.Group();
+    elbow.position.set(0, -0.245, 0);
+    shoulder.add(elbow);
+    addP(elbow, ZGeo.joint, zSkin, 0, 0, 0, null);
+    addP(elbow, ZGeo.foreArm, zSkin, 0, -0.115, 0, 'limb');
+    addP(elbow, ZGeo.hand, zSkin, 0, -0.245, -0.012, null, 0.22, 0, 0);
+    return { shoulder, elbow };
+  };
+  const armL = buildZArm(-1);
+  const armR = buildZArm(1);
+
+  // Pernas articuladas em 2 segmentos (Quadril + Joelho + Calçado)
+  const buildZLeg = (side) => {
+    const hip = new THREE.Group();
+    hip.position.set(side * 0.092, -0.04, 0);
+    pelvis.add(hip);
+    addP(hip, ZGeo.thigh, zPants, 0, -0.21, 0, 'limb');
+
+    const knee = new THREE.Group();
+    knee.position.set(0, -0.42, 0);
+    hip.add(knee);
+    addP(knee, ZGeo.joint, zPants, 0, 0, 0, null);
+    addP(knee, ZGeo.shin, zPants, 0, -0.205, 0, 'limb');
+    addP(knee, ZGeo.shoe, Z_SHOE_MAT, 0, -0.405, -0.038, null);
+    return { hip, knee };
+  };
+  const legL = buildZLeg(-1);
+  const legR = buildZLeg(1);
+
+  zObj.parts = { pelvis, spine, head, armL, armR, legL, legR };
   return zObj;
 }
 
@@ -2596,7 +2501,7 @@ const gameConfig = {
 
 const player = {
   id: 'local-' + Math.random().toString(36).slice(2, 8),
-  nick: 'Policial SWAT',
+  nick: 'Omni',
   teamId: null,
   pos: new THREE.Vector3(0, 0.12, 150),
   vel: new THREE.Vector3(),
@@ -2614,6 +2519,8 @@ const player = {
   legInjured: false,
   injuryLegTimer: 0,
   dead: false,
+  deathT: 0,
+  deathStyle: 0,
   damageFlash: 0,
   stamina: 100,
   radius: 0.35,
@@ -2691,6 +2598,7 @@ function respawnLocalSurvivor(resetItems = true) {
   player.hp = player.maxHp || 200;
   player.dead = false;
   player.deathT = 0;
+  player.deathStyle = 0;
   player.armInjured = false;
   player.injuryArmTimer = 0;
   player.legInjured = false;
@@ -2698,14 +2606,17 @@ function respawnLocalSurvivor(resetItems = true) {
   player.stamina = 100;
   player.crouching = false;
   player.crouchAlpha = 0;
+  // Restaura pose limpa do rig Omni ao renascer
+  omni.pelvis.position.set(0, 0.93, 0);
+  omni.pelvis.rotation.set(0, 0, 0);
+  omni.spine.rotation.set(0, 0, 0);
+  omni.headPivot.rotation.set(0, 0, 0);
+  omni.root.visible = true;
   updateHealthBarUI();
   document.getElementById('menu-main-title').textContent = 'CONDADO DE KNOX';
   const deathScreen = document.getElementById('death-screen');
   if (deathScreen) deathScreen.classList.remove('active');
   if (resetItems) resetDayZLoadout();
-  if (playerAnimsLoaded && omni.actions) {
-    transitionPlayerAnim(omni, 'rifle_idle', 0.2);
-  }
 }
 
 function resolveCircleWorldCollisions(pos, radius, minY, maxY, stepH, ignoreVehicleId = null) {
@@ -2734,114 +2645,193 @@ function resolveCircleWorldCollisions(pos, radius, minY, maxY, stepH, ignoreVehi
   }
 }
 
-/* Anima qualquer boneco estilo Omni com IK 2-Ossos Exato (Zero Pé Entrando no Chão!) */
+/* Anima qualquer boneco estilo Omni com IK 2-Ossos Exato, Respiração, Ferimentos e Morte Completa! */
 function animateCharacterRig(rig, state, dt) {
   const {
     pos, bodyYaw, lookYaw, pitch, hSpeed, localFwdVel, localStrVel,
     crouchAlpha, landSquash, onGround, sprinting, inCombat,
-    weaponId, reloading, reloadProgress, recoilKick, meleeSwingT, pumpTimer, walkPhase
+    weaponId, reloading, reloadProgress, recoilKick, meleeSwingT, pumpTimer, walkPhase,
+    legInjured, armInjured
   } = state;
 
   rig.root.position.copy(pos);
-  rig.root.rotation.set(0, bodyYaw, state.turnLeanZ || 0);
+  rig.root.rotation.set(0, bodyYaw, state.isDying ? 0 : (state.turnLeanZ || 0));
 
-// Omni usa rig procedural e IK 2-ossos perfeito sem distorção;
-
-  // Morte física e dramática do personagem (Death From Front / Death From Right / Dying)
+  // === ANIMAÇÃO DE MORTE COMPLETA (3 ESTILOS FÍSICOS COM QUEDA GRAVITACIONAL + IMPACTO NO CHÃO) ===
   if (state.isDying) {
-    const dtT = state.deathT || 0;
-    const fallDir = state.deathFront ? -1 : 1;
-    rig.pelvis.position.set(0, THREE.MathUtils.lerp(0.93, 0.12, dtT), fallDir * dtT * 0.28);
-    rig.pelvis.rotation.set(dtT * 1.45 * fallDir, 0, dtT * 0.35);
-    rig.spine.rotation.set(dtT * 0.5 * fallDir, 0, 0);
-    rig.headPivot.rotation.set(dtT * 0.4, 0, 0);
-    rig.leftArm.shoulder.rotation.set(dtT * 0.8, 0, 0.6 * dtT);
-    rig.rightArm.shoulder.rotation.set(dtT * 0.8, 0, -0.6 * dtT);
-    rig.leftArm.elbow.rotation.set(0.3 * dtT, 0, 0);
-    rig.rightArm.elbow.rotation.set(0.3 * dtT, 0, 0);
-    solveLegIK(rig.leftLeg, new THREE.Vector3(-0.095, THREE.MathUtils.lerp(0.93, 0.12, dtT) - 0.04, 0), new THREE.Vector3(-0.15, SOLE_H, -dtT * 0.45 * fallDir), -dtT * 0.5);
-    solveLegIK(rig.rightLeg, new THREE.Vector3(0.095, THREE.MathUtils.lerp(0.93, 0.12, dtT) - 0.04, 0), new THREE.Vector3(0.15, SOLE_H, -dtT * 0.30 * fallDir), -dtT * 0.4);
+    const t = THREE.MathUtils.clamp(state.deathT || 0, 0, 1);
+    const style = (state.deathStyle ?? (state.deathFront ? 0 : 1)) % 3;
+
+    // Fase 1 (0..0.28): impacto + joelhos cedendo; Fase 2 (0.28..0.82): queda acelerada; Fase 3 (0.82..1): repouso com quique sutil
+    const buckle = THREE.MathUtils.smoothstep(t, 0.0, 0.30);
+    const fallRaw = THREE.MathUtils.clamp((t - 0.16) / 0.66, 0, 1);
+    const fall = fallRaw * fallRaw * (3 - 2 * fallRaw); // aceleração orgânica
+    const settle = t > 0.80 ? Math.sin(((t - 0.80) / 0.20) * Math.PI) * 0.045 : 0;
+
+    if (style === 0) {
+      // Estilo 0: Queda para trás (tiro/golpe frontal) — joelhos dobram, tronco joga para trás e braços abrem no chão
+      const py = THREE.MathUtils.lerp(0.93, 0.14, fall) - buckle * 0.14 * (1 - fall) + settle;
+      rig.pelvis.position.set(0, Math.max(0.13, py), fall * 0.42);
+      rig.pelvis.rotation.set(fall * (Math.PI * 0.48), fall * 0.12, fall * 0.08);
+      rig.spine.rotation.set(buckle * 0.35 * (1 - fall) + fall * 0.08, 0, fall * 0.06);
+      rig.headPivot.rotation.set(-buckle * 0.42 + fall * 0.18, fall * 0.28, fall * 0.18);
+
+      rig.leftArm.shoulder.rotation.set(0.25 + fall * 0.45, 0, 0.25 + fall * 0.95);
+      rig.rightArm.shoulder.rotation.set(0.20 + fall * 0.55, 0, -0.25 - fall * 0.85);
+      rig.leftArm.elbow.rotation.set(0.45 - fall * 0.20, 0, 0);
+      rig.rightArm.elbow.rotation.set(0.50 - fall * 0.25, 0, 0);
+
+      rig.leftLeg.hip.rotation.set(-buckle * 0.45 * (1 - fall) - fall * 0.18, 0, -0.14 * fall);
+      rig.leftLeg.knee.rotation.set(-buckle * 0.85 * (1 - fall) - fall * 0.22, 0, 0);
+      rig.leftLeg.ankle.rotation.set(fall * 0.32, 0, 0);
+
+      rig.rightLeg.hip.rotation.set(-buckle * 0.38 * (1 - fall) - fall * 0.08, 0, 0.20 * fall);
+      rig.rightLeg.knee.rotation.set(-buckle * 0.72 * (1 - fall) - fall * 0.12, 0, 0);
+      rig.rightLeg.ankle.rotation.set(fall * 0.28, 0, 0);
+    } else if (style === 1) {
+      // Estilo 1: Colapso para frente (cai de joelhos e desaba de bruços)
+      const kneel = THREE.MathUtils.smoothstep(t, 0.0, 0.38);
+      const drop = THREE.MathUtils.smoothstep(t, 0.30, 0.86);
+      const py = THREE.MathUtils.lerp(0.93, 0.46, kneel) * (1 - drop) + 0.13 * drop + settle;
+      rig.pelvis.position.set(0, Math.max(0.12, py), -drop * 0.46);
+      rig.pelvis.rotation.set(-drop * (Math.PI * 0.48), -drop * 0.10, drop * 0.08);
+      rig.spine.rotation.set(-kneel * 0.45 * (1 - drop) - drop * 0.06, 0, 0);
+      rig.headPivot.rotation.set(-drop * 0.18, drop * 0.65, drop * 0.22);
+
+      rig.leftArm.shoulder.rotation.set(0.85 * kneel + 0.55 * drop, 0.2 * drop, 0.35 + drop * 0.45);
+      rig.rightArm.shoulder.rotation.set(0.75 * kneel + 0.65 * drop, -0.2 * drop, -0.35 - drop * 0.50);
+      rig.leftArm.elbow.rotation.set(0.65 * kneel + 0.35 * drop, 0, 0);
+      rig.rightArm.elbow.rotation.set(0.70 * kneel + 0.25 * drop, 0, 0);
+
+      rig.leftLeg.hip.rotation.set(kneel * 0.55 * (1 - drop) + drop * 0.14, 0, -0.10 * drop);
+      rig.leftLeg.knee.rotation.set(-kneel * 1.35 * (1 - drop) - drop * 0.24, 0, 0);
+      rig.leftLeg.ankle.rotation.set(-drop * 0.35, 0, 0);
+
+      rig.rightLeg.hip.rotation.set(kneel * 0.45 * (1 - drop) + drop * 0.06, 0, 0.16 * drop);
+      rig.rightLeg.knee.rotation.set(-kneel * 1.25 * (1 - drop) - drop * 0.15, 0, 0);
+      rig.rightLeg.ankle.rotation.set(-drop * 0.30, 0, 0);
+    } else {
+      // Estilo 2: Queda lateral em giro (golpe de flanco — cai sobre o lado direito com perna dobrada)
+      const py = THREE.MathUtils.lerp(0.93, 0.15, fall) - buckle * 0.16 * (1 - fall) + settle;
+      rig.pelvis.position.set(fall * 0.34, Math.max(0.14, py), fall * 0.12);
+      rig.pelvis.rotation.set(fall * 0.26, -fall * 0.48, -fall * (Math.PI * 0.46));
+      rig.spine.rotation.set(-fall * 0.14, fall * 0.18, fall * 0.12);
+      rig.headPivot.rotation.set(fall * 0.12, -fall * 0.22, -fall * 0.28);
+
+      rig.leftArm.shoulder.rotation.set(0.45 * fall, -0.35 * fall, 0.55 * fall);
+      rig.rightArm.shoulder.rotation.set(0.85 * fall, 0.20 * fall, -0.90 * fall);
+      rig.leftArm.elbow.rotation.set(0.80 * fall, 0, 0);
+      rig.rightArm.elbow.rotation.set(0.35 * fall, 0, 0);
+
+      rig.leftLeg.hip.rotation.set(0.48 * fall, 0, -0.18 * fall);
+      rig.leftLeg.knee.rotation.set(-0.92 * fall, 0, 0);
+      rig.leftLeg.ankle.rotation.set(0.25 * fall, 0, 0);
+
+      rig.rightLeg.hip.rotation.set(0.12 * fall, 0, 0.08 * fall);
+      rig.rightLeg.knee.rotation.set(-0.22 * fall, 0, 0);
+      rig.rightLeg.ankle.rotation.set(0.20 * fall, 0, 0);
+    }
+
+    rig.rightArm.weaponMount.rotation.z = THREE.MathUtils.lerp(rig.rightArm.weaponMount.rotation.z, 0.4, Math.min(1, dt * 8));
     return;
   }
 
-  // Altura suave do quadril (em pé: 0.93m -> agachado: 0.61m) + amortecimento de pouso
+  // Respiração sutil em repouso + altura suave do quadril (em pé: 0.93m -> agachado: 0.61m)
+  const nowSec = performance.now() * 0.001;
+  const breath = Math.sin(nowSec * (sprinting ? 4.4 : 2.1)) * (sprinting ? 0.009 : 0.005);
   const basePelvisY = THREE.MathUtils.lerp(0.93, 0.61, crouchAlpha) - landSquash * 0.14;
   const moveFactor = THREE.MathUtils.clamp(hSpeed / 4.6, 0, 1.25);
 
-  let pelvisBobY = 0, pelvisSwayX = 0, pelvisRollZ = 0, pelvisTwistY = 0;
+  let pelvisBobY = breath, pelvisSwayX = 0, pelvisRollZ = 0, pelvisTwistY = 0;
   let lFootTarget = new THREE.Vector3(-0.098, SOLE_H, 0);
   let rFootTarget = new THREE.Vector3( 0.098, SOLE_H, 0);
   let lFootPitch = 0, rFootPitch = 0;
 
   if (!onGround) {
     // No ar: joelhos flexionados naturalmente sem atravessar o chão!
-    lFootTarget.set(-0.10, SOLE_H + 0.18, -0.10);
-    rFootTarget.set( 0.10, SOLE_H + 0.12,  0.12);
+    lFootTarget.set(-0.10, SOLE_H + 0.19, -0.11);
+    rFootTarget.set( 0.10, SOLE_H + 0.13,  0.13);
     lFootPitch = -0.22; rFootPitch = -0.28;
-  } else if (hSpeed > 0.25) {
+  } else if (hSpeed > 0.22) {
     // Locomoção 8-direções fluida com fase de apoio plana no chão e arco parabólico no ar!
     const sL = Math.sin(walkPhase);
     const cL = Math.cos(walkPhase);
     const sR = -sL;
     const cR = -cL;
 
-    const strideLen = THREE.MathUtils.lerp(0.28, sprinting ? 0.50 : 0.36, moveFactor) * (1 - crouchAlpha * 0.28);
-    const strideLat = THREE.MathUtils.clamp(localStrVel / 4.2, -1, 1) * 0.14;
+    const limpMult = legInjured ? 0.58 : 1.0;
+    const strideLen = THREE.MathUtils.lerp(0.26, sprinting ? 0.52 : 0.37, moveFactor) * (1 - crouchAlpha * 0.28) * limpMult;
+    const strideLat = THREE.MathUtils.clamp(localStrVel / 4.2, -1, 1) * 0.15;
     const fwdSign = localFwdVel < -0.3 ? -1 : 1;
-    const liftMax = (sprinting ? 0.19 : 0.11) * (1 - crouchAlpha * 0.30) * Math.min(1, moveFactor);
+    const liftMax = (sprinting ? 0.20 : 0.12) * (1 - crouchAlpha * 0.30) * Math.min(1, moveFactor);
 
     // Quando c > 0, pé avança no ar (swing); quando c <= 0, pé desliza plantado no chão (stance)!
-    const liftL = Math.max(0, cL) * liftMax;
+    const liftL = Math.max(0, cL) * liftMax * (legInjured ? 0.45 : 1.0);
     const liftR = Math.max(0, cR) * liftMax;
+    const strideL = strideLen * (legInjured ? 0.55 : 1.0);
+    const strideR = strideLen;
 
-    lFootTarget.set(-0.098 + sL * strideLat, SOLE_H + liftL, -sL * strideLen * fwdSign);
-    rFootTarget.set( 0.098 + sR * strideLat, SOLE_H + liftR, -sR * strideLen * fwdSign);
+    lFootTarget.set(-0.098 + sL * strideLat, SOLE_H + liftL, -sL * strideL * fwdSign);
+    rFootTarget.set( 0.098 + sR * strideLat, SOLE_H + liftR, -sR * strideR * fwdSign);
 
     // Rolagem calcanhar -> ponta do pé
     lFootPitch = liftL > 0.01 ? cL * 0.22 * fwdSign : sL * 0.08;
     rFootPitch = liftR > 0.01 ? cR * 0.22 * fwdSign : sR * 0.08;
 
-    pelvisBobY = Math.abs(cL) * (sprinting ? 0.042 : 0.022) * (1 - crouchAlpha * 0.45);
-    pelvisSwayX = sL * 0.020;
-    pelvisRollZ = sL * 0.032;
-    pelvisTwistY = sL * 0.06 - strideLat * 0.65;
+    pelvisBobY = Math.abs(cL) * (sprinting ? 0.044 : 0.024) * (1 - crouchAlpha * 0.45) - (legInjured ? Math.max(0, sL) * 0.045 : 0);
+    pelvisSwayX = sL * (legInjured ? 0.042 : 0.020);
+    pelvisRollZ = sL * (legInjured ? 0.085 : 0.032) + (legInjured ? 0.04 : 0);
+    pelvisTwistY = sL * 0.065 - strideLat * 0.65;
   } else {
     // Parado (Em pé ou Agachamento Tático escalonado estilo DayZ — solas 100% coladas no chão!)
     const stanceSpreadZ = crouchAlpha * 0.15;
     lFootTarget.set(-0.102, SOLE_H, -stanceSpreadZ);
     rFootTarget.set( 0.102, SOLE_H,  stanceSpreadZ * 1.15);
     lFootPitch = 0;
-    rFootPitch = -crouchAlpha * 0.08; // Leve apoio natural no pé traseiro sem afundar!
+    rFootPitch = -crouchAlpha * 0.08;
     pelvisTwistY = inCombat ? -0.18 : -crouchAlpha * 0.12;
+    pelvisSwayX = Math.sin(nowSec * 1.05) * 0.006;
   }
 
-  rig.pelvis.position.set(pelvisSwayX, basePelvisY + pelvisBobY, 0);
-  rig.pelvis.rotation.set(0, pelvisTwistY, pelvisRollZ);
+  const pelSm = Math.min(1, dt * 18);
+  rig.pelvis.position.set(
+    THREE.MathUtils.lerp(rig.pelvis.position.x, pelvisSwayX, pelSm),
+    THREE.MathUtils.lerp(rig.pelvis.position.y, basePelvisY + pelvisBobY, pelSm),
+    THREE.MathUtils.lerp(rig.pelvis.position.z, 0, pelSm)
+  );
+  rig.pelvis.rotation.set(
+    THREE.MathUtils.lerp(rig.pelvis.rotation.x, 0, pelSm),
+    THREE.MathUtils.lerp(rig.pelvis.rotation.y, pelvisTwistY, pelSm),
+    THREE.MathUtils.lerp(rig.pelvis.rotation.z, pelvisRollZ, pelSm)
+  );
 
   // Resolve IK Analítico 2-Ossos das duas pernas (GARANTIA MATEMÁTICA: sola >= 0.00m!)
-  const hipLPos = new THREE.Vector3(-0.095 + pelvisSwayX, basePelvisY + pelvisBobY - 0.04, 0);
-  const hipRPos = new THREE.Vector3( 0.095 + pelvisSwayX, basePelvisY + pelvisBobY - 0.04, 0);
+  const hipLPos = new THREE.Vector3(-0.095 + rig.pelvis.position.x, rig.pelvis.position.y - 0.04, 0);
+  const hipRPos = new THREE.Vector3( 0.095 + rig.pelvis.position.x, rig.pelvis.position.y - 0.04, 0);
   solveLegIK(rig.leftLeg,  hipLPos, lFootTarget, lFootPitch);
   solveLegIK(rig.rightLeg, hipRPos, rFootTarget, rFootPitch);
 
-  // Coluna + Cabeça acompanhando suavemente a mira e postura
+  // Coluna + Cabeça acompanhando suavemente a mira, respiração e postura
   const wDef = WEAPON_DEFS[weaponId] || WEAPON_DEFS.knife;
-  const spineLean = crouchAlpha * 0.24 + (sprinting ? 0.18 : 0);
+  const spineLean = crouchAlpha * 0.24 + (sprinting ? 0.18 : 0) + (legInjured ? 0.08 : 0);
   const aimPitch = inCombat ? pitch : pitch * 0.35;
-  rig.spine.rotation.x = THREE.MathUtils.lerp(rig.spine.rotation.x, aimPitch * 0.48 - spineLean, Math.min(1, dt * 15));
+  rig.spine.rotation.x = THREE.MathUtils.lerp(rig.spine.rotation.x, aimPitch * 0.48 - spineLean + breath * 1.4, Math.min(1, dt * 15));
   const spineTwist = (inCombat && !reloading && !wDef.melee) ? -0.18 : 0;
   rig.spine.rotation.y = THREE.MathUtils.lerp(rig.spine.rotation.y, spineTwist - pelvisTwistY * 0.5, Math.min(1, dt * 14));
+  rig.spine.rotation.z = THREE.MathUtils.lerp(rig.spine.rotation.z, legInjured ? -0.06 : 0, Math.min(1, dt * 10));
 
   let headDiffYaw = ((lookYaw - bodyYaw + Math.PI) % (Math.PI * 2)) - Math.PI;
   if (headDiffYaw < -Math.PI) headDiffYaw += Math.PI * 2;
   headDiffYaw = THREE.MathUtils.clamp(headDiffYaw, -0.82, 0.82);
-  rig.headPivot.rotation.x = aimPitch * 0.52 + spineLean * 0.70;
-  rig.headPivot.rotation.y = headDiffYaw - spineTwist;
+  rig.headPivot.rotation.x = THREE.MathUtils.lerp(rig.headPivot.rotation.x, aimPitch * 0.52 + spineLean * 0.70, Math.min(1, dt * 16));
+  rig.headPivot.rotation.y = THREE.MathUtils.lerp(rig.headPivot.rotation.y, headDiffYaw - spineTwist, Math.min(1, dt * 16));
+  rig.headPivot.rotation.z = THREE.MathUtils.lerp(rig.headPivot.rotation.z, 0, Math.min(1, dt * 12));
 
-  // Braços (Faca Melee, Armas de 1 ou 2 Mãos, Corrida e Recarga em 4 Fases!)
+  // Braços (Faca Melee, Armas de 1 ou 2 Mãos, Corrida, Tremor de Ferimento e Recarga em 4 Fases!)
   let rShX = 0.35, rShY = 0, rShZ = -0.06, rElX = 0.45;
   let lShX = 0.25, lShY = 0, lShZ = 0.06,  lElX = 0.35;
   let mountRotZ = 0, mountRotY = 0;
+  const armTremor = armInjured ? Math.sin(nowSec * 19) * 0.025 : 0;
 
   if (wDef.melee) {
     const slash = meleeSwingT > 0 ? Math.sin((meleeSwingT / 0.34) * Math.PI) : 0;
@@ -2870,22 +2860,22 @@ function animateCharacterRig(rig, state, dt) {
     const pitchComp = aimPitch * 0.55 + spineLean * 0.45;
     const kick = recoilKick || 0;
     if (wDef.twoHand) {
-      rShX = 1.24 + pitchComp + kick * 0.9; rShY = 0.22; rShZ = -0.08; rElX = 0.34 + kick * 0.4;
+      rShX = 1.24 + pitchComp + kick * 0.9 + armTremor; rShY = 0.22; rShZ = -0.08; rElX = 0.34 + kick * 0.4;
       const pumpPull = (weaponId === 'shotgun' && pumpTimer > 0) ? Math.sin((pumpTimer / 0.48) * Math.PI) * 0.22 : 0;
       lShX = 1.32 + pitchComp + kick * 0.7 - pumpPull; lShY = -0.56; lShZ = 0.14; lElX = 0.42 + pumpPull * 1.1;
     } else {
-      rShX = 1.42 + pitchComp + kick * 1.3; rShY = 0.18; rShZ = -0.05; rElX = 0.16 + kick * 0.5;
+      rShX = 1.42 + pitchComp + kick * 1.3 + armTremor; rShY = 0.18; rShZ = -0.05; rElX = 0.16 + kick * 0.5;
       lShX = 1.38 + pitchComp + kick * 1.1; lShY = -0.34; lShZ = 0.06; lElX = 0.22;
     }
   } else {
     const sw = (onGround && hSpeed > 0.3) ? Math.sin(walkPhase) * (sprinting ? 0.50 : 0.26) : 0;
     if (wDef.twoHand) {
-      rShX = 0.60 + sw * 0.32; rShY = 0.32; rShZ = -0.1; rElX = 0.65;
-      lShX = 0.76 - sw * 0.25; lShY = -0.52; lShZ = 0.15; lElX = 0.58;
+      rShX = 0.60 + sw * 0.32 + breath * 2.0; rShY = 0.32; rShZ = -0.1; rElX = 0.65;
+      lShX = 0.76 - sw * 0.25 + breath * 1.5; lShY = -0.52; lShZ = 0.15; lElX = 0.58;
       mountRotY = 0.32; mountRotZ = 0.22;
     } else {
-      rShX = 0.16 - sw * 0.75; rShY = 0.04; rShZ = -0.06; rElX = 0.26;
-      lShX = 0.12 + sw * 0.80; lShY = -0.04; lShZ = 0.06; lElX = 0.24;
+      rShX = 0.16 - sw * 0.75 + breath * 1.5; rShY = 0.04; rShZ = -0.06; rElX = 0.26;
+      lShX = 0.12 + sw * 0.80 + breath * 1.5; lShY = -0.04; lShZ = 0.06; lElX = 0.24;
     }
   }
 
@@ -2909,7 +2899,7 @@ function animateCharacterRig(rig, state, dt) {
 /* Atualização de Movimento Local (A Pé ou Dirigindo Veículo!) */
 function updateLocalPlayer(dt) {
   if (player.dead) {
-    player.deathT = Math.min(1, (player.deathT || 0) + dt * 2.2);
+    player.deathT = Math.min(1, (player.deathT || 0) + dt * 1.35);
     omni.root.visible = true;
     fpWeaponRig.visible = false;
     animateCharacterRig(omni, {
@@ -2918,9 +2908,9 @@ function updateLocalPlayer(dt) {
       lookYaw: player.yaw,
       pitch: player.pitch,
       hSpeed: 0, localFwdVel: 0, localStrVel: 0,
-      crouchAlpha: 1, landSquash: 0.5, onGround: true, sprinting: false, inCombat: false,
-      weaponId: 'knife', reloading: false, reloadProgress: 0, recoilKick: 0, meleeSwingT: 0, pumpTimer: 0, walkPhase: 0,
-      isDying: true, deathT: player.deathT, deathFront: ((player.deathAnimIdx || 0) % 2 === 0)
+      crouchAlpha: 0, landSquash: 0, onGround: true, sprinting: false, inCombat: false,
+      weaponId: getActiveWeaponObj().id, reloading: false, reloadProgress: 0, recoilKick: 0, meleeSwingT: 0, pumpTimer: 0, walkPhase: 0,
+      isDying: true, deathT: player.deathT, deathStyle: player.deathStyle || 0
     }, dt);
     return;
   }
@@ -3104,6 +3094,8 @@ function updateLocalPlayer(dt) {
     meleeSwingT: gunState.meleeSwingT,
     pumpTimer: gunState.pumpTimer,
     walkPhase: player.walkPhase,
+    legInjured: player.legInjured,
+    armInjured: player.armInjured,
     isDying: false
   };
 
@@ -3111,13 +3103,19 @@ function updateLocalPlayer(dt) {
   const activeOpticCfg = activeOpticId ? ATTACHMENTS_DB[activeOpticId] : null;
   const useFirstPerson = player.firstPerson || player.adsFirstPersonToggle || ((mouseDownRight || player.adsFirstPersonToggle) && activeOpticCfg && activeOpticCfg.overlay);
 
-  if (swatPlayer && swatLoaded) {
-    swatPlayer.root.visible = !useFirstPerson;
-    omni.root.visible = false;
-    animateSwatCharacter(swatPlayer, charState, dt);
-  } else {
-    omni.root.visible = !useFirstPerson;
-    animateCharacterRig(omni, charState, dt);
+  omni.root.visible = !useFirstPerson;
+  animateCharacterRig(omni, charState, dt);
+
+  // Anima carregador na arma em 3ª pessoa durante recarga
+  const tpM = tpWeaponMeshes[wInst.id];
+  if (tpM && tpM.magMesh) {
+    const restY = tpM.magMesh.userData.restY ?? -0.075;
+    if (gunState.reloading && relProg > 0.15 && relProg < 0.78) {
+      const drop = relProg < 0.45 ? (relProg - 0.15) / 0.30 : (0.78 - relProg) / 0.33;
+      tpM.magMesh.position.y = restY - drop * 0.11;
+    } else {
+      tpM.magMesh.position.y = restY;
+    }
   }
 }
 
@@ -3129,19 +3127,14 @@ const aimRaycaster = new THREE.Raycaster();
 const aimWorldPoint = new THREE.Vector3();
 
 function updateCameraAndWeaponViewmodel(dt) {
-  // Caso 0: Morte Cinematográfica em 3ª Pessoa (Mostra o corpo caindo e a mensagem "SE FUDEU OTARIO")
+  // Caso 0: Morte Cinematográfica em 3ª Pessoa (Mostra Omni caindo e a tela "SE FUDEU OTARIO")
   if (player.dead) {
     document.getElementById('scope-overlay').style.display = 'none';
-    if (swatPlayer && swatLoaded) {
-      swatPlayer.root.visible = true;
-      omni.root.visible = false;
-    } else {
-      omni.root.visible = true;
-      omni.headPivot.visible = true;
-      omni.torsoVisuals.visible = true;
-      omni.leftArm.shoulder.visible = true;
-      omni.rightArm.shoulder.visible = true;
-    }
+    omni.root.visible = true;
+    omni.headPivot.visible = true;
+    omni.torsoVisuals.visible = true;
+    omni.leftArm.shoulder.visible = true;
+    omni.rightArm.shoulder.visible = true;
     fpWeaponRig.visible = false;
 
     const deathT = player.deathT || 0;
@@ -3209,8 +3202,6 @@ function updateCameraAndWeaponViewmodel(dt) {
 
   if (useFirstPersonView) {
     // --- CÂMERA 1ª PESSOA + VIEWMODEL COM MIRAS REAIS ALINHADAS NO CENTRO (0, 0)! ---
-    // Oculta 100% de todo o corpo 3D (SWAT e Omni) para JAMAIS vazar braço/roupa na tela!
-    if (swatPlayer) swatPlayer.root.visible = false;
     omni.root.visible = false;
     fpWeaponRig.visible = !showScopeOverlay;
 
@@ -3235,9 +3226,16 @@ function updateCameraAndWeaponViewmodel(dt) {
     gunState.swayY = THREE.MathUtils.lerp(gunState.swayY, 0, Math.min(1, dt * 10));
     const swM = 1 - (inFpAds ? gunState.adsAlpha * 0.85 : 0);
 
-    let extraY = 0, extraRX = 0, extraRY = 0;
+    let extraY = 0, extraRX = 0, extraRY = 0, extraRZ = 0;
+    const relProg = gunState.reloading && wDef.rDur > 0 ? (1 - gunState.reloadT / wDef.rDur) : 0;
     if (player.sprinting && !inFpAds) { extraY = -0.05; extraRX = -0.20; extraRY = 0.32; }
-    if (gunState.reloading) { extraY = -0.07; extraRX = 0.36; extraRY = 0.25; }
+    if (gunState.reloading) {
+      const tilt = Math.sin(Math.min(1, relProg) * Math.PI);
+      extraY = -0.055 * tilt;
+      extraRX = 0.28 * tilt;
+      extraRY = 0.22 * tilt;
+      extraRZ = 0.38 * tilt;
+    }
     if (wDef.melee && gunState.meleeSwingT > 0) {
       const sl = Math.sin((gunState.meleeSwingT / 0.34) * Math.PI);
       extraRX = -sl * 0.85; extraRY = sl * 0.55; curPos.z -= sl * 0.14;
@@ -3251,14 +3249,27 @@ function updateCameraAndWeaponViewmodel(dt) {
     fpWeaponRig.rotation.set(
       gunState.recoilKick * 1.1 + extraRX,
       extraRY - gunState.swayX * 1.3 * swM,
-      -gunState.swayX * 1.6 * swM
+      extraRZ - gunState.swayX * 1.6 * swM
     );
+
+    if (fpMesh.magMesh && !wDef.melee) {
+      const restY = fpMesh.magMesh.userData.restY ?? -0.075;
+      if (gunState.reloading && relProg > 0.14 && relProg < 0.78) {
+        const drop = relProg < 0.45 ? (relProg - 0.14) / 0.31 : (0.78 - relProg) / 0.33;
+        fpMesh.magMesh.position.y = restY - drop * 0.12;
+      } else {
+        fpMesh.magMesh.position.y = restY;
+      }
+    }
 
     if (fpMesh.boltMesh && !wDef.melee) {
       if (wInst.id === 'shotgun' && gunState.pumpTimer > 0) {
         fpMesh.boltMesh.position.z = fpMesh.boltMesh.userData.restZ + Math.sin((gunState.pumpTimer / 0.48) * Math.PI) * 0.085;
+      } else if (gunState.reloading && relProg > 0.78) {
+        const rack = Math.sin(((relProg - 0.78) / 0.22) * Math.PI);
+        fpMesh.boltMesh.position.z = fpMesh.boltMesh.userData.restZ + rack * 0.048;
       } else if (wInst.id === 'm9' && wInst.mag === 0 && !gunState.reloading) {
-        fpMesh.boltMesh.position.z = fpMesh.boltMesh.userData.restZ + 0.036;
+        fpMesh.boltMesh.position.z = fpMesh.boltMesh.userData.restZ + 0.030;
       } else {
         fpMesh.boltMesh.position.z = fpMesh.boltMesh.userData.restZ + gunState.recoilKick * 0.22;
       }
@@ -3266,16 +3277,11 @@ function updateCameraAndWeaponViewmodel(dt) {
     gunState.muzzleBlocked = false;
   } else {
     // --- CÂMERA 3ª PESSOA OVER-THE-SHOULDER + SISTEMA DE MIRA TÁTICA 3P ---
-    if (swatPlayer && swatLoaded) {
-      swatPlayer.root.visible = true;
-      omni.root.visible = false;
-    } else {
-      omni.root.visible = true;
-      omni.headPivot.visible = true;
-      omni.torsoVisuals.visible = true;
-      omni.leftArm.shoulder.visible = true;
-      omni.rightArm.shoulder.visible = true;
-    }
+    omni.root.visible = true;
+    omni.headPivot.visible = true;
+    omni.torsoVisuals.visible = true;
+    omni.leftArm.shoulder.visible = true;
+    omni.rightArm.shoulder.visible = true;
     fpWeaponRig.visible = false;
 
     const holdingAlt = !!(keys['AltLeft'] || keys['AltRight']);
@@ -3632,15 +3638,24 @@ function damageZombie(z, dmg, zone, dirVec, hitPoint) {
   if (z.dead) return;
   z.hp -= dmg;
   z.alertT = 18.0;
-  if (zone === 'head') { sfx.playFleshHit(true); showHitmarker('#e03b32'); }
-  else if (zone === 'limb') { z.legHit = true; sfx.playFleshHit(false); showHitmarker('#e0a040'); }
-  else {
-    z.stagger = 0.25; z.knockX = dirVec.x * 2.6; z.knockZ = dirVec.z * 2.6;
+  if (zone === 'head') {
+    z.stagger = 0.28; z.knockX = dirVec.x * 3.4; z.knockZ = dirVec.z * 3.4;
+    sfx.playFleshHit(true); showHitmarker('#e03b32');
+  } else if (zone === 'limb') {
+    z.legHit = true;
+    z.stagger = 0.22; z.knockX = dirVec.x * 1.8; z.knockZ = dirVec.z * 1.8;
+    sfx.playFleshHit(false); showHitmarker('#e0a040');
+  } else {
+    z.stagger = 0.26; z.knockX = dirVec.x * 2.8; z.knockZ = dirVec.z * 2.8;
     sfx.playFleshHit(false); showHitmarker('#ffffff');
   }
   spawnImpactFX(hitPoint, dirVec.clone().negate(), 'flesh', true);
   if (z.hp <= 0 && !z.dead) {
     z.dead = true;
+    z.deathT = 0;
+    z.deathStyle = zone === 'head' ? 0 : (zone === 'limb' ? 2 : ((z.variantIdx + (Math.random() > 0.5 ? 1 : 0)) % 3));
+    z.knockX = dirVec.x * (zone === 'head' ? 3.2 : 2.2);
+    z.knockZ = dirVec.z * (zone === 'head' ? 3.2 : 2.2);
     zombiesKilled++;
     document.getElementById('hud-kills').textContent = `ZUMBIS: ${zombiesKilled} / ${zombies.length}`;
     showHitmarker('#e03b32');
@@ -4251,7 +4266,6 @@ function getOrCreateRemotePlayer(id, nick = 'Sobrevivente') {
 
   const rig = buildOmniCharacter(0xd6c8dc);
   scene.add(rig.root);
-  if (playerAnimsLoaded) setupPlayerActions(rig);
 
   // Armas visíveis na mão do jogador remoto
   const remWeapons = {};
@@ -4277,7 +4291,7 @@ function getOrCreateRemotePlayer(id, nick = 'Sobrevivente') {
   document.getElementById('world-labels').appendChild(tagEl);
 
   const rp = {
-    id, nick, teamId: null, hp: 100, dead: false,
+    id, nick, teamId: null, hp: 100, dead: false, deathT: 0, deathStyle: 0,
     pos: new THREE.Vector3(0, 0.12, 150),
     targetPos: new THREE.Vector3(0, 0.12, 150),
     yaw: 0, bodyYaw: 0, pitch: 0,
@@ -4724,14 +4738,28 @@ function updateRemotePlayersAndNet(dt) {
     }
   }
 
-  // Interpola e anima cada jogador remoto com IK 2-Ossos!
+  // Interpola e anima cada jogador remoto com IK 2-Ossos e Animação de Morte!
   for (const rp of remotePlayers.values()) {
-    if (rp.dead || rp.inCarId) {
+    if (rp.inCarId) {
       rp.rig.root.visible = false;
       rp.tagEl.style.display = 'none';
       continue;
     }
     rp.rig.root.visible = true;
+
+    if (rp.dead) {
+      rp.deathT = Math.min(1, (rp.deathT || 0) + dt * 1.35);
+      rp.tagEl.style.display = 'none';
+      animateCharacterRig(rp.rig, {
+        pos: rp.pos, bodyYaw: rp.bodyYaw, lookYaw: rp.yaw, pitch: rp.pitch,
+        hSpeed: 0, localFwdVel: 0, localStrVel: 0, crouchAlpha: 0, landSquash: 0,
+        onGround: true, sprinting: false, inCombat: false, weaponId: rp.weaponId,
+        reloading: false, reloadProgress: 0, recoilKick: 0, meleeSwingT: 0, pumpTimer: 0, walkPhase: 0,
+        isDying: true, deathT: rp.deathT, deathStyle: rp.deathStyle || 0
+      }, dt);
+      continue;
+    }
+    rp.deathT = 0;
 
     const prevX = rp.pos.x, prevZ = rp.pos.z;
     rp.pos.lerp(rp.targetPos, Math.min(1, dt * 13));
@@ -4873,19 +4901,78 @@ function updateZombies(dt) {
   for (let i = 0; i < zombies.length; i++) {
     const z = zombies[i];
     const zp = z.root.position;
+    const p = z.parts;
+
+    // === ANIMAÇÃO DE MORTE COMPLETA DO ZUMBI (3 ESTILOS ARTICULADOS + RECUO DE IMPACTO) ===
     if (z.dead) {
-      if (z.currentAnim !== z.deathAnimId) {
-        transitionZombieAnim(z, z.deathAnimId, 0.12, THREE.LoopOnce, true);
-      }
-      if (z.mixer) z.mixer.update(dt);
       if (z.deathT < 1) {
-        z.deathT = Math.min(1, z.deathT + dt * 2.8);
-        z.parts.pelvis.position.y = THREE.MathUtils.lerp(0.92, 0.14, z.deathT);
-        z.parts.pelvis.rotation.x = z.deathT * (Math.PI * 0.48);
-        if (z.glbHolder && !z.mixer) {
-          z.glbHolder.rotation.x = z.deathT * (Math.PI * 0.48);
-          z.glbHolder.position.y = z.deathT * 0.12;
+        const prevT = z.deathT;
+        z.deathT = Math.min(1, z.deathT + dt * 1.75);
+        const t = z.deathT;
+
+        // Deslizamento curto de recuo nos primeiros 0.45s da queda
+        if (t < 0.45) {
+          const slideMult = (1 - t / 0.45) * dt;
+          zp.x += (z.knockX || 0) * slideMult * 0.55;
+          zp.z += (z.knockZ || 0) * slideMult * 0.55;
+          resolveCircleWorldCollisions(zp, 0.35, 0, 1.8, 0.35);
         }
+
+        const buckle = THREE.MathUtils.smoothstep(t, 0.0, 0.32);
+        const fallRaw = THREE.MathUtils.clamp((t - 0.14) / 0.68, 0, 1);
+        const fall = fallRaw * fallRaw * (3 - 2 * fallRaw);
+        const settle = t > 0.80 ? Math.sin(((t - 0.80) / 0.20) * Math.PI) * 0.04 : 0;
+        const style = z.deathStyle || 0;
+
+        if (style === 0) {
+          // Estilo 0: Queda de costas (Headshot / impacto forte frontal)
+          p.pelvis.position.set(0, Math.max(0.13, THREE.MathUtils.lerp(0.90, 0.14, fall) - buckle * 0.12 * (1 - fall) + settle), fall * 0.40);
+          p.pelvis.rotation.set(fall * (Math.PI * 0.48), fall * 0.15, fall * 0.10);
+          p.spine.rotation.set(buckle * 0.35 * (1 - fall) + fall * 0.06, 0, 0);
+          p.head.rotation.set(-buckle * 0.48 + fall * 0.16, fall * 0.32, fall * 0.22);
+          p.armL.shoulder.rotation.set(0.35 + fall * 0.40, 0, 0.25 + fall * 0.95);
+          p.armR.shoulder.rotation.set(0.30 + fall * 0.48, 0, -0.25 - fall * 0.90);
+          p.armL.elbow.rotation.set(0.45 - fall * 0.20, 0, 0);
+          p.armR.elbow.rotation.set(0.50 - fall * 0.25, 0, 0);
+          p.legL.hip.rotation.set(-buckle * 0.45 * (1 - fall) - fall * 0.16, 0, -0.15 * fall);
+          p.legL.knee.rotation.set(-buckle * 0.80 * (1 - fall) - fall * 0.20, 0, 0);
+          p.legR.hip.rotation.set(-buckle * 0.36 * (1 - fall) - fall * 0.06, 0, 0.22 * fall);
+          p.legR.knee.rotation.set(-buckle * 0.65 * (1 - fall) - fall * 0.10, 0, 0);
+        } else if (style === 1) {
+          // Estilo 1: Cai de joelhos e desaba de bruços
+          const kneel = THREE.MathUtils.smoothstep(t, 0.0, 0.38);
+          const drop = THREE.MathUtils.smoothstep(t, 0.28, 0.86);
+          const py = THREE.MathUtils.lerp(0.90, 0.44, kneel) * (1 - drop) + 0.13 * drop + settle;
+          p.pelvis.position.set(0, Math.max(0.12, py), -drop * 0.44);
+          p.pelvis.rotation.set(-drop * (Math.PI * 0.48), -drop * 0.12, drop * 0.08);
+          p.spine.rotation.set(-kneel * 0.42 * (1 - drop) - drop * 0.06, 0, 0);
+          p.head.rotation.set(-drop * 0.16, drop * 0.62, drop * 0.24);
+          p.armL.shoulder.rotation.set(0.95 * kneel + 0.55 * drop, 0.22 * drop, 0.30 + drop * 0.42);
+          p.armR.shoulder.rotation.set(0.85 * kneel + 0.62 * drop, -0.22 * drop, -0.30 - drop * 0.48);
+          p.armL.elbow.rotation.set(0.65 * kneel + 0.28 * drop, 0, 0);
+          p.armR.elbow.rotation.set(0.70 * kneel + 0.22 * drop, 0, 0);
+          p.legL.hip.rotation.set(kneel * 0.52 * (1 - drop) + drop * 0.14, 0, -0.10 * drop);
+          p.legL.knee.rotation.set(-kneel * 1.30 * (1 - drop) - drop * 0.20, 0, 0);
+          p.legR.hip.rotation.set(kneel * 0.42 * (1 - drop) + drop * 0.05, 0, 0.16 * drop);
+          p.legR.knee.rotation.set(-kneel * 1.20 * (1 - drop) - drop * 0.14, 0, 0);
+        } else {
+          // Estilo 2: Desaba de lado girando sobre o quadril
+          const sideSign = z.limpSide || 1;
+          const py = THREE.MathUtils.lerp(0.90, 0.14, fall) - buckle * 0.15 * (1 - fall) + settle;
+          p.pelvis.position.set(sideSign * fall * 0.32, Math.max(0.13, py), fall * 0.10);
+          p.pelvis.rotation.set(fall * 0.22, -sideSign * fall * 0.45, -sideSign * fall * (Math.PI * 0.46));
+          p.spine.rotation.set(-fall * 0.14, sideSign * fall * 0.16, sideSign * fall * 0.12);
+          p.head.rotation.set(fall * 0.10, -sideSign * fall * 0.25, -sideSign * fall * 0.30);
+          p.armL.shoulder.rotation.set(0.50 * fall, -0.30 * fall, 0.60 * fall);
+          p.armR.shoulder.rotation.set(0.80 * fall, 0.25 * fall, -0.85 * fall);
+          p.armL.elbow.rotation.set(0.75 * fall, 0, 0);
+          p.armR.elbow.rotation.set(0.40 * fall, 0, 0);
+          p.legL.hip.rotation.set(0.45 * fall, 0, -0.18 * fall);
+          p.legL.knee.rotation.set(-0.88 * fall, 0, 0);
+          p.legR.hip.rotation.set(0.14 * fall, 0, 0.12 * fall);
+          p.legR.knee.rotation.set(-0.24 * fall, 0, 0);
+        }
+        if (prevT === 0) z.atkAnimT = 0;
       }
       continue;
     }
@@ -4896,83 +4983,121 @@ function updateZombies(dt) {
     if (!player.dead && dist < detectRange) z.alertT = Math.max(z.alertT, 8.5);
     z.alertT = Math.max(0, z.alertT - dt);
     z.atkCd = Math.max(0, z.atkCd - dt);
+    z.atkAnimT = Math.max(0, (z.atkAnimT || 0) - dt);
 
     let moveSpd = 0;
+    let isChasing = false;
     if (z.stagger > 0) {
-      z.stagger -= dt; zp.x += z.knockX * dt; zp.z += z.knockZ * dt;
-      if (z.actions && z.actions.hit_reaction && z.currentAnim !== 'hit_reaction') {
-        transitionZombieAnim(z, 'hit_reaction', 0.10, THREE.LoopOnce);
-      }
+      z.stagger = Math.max(0, z.stagger - dt);
+      zp.x += z.knockX * dt;
+      zp.z += z.knockZ * dt;
     } else if (z.alertT > 0 && !player.dead) {
+      isChasing = true;
       z.yaw = lerpAngle(z.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 6.5));
       if (dist > 1.05) {
-        // PERSEGUIÇÃO: Todos os zumbis usam animação de corrida (run_1 ou run_2)!
-        moveSpd = z.speed * (z.legHit ? 0.50 : 1.45);
+        const archMult = z.archetype === 2 ? 1.62 : (z.archetype === 0 ? 1.18 : 1.42);
+        moveSpd = z.speed * (z.legHit ? 0.45 : archMult);
         zp.x += -Math.sin(z.yaw) * moveSpd * dt;
         zp.z += -Math.cos(z.yaw) * moveSpd * dt;
-        transitionZombieAnim(z, z.runAnimId, 0.20, THREE.LoopRepeat);
       } else if (z.atkCd <= 0 && !player.drivingCar && Math.abs(player.pos.y - zp.y) < 1.35) {
         z.atkCd = 1.15;
+        z.atkAnimT = 0.62;
         const hitZones = ['torso', 'torso', 'arm', 'arm', 'leg', 'leg', 'head'];
         const chosenZone = hitZones[Math.floor(Math.random() * hitZones.length)];
         damageLocalPlayer(16, 'ATAQUE DE ZUMBI', chosenZone);
-        // ATAQUE: Ataca com socos, mordida no pescoço ou chute!
-        transitionZombieAnim(z, z.attackAnimId, 0.15, THREE.LoopRepeat);
-      } else {
-        transitionZombieAnim(z, z.attackAnimId, 0.20, THREE.LoopRepeat);
       }
     } else {
-      // PATRULHA / VAGANDO: Caminhada aleatorizada entre os 5 tipos de walk!
       z.wanderTimer -= dt;
       if (z.wanderTimer <= 0) { z.wanderTimer = 3 + Math.random() * 4; z.yaw += (Math.random() - 0.5) * 2.0; }
-      moveSpd = z.speed * 0.38;
+      moveSpd = z.speed * (z.legHit ? 0.25 : 0.38);
       zp.x += -Math.sin(z.yaw) * moveSpd * dt;
       zp.z += -Math.cos(z.yaw) * moveSpd * dt;
-      transitionZombieAnim(z, z.walkAnimId, 0.30, THREE.LoopRepeat);
     }
 
     resolveCircleWorldCollisions(zp, 0.35, 0, 1.8, 0.35);
 
     z.root.rotation.y = z.yaw;
-    z.phase += dt * (moveSpd * 3.8 + 1.2);
+    const cycleRate = z.legHit ? (moveSpd * 2.8 + 0.9) : (moveSpd * 3.9 + 1.1);
+    z.phase += dt * cycleRate;
     const sw = Math.sin(z.phase);
+    const cw = Math.cos(z.phase);
+    const sm = Math.min(1, dt * 11);
 
-    if (z.mixer) {
-      // Animação esquelética fluida e orgânica sincronizada com a velocidade real:
-      const isRunning = (z.currentAnim === z.runAnimId);
-      const targetTimeScale = isRunning
-        ? (z.legHit ? 0.70 : 1.30)
-        : (z.alertT > 0 ? (z.legHit ? 0.65 : 1.15) : (z.legHit ? 0.55 : 0.95));
-      z.mixer.timeScale = THREE.MathUtils.lerp(z.mixer.timeScale || 1.0, targetTimeScale, Math.min(1, dt * 5.0));
-      z.mixer.update(dt);
+    // === ANIMAÇÃO ARTICULADA COMPLETA (CAMINHADA, CORRIDA, MANCANDO, ATAQUE E RECUO DE TIRO) ===
+    const staggerAlpha = THREE.MathUtils.clamp(z.stagger / 0.26, 0, 1);
+    const atkPhase = z.atkAnimT > 0 ? (1 - z.atkAnimT / 0.62) : 0; // 0..1 durante o golpe
+    const atkWindup = atkPhase > 0 && atkPhase < 0.42 ? Math.sin((atkPhase / 0.42) * Math.PI * 0.5) : 0;
+    const atkStrike = atkPhase >= 0.42 ? Math.sin(((atkPhase - 0.42) / 0.58) * Math.PI) : 0;
 
-      if (z.glbHolder) {
-        // Postura viva: leve inclinação na perseguição
-        const targetTiltX = z.stagger > 0 ? 0.35 : (z.alertT > 0 ? 0.18 : 0.05);
-        const targetSwayZ = (z.legHit ? 0.14 : 0.06) * sw;
-        z.glbHolder.rotation.x = THREE.MathUtils.lerp(z.glbHolder.rotation.x, targetTiltX, Math.min(1, dt * 6.0));
-        z.glbHolder.rotation.z = THREE.MathUtils.lerp(z.glbHolder.rotation.z, targetSwayZ, Math.min(1, dt * 6.0));
-      }
-    } else if (z.isStaticGLB && z.glbHolder) {
-      z.glbHolder.position.y = Math.abs(sw) * 0.045;
-      z.glbHolder.rotation.z = sw * (z.legHit ? 0.18 : 0.10);
-      z.glbHolder.rotation.x = z.stagger > 0 ? 0.30 : (z.alertT > 0 ? 0.16 : 0.05);
-    }
+    // Pelve: balanço orgânico, mancar assimétrico quando leva tiro na perna, sem nunca afundar os pés
+    const limpDrop = z.legHit ? (Math.max(0, sw * z.limpSide) * 0.085) : 0;
+    const strideBob = Math.abs(cw) * (isChasing ? 0.042 : 0.022);
+    const targetPelvisY = 0.90 + strideBob - limpDrop - (isChasing ? 0.04 : 0.01);
+    p.pelvis.position.set(
+      THREE.MathUtils.lerp(p.pelvis.position.x, sw * (z.legHit ? 0.045 : 0.022), sm),
+      THREE.MathUtils.lerp(p.pelvis.position.y, targetPelvisY, sm),
+      THREE.MathUtils.lerp(p.pelvis.position.z, atkStrike * -0.06, sm)
+    );
+    p.pelvis.rotation.set(
+      THREE.MathUtils.lerp(p.pelvis.rotation.x, staggerAlpha * 0.22, sm),
+      THREE.MathUtils.lerp(p.pelvis.rotation.y, sw * (isChasing ? 0.14 : 0.09), sm),
+      THREE.MathUtils.lerp(p.pelvis.rotation.z, sw * (z.legHit ? 0.14 : 0.055) + (z.legHit ? z.limpSide * 0.08 : 0), sm)
+    );
 
-    // Camada anatômica secundária com articulação natural completa
-    const spinePitch = z.alertT > 0 ? -0.30 : -0.14;
-    z.parts.spine.rotation.x = THREE.MathUtils.lerp(z.parts.spine.rotation.x, spinePitch, Math.min(1, dt * 6.0));
-    z.parts.spine.rotation.y = sw * 0.12;
+    // Coluna corcunda + inclinação agressiva na perseguição + recuo para trás ao tomar tiro + bote de ataque
+    const baseSpinePitch = isChasing ? (z.archetype === 2 ? -0.44 : -0.32) : -0.18;
+    const targetSpineX = baseSpinePitch + staggerAlpha * 0.62 + atkWindup * 0.25 - atkStrike * 0.36;
+    const targetSpineZ = z.slouchBias + sw * (z.legHit ? 0.12 : 0.05);
+    p.spine.rotation.set(
+      THREE.MathUtils.lerp(p.spine.rotation.x, targetSpineX, sm),
+      THREE.MathUtils.lerp(p.spine.rotation.y, -sw * 0.16 + atkStrike * 0.12, sm),
+      THREE.MathUtils.lerp(p.spine.rotation.z, targetSpineZ, sm)
+    );
 
-    const armBase = z.alertT > 0 ? 1.42 : 0.40;
-    z.parts.armL.rotation.x = armBase + sw * 0.28;
-    z.parts.armR.rotation.x = armBase - sw * 0.28;
-    z.parts.armL.rotation.z = 0.12 + Math.sin(z.phase * 1.5) * 0.06;
-    z.parts.armR.rotation.z = -0.12 - Math.sin(z.phase * 1.5) * 0.06;
+    // Cabeça espasmódica / inclinada olhando a presa + chicote para trás ao tomar tiro
+    const headTwitch = Math.sin(z.phase * 0.7 + z.variantIdx) * 0.12;
+    p.head.rotation.set(
+      THREE.MathUtils.lerp(p.head.rotation.x, (isChasing ? 0.26 : 0.10) + staggerAlpha * 0.45 - atkStrike * 0.22, sm),
+      THREE.MathUtils.lerp(p.head.rotation.y, headTwitch, sm),
+      THREE.MathUtils.lerp(p.head.rotation.z, z.slouchBias * 1.4 + Math.cos(z.phase * 0.5) * 0.09, sm)
+    );
 
-    const legAmp = z.alertT > 0 ? 0.75 : 0.45;
-    z.parts.legL.rotation.x = sw * (z.legHit ? legAmp * 0.4 : legAmp);
-    z.parts.legR.rotation.x = -sw * (z.legHit ? legAmp * 0.2 : legAmp);
+    // Braços em 2 segmentos (ombros + cotovelos): arrastando na patrulha, estendidos na corrida, garra dupla no ataque
+    const armReach = isChasing ? 1.48 : (z.archetype === 0 ? 0.62 : 0.45);
+    const armSwL = sw * (isChasing ? 0.26 : 0.22);
+    const armSwR = -sw * (isChasing ? 0.26 : 0.22);
+    const atkArmX = atkWindup * 0.72 - atkStrike * 1.15;
+    const stagArmX = staggerAlpha * 0.55;
+
+    p.armL.shoulder.rotation.set(
+      THREE.MathUtils.lerp(p.armL.shoulder.rotation.x, armReach + armSwL + atkArmX + stagArmX, sm),
+      THREE.MathUtils.lerp(p.armL.shoulder.rotation.y, isChasing ? -0.14 : 0.04, sm),
+      THREE.MathUtils.lerp(p.armL.shoulder.rotation.z, 0.14 + staggerAlpha * 0.38 + atkWindup * 0.18, sm)
+    );
+    p.armR.shoulder.rotation.set(
+      THREE.MathUtils.lerp(p.armR.shoulder.rotation.x, armReach + armSwR + atkArmX + stagArmX, sm),
+      THREE.MathUtils.lerp(p.armR.shoulder.rotation.y, isChasing ? 0.14 : -0.04, sm),
+      THREE.MathUtils.lerp(p.armR.shoulder.rotation.z, -0.14 - staggerAlpha * 0.38 - atkWindup * 0.18, sm)
+    );
+    const elbowBend = isChasing ? 0.42 : 0.30;
+    p.armL.elbow.rotation.x = THREE.MathUtils.lerp(p.armL.elbow.rotation.x, elbowBend + atkWindup * 0.55 - atkStrike * 0.25, sm);
+    p.armR.elbow.rotation.x = THREE.MathUtils.lerp(p.armR.elbow.rotation.x, elbowBend + atkWindup * 0.55 - atkStrike * 0.25, sm);
+
+    // Pernas em 2 segmentos (quadril + joelho dobrando na fase aérea do passo para jamais afundar no chão!)
+    const legAmp = moveSpd > 0.1 ? (isChasing ? (z.archetype === 2 ? 0.78 : 0.64) : 0.42) : 0.04;
+    const limpL = (z.legHit && z.limpSide < 0) ? 0.28 : 1.0;
+    const limpR = (z.legHit && z.limpSide > 0) ? 0.28 : 1.0;
+
+    const hipLX = sw * legAmp * limpL;
+    const hipRX = -sw * legAmp * limpR;
+    // Joelho dobra para trás (< 0) quando a perna ergue no avanço (cw > 0)
+    const kneeLX = -Math.max(0, cw) * (isChasing ? 0.85 : 0.50) * limpL - 0.06;
+    const kneeRX = -Math.max(0, -cw) * (isChasing ? 0.85 : 0.50) * limpR - 0.06;
+
+    p.legL.hip.rotation.x = THREE.MathUtils.lerp(p.legL.hip.rotation.x, hipLX, sm);
+    p.legR.hip.rotation.x = THREE.MathUtils.lerp(p.legR.hip.rotation.x, hipRX, sm);
+    p.legL.knee.rotation.x = THREE.MathUtils.lerp(p.legL.knee.rotation.x, kneeLX, sm);
+    p.legR.knee.rotation.x = THREE.MathUtils.lerp(p.legR.knee.rotation.x, kneeRX, sm);
   }
 }
 
@@ -5049,11 +5174,7 @@ function damageLocalPlayer(amount, cause = 'COMBATE', zone = 'torso') {
   if (player.hp <= 0) {
     player.dead = true;
     player.deathT = 0;
-    const deathOptions = ['death_front', 'death_right', 'death_dying'];
-    player.deathAnimId = deathOptions[Math.floor(Math.random() * deathOptions.length)];
-    if (swatPlayer && swatLoaded && swatPlayer.actions && swatPlayer.actions[player.deathAnimId]) {
-      transitionSwatAnim(swatPlayer, player.deathAnimId, 0.12, THREE.LoopOnce, true);
-    }
+    player.deathStyle = zone === 'head' ? 0 : (zone === 'leg' ? 1 : Math.floor(Math.random() * 3));
     mouseDownLeft = false; mouseDownRight = false;
     player.adsFirstPersonToggle = false;
     dropAllLootOnDeath();
@@ -5666,162 +5787,9 @@ window.addEventListener('resize', () => {
 window.addEventListener('beforeunload', () => disconnectSession());
 
 /* ============================================================================
-   17. CARREGADOR AUTOMÁTICO DOS MODELOS 3D (.GLB) DE GUNS & PERSONAGENS + LOOP
+   17. INICIALIZAÇÃO DO MUNDO & LOOP PRINCIPAL (MODELOS 100% PROCEDURAIS)
    ============================================================================ */
-function preloadAllProjectGLBModels() {
-  const lblEl = document.getElementById('asset-load-label');
-  const pctEl = document.getElementById('asset-load-pct');
-
-  if (window.location.protocol === 'file:') {
-    lblEl.textContent = 'USE http://localhost:3000 OU VERCEL P/ MODELOS .GLB!';
-    lblEl.style.color = '#ff9852';
-    pctEl.textContent = 'MODO LOCAL';
-    return;
-  }
-
-  const gunEntries = Object.values(WEAPON_DEFS).filter(d => !!d.glb);
-  const totalAssets = gunEntries.length + 2; // 10 Armas + 2 Zumbis = 12 modelos .GLB!
-  let loadedCount = 0;
-
-  const markProgress = (itemName) => {
-    loadedCount++;
-    pctEl.textContent = `${loadedCount} / ${totalAssets}`;
-    if (loadedCount >= totalAssets) {
-      lblEl.textContent = 'TODOS OS 12 MODELOS 3D (.GLB) ATIVOS!';
-      lblEl.style.color = '#9ef082';
-    } else {
-      lblEl.textContent = `CARREGADO: ${itemName}`;
-    }
-  };
-
-  // 1. Carrega e normaliza cada uma das 10 armas da pasta ./GUNS/
-  for (const def of gunEntries) {
-    gltfLoader.load(def.glb, (gltf) => {
-      const wrapper = new THREE.Group();
-      const rawScene = gltf.scene;
-      rawScene.rotation.y = def.glbRotY || 0;
-      wrapper.add(rawScene);
-      wrapper.updateMatrixWorld(true);
-
-      const box1 = new THREE.Box3().setFromObject(wrapper);
-      const size1 = box1.getSize(new THREE.Vector3());
-      const lenZ = Math.max(0.01, size1.z);
-      const scaleFactor = (def.targetLen || 0.75) / lenZ;
-      rawScene.scale.multiplyScalar(scaleFactor);
-      wrapper.updateMatrixWorld(true);
-
-      const box2 = new THREE.Box3().setFromObject(wrapper);
-      const size2 = box2.getSize(new THREE.Vector3());
-      const centerX = (box2.min.x + box2.max.x) * 0.5;
-      // Alinha a empunhadura/gatilho exatamente em (0, 0, 0) e o cano ao longo de -Z!
-      const gripZ = box2.min.z + size2.z * (def.gripRatio || 0.70);
-      const gripY = box2.min.y + size2.y * (def.twoHand ? 0.36 : 0.42);
-      rawScene.position.x -= centerX;
-      rawScene.position.y -= gripY;
-      rawScene.position.z -= gripZ;
-      wrapper.updateMatrixWorld(true);
-
-      const finalBox = new THREE.Box3().setFromObject(wrapper);
-      const muzzleZ = finalBox.min.z;
-      const topSightY = Math.max(0.035, finalBox.max.y);
-      const opticZ = muzzleZ * 0.16;
-
-      GLB_GUN_TEMPLATES[def.id] = {
-        templateGroup: wrapper,
-        muzzleZ,
-        topSightY,
-        opticZ
-      };
-
-      // Atualiza ao vivo todas as instâncias (1ª Pessoa, 3ª Pessoa, Loot nas casas e Players Online!)
-      for (let i = registeredGunAssemblies.length - 1; i >= 0; i--) {
-        const reg = registeredGunAssemblies[i];
-        if (reg.type === def.id) {
-          applyGunGLBToAssembly(reg.assembly, reg.type, reg.withFirstPersonHands);
-        }
-      }
-      markProgress(def.name);
-    }, undefined, (err) => {
-      console.warn('Falha ao carregar arma GLB:', def.glb, err);
-      markProgress(def.name);
-    });
-  }
-
-  // 2. Carrega os modelos de Zumbis da pasta ./MODELOS PERSONAGENS/
-  gltfLoader.load('./MODELOS%20PERSONAGENS/zombie2.glb', (gltf) => {
-    GLB_ZOMBIE_ASSETS.animatedGLTF = gltf;
-    for (const z of zombies) attachZombieGLBVisual(z);
-    markProgress('ZOMBIE ANIMADO');
-  }, undefined, () => markProgress('ZOMBIE 2'));
-
-  gltfLoader.load('./MODELOS%20PERSONAGENS/zombie.glb', (gltf) => {
-    GLB_ZOMBIE_ASSETS.staticGLTF = gltf;
-    if (!GLB_ZOMBIE_ASSETS.animatedGLTF) {
-      for (const z of zombies) attachZombieGLBVisual(z);
-    }
-    markProgress('ZOMBIE 1');
-  }, undefined, () => markProgress('ZOMBIE 1'));
-
-  // 3. Carrega o pacote de Animações Reais Mixamo de Zumbis e Personagens (Walks, Runs, Deaths, Attacks)
-  fetch('./zombie_anims.json')
-    .then(r => r.json())
-    .then(bundle => {
-      for (const id in bundle.clips) {
-        ZOMBIE_ANIM_CLIPS[id] = THREE.AnimationClip.parse(bundle.clips[id]);
-      }
-      zombieAnimsLoaded = true;
-      console.log('Pacote de Animações de Zumbis Ativo:', Object.keys(ZOMBIE_ANIM_CLIPS).length, 'animações');
-      for (const z of zombies) setupZombieActions(z);
-    })
-    .catch(err => console.warn('Aviso: zombie_anims.json:', err));
-
-  fetch('./player_anims.json')
-    .then(r => r.json())
-    .then(bundle => {
-      for (const id in bundle.clips) {
-        PLAYER_ANIM_CLIPS[id] = THREE.AnimationClip.parse(bundle.clips[id]);
-      }
-      playerAnimsLoaded = true;
-      console.log('Pacote de Animações de Personagens Ativo:', Object.keys(PLAYER_ANIM_CLIPS).length, 'animações');
-      if (swatPlayer && swatPlayer.mixer) {
-        for (const id in PLAYER_ANIM_CLIPS) {
-          if (!swatPlayer.actions[id]) {
-            swatPlayer.actions[id] = swatPlayer.mixer.clipAction(PLAYER_ANIM_CLIPS[id]);
-          }
-        }
-        if (!swatPlayer.activeAction && swatPlayer.actions['rifle_idle']) {
-          swatPlayer.activeAction = swatPlayer.actions['rifle_idle'];
-          swatPlayer.activeAction.play();
-        }
-      }
-      for (const rp of remotePlayers.values()) {
-        if (rp.swat && rp.swat.mixer) {
-          for (const id in PLAYER_ANIM_CLIPS) {
-            if (!rp.swat.actions[id]) {
-              rp.swat.actions[id] = rp.swat.mixer.clipAction(PLAYER_ANIM_CLIPS[id]);
-            }
-          }
-        }
-      }
-    })
-    .catch(err => console.warn('Aviso: player_anims.json:', err));
-
-  // Carrega o Modelo 3D Oficial do Policial SWAT com Texturas Reais
-  gltfLoader.load('./swat.glb', (gltf) => {
-    swatTemplateScene = gltf.scene;
-    applySwatTextures(swatTemplateScene);
-
-    swatLoaded = true;
-    console.log('Modelo 3D do Policial SWAT carregado com sucesso!');
-    initSwatForLocalPlayer();
-    for (const rp of remotePlayers.values()) {
-      initSwatForRemotePlayer(rp);
-    }
-  }, undefined, (err) => console.warn('Aviso: carregando swat.glb:', err));
-}
-
 generateProceduralMap();
-preloadAllProjectGLBModels();
 setTimeout(() => refreshServerListUI(), 500);
 
 const clock = new THREE.Clock();
@@ -5846,37 +5814,22 @@ function animate() {
       updateCameraAndWeaponViewmodel(dt);
     }
   } else {
-    // Showcase do Policial SWAT no Menu Inicial (enquadrado à direita)
+    // Showcase do Personagem Omni no Menu Inicial (enquadrado à direita)
     menuOrbit += dt * 0.34;
     fpWeaponRig.visible = false;
+    omni.root.visible = true;
 
-    if (swatPlayer && swatLoaded) {
-      swatPlayer.root.visible = true;
-      omni.root.visible = false;
-      animateSwatCharacter(swatPlayer, {
-        pos: player.pos,
-        bodyYaw: player.bodyYaw,
-        lookYaw: player.bodyYaw + Math.sin(menuOrbit * 0.8) * 0.18,
-        pitch: -0.02,
-        hSpeed: 0, localFwdVel: 0, localStrVel: 0,
-        crouchAlpha: 0, landSquash: 0, onGround: true, sprinting: false, inCombat: false,
-        weaponId: getActiveWeaponObj().id,
-        reloading: false, reloadProgress: 0, recoilKick: 0, meleeSwingT: 0, pumpTimer: 0, walkPhase: 0,
-        isDying: false
-      }, dt);
-    } else {
-      omni.root.visible = true;
-      animateCharacterRig(omni, {
-        pos: player.pos,
-        bodyYaw: player.bodyYaw,
-        lookYaw: player.bodyYaw + Math.sin(menuOrbit * 0.8) * 0.18,
-        pitch: -0.02,
-        hSpeed: 0, localFwdVel: 0, localStrVel: 0,
-        crouchAlpha: 0, landSquash: 0, onGround: true, sprinting: false, inCombat: false,
-        weaponId: getActiveWeaponObj().id,
-        reloading: false, reloadProgress: 0, recoilKick: 0, meleeSwingT: 0, pumpTimer: 0, walkPhase: 0
-      }, dt);
-    }
+    animateCharacterRig(omni, {
+      pos: player.pos,
+      bodyYaw: player.bodyYaw,
+      lookYaw: player.bodyYaw + Math.sin(menuOrbit * 0.8) * 0.22,
+      pitch: -0.02,
+      hSpeed: 0, localFwdVel: 0, localStrVel: 0,
+      crouchAlpha: 0, landSquash: 0, onGround: true, sprinting: false, inCombat: false,
+      weaponId: getActiveWeaponObj().id,
+      reloading: false, reloadProgress: 0, recoilKick: 0, meleeSwingT: 0, pumpTimer: 0, walkPhase: 0,
+      isDying: false
+    }, dt);
 
     const angle = player.bodyYaw + Math.sin(menuOrbit * 0.6) * 0.80;
     const dist = 2.35;
