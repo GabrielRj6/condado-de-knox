@@ -1,0 +1,92 @@
+{
+  "id": "compact_smg",
+  "code": "VX-9",
+  "asset": "vx-9_tactical_black_game_ready.glb",
+  "objAsset": "vx-9_game_ready.obj",
+  "hudIcon": "vx-9_hud_icon.png",
+  "name": "Submetralhadora VX-9",
+  "category": "cqb",
+  "categoryLabel": "CQB Silenciada",
+  "caliber": ".45 ACP",
+  "description": "Submetralhadora compacta com supressor integrado, carregador estendido, mira reflex e laser lateral.",
+  "physical": {
+    "weightKg": 2.35,
+    "lengthCm": 62,
+    "recoilStrength": 0.68
+  },
+  "finish": {
+    "id": "tactical_black",
+    "name": "Tático Padrão",
+    "wearPercent": 35
+  },
+  "lod": {
+    "id": "game_ready",
+    "label": "Game-Ready",
+    "subtitle": "FPS Padrão"
+  },
+  "attachments": {
+    "suppressor": false,
+    "laser": false,
+    "tacLight": false
+  },
+  "ballistics": {
+    "rpm": 920,
+    "fireIntervalSeconds": 0.0652,
+    "magCapacity": 32,
+    "reloadSeconds": 1.85,
+    "fireModes": [
+      "auto",
+      "burst",
+      "semi"
+    ],
+    "ejectsShells": true,
+    "isShotgunShell": false,
+    "isMelee": false,
+    "isExplosive": false
+  },
+  "topology": {
+    "triangles": 480,
+    "vertices": 984,
+    "subMeshes": 29,
+    "materialsPBR": 8,
+    "estimatedVramKb": 2082
+  },
+  "sockets": {
+    "socket_muzzle": [
+      1.24,
+      0.11,
+      0
+    ],
+    "socket_grip": [
+      -0.26,
+      -0.24,
+      0
+    ],
+    "socket_ejection": [
+      0.14,
+      0.12,
+      0.08
+    ],
+    "socket_optic": [
+      0.02,
+      0.34,
+      0
+    ],
+    "socket_side_rail": [
+      0.34,
+      0.07,
+      -0.095
+    ],
+    "socket_under_rail": [
+      0.46,
+      -0.08,
+      0
+    ]
+  },
+  "pbrChannels": [
+    "albedo_srgb",
+    "normal_opengl",
+    "roughness_linear",
+    "metalness_linear"
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "weaponId": "compact_smg",
+  "code": "VX-9",
+  "name": "Submetralhadora VX-9",
+  "coordinateSystem": {
+    "handedness": "right_handed",
+    "upAxis": "+Y",
+    "forwardAxis": "+X",
+    "rightAxis": "+Z",
+    "units": "meters_normalized"
+  },
+  "embeddedInGlb": true,
+  "sockets": {
+    "socket_muzzle": {
+      "nodeName": "socket_muzzle",
+      "position": [
+        1.24,
+        0.11,
+        0
+      ],
+      "vector": {
+        "x": 1.24,
+        "y": 0.11,
+        "z": 0
+      },
+      "usage": "Ponto de disparo, clarão de boca (muzzle flash) e origem de projétil"
+    },
+    "socket_grip": {
+      "nodeName": "socket_grip",
+      "position": [
+        -0.26,
+        -0.24,
+        0
+      ],
+      "vector": {
+        "x": -0.26,
+        "y": -0.24,
+        "z": 0
+      },
+      "usage": "Pivô da mão principal / empunhadura (IK right hand)"
+    },
+    "socket_ejection": {
+      "nodeName": "socket_ejection",
+      "position": [
+        0.14,
+        0.12,
+        0.08
+      ],
+      "vector": {
+        "x": 0.14,
+        "y": 0.12,
+        "z": 0.08
+      },
+      "usage": "Janela de ejeção de cápsulas / cartuchos"
+    },
+    "socket_optic": {
+      "nodeName": "socket_optic",
+      "position": [
+        0.02,
+        0.34,
+        0
+      ],
+      "vector": {
+        "x": 0.02,
+        "y": 0.34,
+        "z": 0
+      },
+      "usage": "Linha de visada ADS / encaixe de mira óptica"
+    },
+    "socket_side_rail": {
+      "nodeName": "socket_side_rail",
+      "position": [
+        0.34,
+        0.07,
+        -0.095
+      ],
+      "vector": {
+        "x": 0.34,
+        "y": 0.07,
+        "z": -0.095
+      },
+      "usage": "Trilho lateral para mira laser"
+    },
+    "socket_under_rail": {
+      "nodeName": "socket_under_rail",
+      "position": [
+        0.46,
+        -0.08,
+        0
+      ],
+      "vector": {
+        "x": 0.46,
+        "y": -0.08,
+        "z": 0
+      },
+      "usage": "Trilho inferior para lanterna tática ou empunhadura frontal"
+    }
+  }
+}

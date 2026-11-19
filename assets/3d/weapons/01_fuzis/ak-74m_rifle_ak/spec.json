@@ -1,0 +1,91 @@
+{
+  "id": "ak_rifle",
+  "code": "AK-74M",
+  "asset": "ak-74m_tactical_black_game_ready.glb",
+  "objAsset": "ak-74m_game_ready.obj",
+  "hudIcon": "ak-74m_hud_icon.png",
+  "name": "Rifle Clássico AK-74M",
+  "category": "rifles",
+  "categoryLabel": "Fuzil de Assalto",
+  "caliber": "5.45×39mm",
+  "description": "Receptor estampado resistente, carregador curvo banana, tubo de gás inclinado e coronha clássica.",
+  "physical": {
+    "weightKg": 3.4,
+    "lengthCm": 94,
+    "recoilStrength": 1.12
+  },
+  "finish": {
+    "id": "tactical_black",
+    "name": "Tático Padrão",
+    "wearPercent": 35
+  },
+  "lod": {
+    "id": "game_ready",
+    "label": "Game-Ready",
+    "subtitle": "FPS Padrão"
+  },
+  "attachments": {
+    "suppressor": false,
+    "laser": false,
+    "tacLight": false
+  },
+  "ballistics": {
+    "rpm": 600,
+    "fireIntervalSeconds": 0.1,
+    "magCapacity": 30,
+    "reloadSeconds": 2.3,
+    "fireModes": [
+      "auto",
+      "semi"
+    ],
+    "ejectsShells": true,
+    "isShotgunShell": false,
+    "isMelee": false,
+    "isExplosive": false
+  },
+  "topology": {
+    "triangles": 384,
+    "vertices": 912,
+    "subMeshes": 15,
+    "materialsPBR": 6,
+    "estimatedVramKb": 1567
+  },
+  "sockets": {
+    "socket_muzzle": [
+      1.62,
+      0.11,
+      0
+    ],
+    "socket_grip": [
+      -0.36,
+      -0.22,
+      0
+    ],
+    "socket_ejection": [
+      0.06,
+      0.11,
+      0.075
+    ],
+    "socket_optic": [
+      -0.04,
+      0.25,
+      0
+    ],
+    "socket_side_rail": [
+      0.76,
+      0.11,
+      0.075
+    ],
+    "socket_under_rail": [
+      0.72,
+      0.01,
+      0
+    ]
+  },
+  "pbrChannels": [
+    "albedo_srgb",
+    "normal_opengl",
+    "roughness_linear",
+    "metalness_linear"
+  ]
+}

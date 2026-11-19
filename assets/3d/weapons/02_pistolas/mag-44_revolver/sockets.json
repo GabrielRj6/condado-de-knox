@@ -1,0 +1,85 @@
+{
+  "weaponId": "revolver_magnum",
+  "code": "MAG-44",
+  "name": "Revólver Magnum .44",
+  "coordinateSystem": {
+    "handedness": "right_handed",
+    "upAxis": "+Y",
+    "forwardAxis": "+X",
+    "rightAxis": "+Z",
+    "units": "meters_normalized"
+  },
+  "embeddedInGlb": true,
+  "sockets": {
+    "socket_muzzle": {
+      "nodeName": "socket_muzzle",
+      "position": [
+        0.98,
+        0.2,
+        0
+      ],
+      "vector": {
+        "x": 0.98,
+        "y": 0.2,
+        "z": 0
+      },
+      "usage": "Ponto de disparo, clarão de boca (muzzle flash) e origem de projétil"
+    },
+    "socket_grip": {
+      "nodeName": "socket_grip",
+      "position": [
+        -0.46,
+        -0.24,
+        0
+      ],
+      "vector": {
+        "x": -0.46,
+        "y": -0.24,
+        "z": 0
+      },
+      "usage": "Pivô da mão principal / empunhadura (IK right hand)"
+    },
+    "socket_ejection": {
+      "nodeName": "socket_ejection",
+      "position": [
+        -0.04,
+        0.12,
+        0.11
+      ],
+      "vector": {
+        "x": -0.04,
+        "y": 0.12,
+        "z": 0.11
+      },
+      "usage": "Janela de ejeção de cápsulas / cartuchos"
+    },
+    "socket_optic": {
+      "nodeName": "socket_optic",
+      "position": [
+        0.18,
+        0.32,
+        0
+      ],
+      "vector": {
+        "x": 0.18,
+        "y": 0.32,
+        "z": 0
+      },
+      "usage": "Linha de visada ADS / encaixe de mira óptica"
+    },
+    "socket_side_rail": {
+      "nodeName": "socket_side_rail",
+      "position": [
+        0.46,
+        0.12,
+        0.075
+      ],
+      "vector": {
+        "x": 0.46,
+        "y": 0.12,
+        "z": 0.075
+      },
+      "usage": "Trilho lateral para mira laser"
+    }
+  }
+}
