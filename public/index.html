@@ -31,6 +31,26 @@
       e.stopImmediatePropagation();
     }
   }, true);
+
+  // Google Maps Platform Demo Key — Tier 1 Quota Defense (gm_authFailure + console.error tap)
+  const triggerGmpQuota = (source) => {
+    try { window.dispatchEvent(new CustomEvent('gmp-quota-exceeded', { detail: { source } })); } catch (_) {}
+  };
+  const prevAuthFail = window.gm_authFailure;
+  window.gm_authFailure = function() {
+    triggerGmpQuota('gm_authFailure');
+    if (typeof prevAuthFail === 'function') prevAuthFail();
+  };
+  const origConsoleError = console.error;
+  console.error = function(...args) {
+    try {
+      const msg = args.map(a => (typeof a === 'string' ? a : (a && a.message ? a.message : ''))).join(' ');
+      if (/OverQuotaMapError|QuotaExceededError|OVER_QUERY_LIMIT|RESOURCE_EXHAUSTED/i.test(msg)) {
+        triggerGmpQuota('console');
+      }
+    } catch (_) {}
+    return origConsoleError.apply(console, args);
+  };
 })();
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -231,6 +251,87 @@
   .slider-box input { width:135px; accent-color:var(--amb); cursor:pointer; }
   .ctrl-grid { margin-top:9px; background:rgba(12,14,11,0.82); border:1px solid var(--bd); padding:9px 12px; display:grid; grid-template-columns:1fr 1fr; gap:4px 12px; font-size:10px; color:var(--dim); }
   .ctrl-grid b { color:var(--txt); }
+
+  /* Google Maps Demo Key Quota Banner (Non-Intrusive Top Sticky) */
+  #gmp-quota-banner {
+    position:fixed; top:0; left:0; right:0; z-index:9999; display:none;
+    background:rgba(42,24,10,0.96); border-bottom:2px solid #e09e48; color:#ffe6c2;
+    padding:8px 16px; font-size:11px; line-height:1.4;
+    align-items:center; justify-content:space-between; gap:12px;
+    box-shadow:0 4px 18px rgba(0,0,0,0.7);
+  }
+  #gmp-quota-banner.visible { display:flex; }
+  #gmp-quota-banner a { color:#ffcf7a; text-decoration:underline; font-weight:700; }
+  #gmp-quota-banner button { background:rgba(255,255,255,0.1); border:1px solid rgba(255,207,122,0.5); color:#ffe6c2; padding:3px 9px; cursor:pointer; font-family:'JetBrains Mono',monospace; font-size:10px; }
+
+  /* Seletor de Modo de Mundo (Procedural Padrão vs Google Maps Real) */
+  .world-mode-row { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:6px; }
+  .mode-btn {
+    padding:8px 8px; background:rgba(18,21,17,0.92); border:1px solid var(--bd);
+    color:var(--dim); font-family:'Oswald',sans-serif; font-size:12.5px; letter-spacing:1.3px;
+    text-transform:uppercase; cursor:pointer; text-align:center; transition:all 0.14s;
+  }
+  .mode-btn.active { background:rgba(44,34,20,0.96); border-color:var(--amb); color:#fff2dc; box-shadow:inset 0 0 0 1px rgba(201,126,56,0.35); }
+  .size-btn-row { display:grid; grid-template-columns:repeat(4, 1fr); gap:5px; margin-top:6px; }
+  .size-chip {
+    padding:5px 4px; background:rgba(16,19,15,0.94); border:1px solid var(--bd);
+    color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700;
+    cursor:pointer; text-align:center;
+  }
+  .size-chip.active { background:rgba(42,56,34,0.96); border-color:#8db86c; color:#e6f7d4; }
+
+  /* Modal Google Maps Picker (Seleção de Área Real + Scanner de Relevo/Estradas/Prédios) */
+  #gmaps-modal {
+    position:fixed; inset:0; z-index:40; display:none;
+    background:rgba(5,7,5,0.92); backdrop-filter:blur(4px);
+    align-items:center; justify-content:center; padding:16px;
+  }
+  #gmaps-modal.open { display:flex; }
+  .gmaps-shell {
+    width:1180px; max-width:97vw; height:86vh; max-height:820px; min-height:540px;
+    background:var(--panel); border:1px solid var(--bd-hi);
+    display:flex; flex-direction:column; overflow:hidden; box-shadow:0 18px 60px rgba(0,0,0,0.85);
+  }
+  .gmaps-header {
+    display:flex; justify-content:space-between; align-items:center; gap:12px;
+    padding:12px 16px; border-bottom:1px solid var(--bd); background:rgba(14,17,13,0.98);
+  }
+  .gmaps-title { font-family:'Oswald',sans-serif; font-size:20px; letter-spacing:2.2px; color:#f0e6d2; text-transform:uppercase; }
+  .gmaps-body { display:grid; grid-template-columns:330px 1fr; flex:1; min-height:0; overflow:hidden; }
+  .gmaps-sidebar {
+    background:rgba(13,16,12,0.97); border-right:1px solid var(--bd);
+    padding:12px 14px; display:flex; flex-direction:column; gap:10px; overflow-y:auto;
+  }
+  .gmaps-map-wrap { position:relative; width:100%; height:100%; min-height:420px; background:#101512; }
+  #gmaps-map-canvas { width:100%; height:100%; min-height:420px; }
+  .gmaps-search-host {
+    position:absolute; top:12px; left:12px; right:12px; max-width:440px; z-index:5;
+  }
+  .gmaps-search-host gmp-place-autocomplete {
+    width:100%; display:block; color-scheme:dark;
+    border:1px solid rgba(215,205,180,0.55); border-radius:2px;
+    box-shadow:0 4px 16px rgba(0,0,0,0.65);
+  }
+  .gmaps-maptype-bar {
+    position:absolute; bottom:14px; left:12px; z-index:5; display:flex; gap:5px;
+  }
+  .gmaps-stat-card {
+    background:rgba(20,24,18,0.92); border:1px solid var(--bd); padding:9px 10px; font-size:10.5px; line-height:1.5;
+  }
+  .gmaps-stat-card b { color:#f0e5cf; }
+  .gmaps-preset-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:5px; }
+  .gmaps-progress-overlay {
+    position:absolute; inset:0; z-index:12; display:none;
+    background:rgba(8,10,8,0.88); backdrop-filter:blur(3px);
+    flex-direction:column; align-items:center; justify-content:center; padding:24px; text-align:center;
+  }
+  .gmaps-progress-overlay.active { display:flex; }
+  .gmaps-prog-bar { width:360px; max-width:90%; height:8px; background:rgba(255,255,255,0.12); border:1px solid var(--bd-hi); margin-top:12px; overflow:hidden; }
+  .gmaps-prog-fill { width:0%; height:100%; background:linear-gradient(90deg, #6f8b52, #d49442); transition:width 0.25s ease; }
+  @media (max-width: 840px) {
+    .gmaps-body { grid-template-columns:1fr; grid-template-rows:auto 1fr; }
+    .gmaps-sidebar { max-height:240px; border-right:none; border-bottom:1px solid var(--bd); }
+  }
 </style>
 <script type="importmap">
 {
@@ -242,6 +343,16 @@
 </script>
 </head>
 <body>
+
+<!-- Google Maps Platform Demo Key Quota Banner (Non-Intrusive Top Bar) -->
+<div id="gmp-quota-banner" role="alert">
+  <span>
+    <b>Google Maps API — Limite de Cota Atingido:</b> A chave gratuita de demonstração atingiu o limite diário/por minuto.
+    <a href="https://developers.google.com/maps/ai/ai-studio?utm_campaign=gmp_mcp_codeassist_v1_aistudio#quota_exceeded_errors" target="_blank" rel="noopener noreferrer">Saiba como configurar sua própria chave de API com cota maior</a>.
+    Você ainda pode jogar normalmente no modo Procedural Padrão ou com geração assistida.
+  </span>
+  <button type="button" id="btn-dismiss-gmp-quota">FECHAR</button>
+</div>
 
 <canvas id="game-canvas"></canvas>
 <div id="fx-vignette"></div>
@@ -453,6 +564,10 @@
           <span style="font-size:10px;color:#e0c392;letter-spacing:0.8px;">MODO ARMAS INFINITAS [B] (RESERVA ∞)</span>
           <button class="mini-btn" id="btn-toggle-infinite-top" style="padding:5px 11px;font-weight:700;background:#2a2d27;border-color:#5a6054;color:#bdb8aa;">DESATIVADO</button>
         </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:7px;padding-top:7px;border-top:1px solid rgba(168,162,142,0.18);gap:8px;">
+          <span style="font-size:10px;color:#a8d48c;letter-spacing:0.8px;">MUNDO REAL (GOOGLE MAPS)</span>
+          <button class="mini-btn" id="btn-open-gmaps-top" style="padding:5px 11px;font-weight:700;background:#243828;border-color:#72a868;color:#dcf5d4;">ESCOLHER CIDADE / ÁREA</button>
+        </div>
       </div>
 
       <div class="sector-box">
@@ -483,13 +598,41 @@
     <!-- ABA 2: SOLO & CONFIGURAÇÕES -->
     <div class="tab-pane" id="pane-solo">
       <div class="sector-box">
-        <div style="font-size:10px;color:var(--dim);">MAPA PROCEDURAL ATUAL</div>
-        <div style="font-family:'Oswald',sans-serif;font-size:19px;letter-spacing:2px;margin-top:2px;" id="menu-seed-title">CARREGANDO...</div>
-        <div style="font-size:10.5px;color:#9aa687;margin-top:3px;" id="menu-seed-stats">Preparando mundo...</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:10px;color:var(--dim);">TIPO DE CRIAÇÃO DO MUNDO</span>
+          <span style="font-size:9.5px;color:#8db86c;" id="menu-world-mode-badge">PROCEDURAL PADRÃO</span>
+        </div>
+        <div class="world-mode-row">
+          <button class="mode-btn active" id="btn-mode-procedural">PROCEDURAL PADRÃO</button>
+          <button class="mode-btn" id="btn-mode-realworld">REAL (GOOGLE MAPS)</button>
+        </div>
+
+        <div id="realworld-quick-config" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid rgba(168,162,142,0.18);">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#c9d6b8;">
+            <span>TAMANHO DA ÁREA REAL</span>
+            <b id="menu-real-size-label">1.00 km² (1000m × 1000m)</b>
+          </div>
+          <div class="size-btn-row" id="menu-size-chips">
+            <button class="size-chip" data-km2="0.5">0.5 km²</button>
+            <button class="size-chip active" data-km2="1">1 km²</button>
+            <button class="size-chip" data-km2="2">2 km²</button>
+            <button class="size-chip" data-km2="4">4 km²</button>
+          </div>
+          <button class="t-btn pri" id="btn-open-gmaps-modal" style="margin-top:8px;border-left-color:#72a868;background:rgba(28,44,28,0.95);">
+            <span>ABRIR GOOGLE MAPS E SELECIONAR ÁREA</span>
+            <span style="font-size:10px;color:#a8d48c">[MAPA REAL]</span>
+          </button>
+        </div>
+
+        <div style="margin-top:9px;padding-top:8px;border-top:1px solid rgba(168,162,142,0.16);">
+          <div style="font-size:10px;color:var(--dim);">MAPA CARREGADO ATUALMENTE</div>
+          <div style="font-family:'Oswald',sans-serif;font-size:19px;letter-spacing:2px;margin-top:2px;" id="menu-seed-title">CARREGANDO...</div>
+          <div style="font-size:10.5px;color:#9aa687;margin-top:3px;" id="menu-seed-stats">Preparando mundo...</div>
+        </div>
       </div>
       <div class="btn-stack">
         <button class="t-btn pri" id="btn-play"><span id="btn-play-label">ENTRAR NA PARTIDA</span><span style="font-size:10px;color:var(--dim)">[CLIQUE]</span></button>
-        <button class="t-btn" id="btn-new-map"><span>GERAR OUTRO MAPA (NOVA SEED)</span><span style="font-size:10px;color:var(--dim)">[TECLA N]</span></button>
+        <button class="t-btn" id="btn-new-map"><span>GERAR OUTRO MAPA PADRÃO (NOVA SEED)</span><span style="font-size:10px;color:var(--dim)">[TECLA N]</span></button>
         <button class="t-btn" id="btn-esc-stop-server" style="display:none;background:#75221c;border-color:#b5392e;color:#fff;"><span>ENCERRAR MEU SERVIDOR ONLINE</span><span style="font-size:10px;color:#ffa39b">[FINALIZAR]</span></button>
       </div>
       <div class="slider-box" style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;">
@@ -504,7 +647,7 @@
         <span>ZUMBIS NA PARTIDA</span>
         <button class="mini-btn" id="btn-toggle-menu-zombies" style="padding:6px 14px;font-weight:700;background:#3d4a34;border-color:#7a9468;color:#d8ecc5;">ATIVADOS (PADRÃO)</button>
       </div>
-      <div class="slider-box"><span>DISTÂNCIA DE VISÃO / DRAW DISTANCE (LOD)</span><input type="range" id="draw-dist-slider" min="65" max="160" step="15" value="110" /></div>
+      <div class="slider-box"><span>DISTÂNCIA DE VISÃO / DRAW DISTANCE (LOD)</span><input type="range" id="draw-dist-slider" min="65" max="320" step="15" value="130" /></div>
       <div class="slider-box"><span>SENSIBILIDADE DO MOUSE</span><input type="range" id="sens-slider" min="0.3" max="2.4" step="0.05" value="1.0" /></div>
       <div class="slider-box"><span>VOLUME DOS PASSOS</span><input type="range" id="step-vol-slider" min="0" max="1.5" step="0.05" value="0.55" /></div>
     </div>
@@ -514,6 +657,92 @@
       <div><b>ESPAÇO</b> Pular / Pular Janela</div><div><b>TECLA Z (ou Scroll)</b> Mira Real 1ª Pessoa</div>
       <div><b>E</b> Pegar Loot / Portas / Dirigir Carro</div><div><b>P</b> Convidar Amigos p/ Time</div>
       <div><b>1 / 2 / 3</b> Faca / Arma 1 / Arma 2</div><div><b>V / Q / ALT</b> 1ª Pessoa / Ombro / 360°</div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL GOOGLE MAPS — GERADOR PROCEDURAL REAL (RELEVO + ESTRADAS + PRÉDIOS + LOD) -->
+<div id="gmaps-modal">
+  <div class="gmaps-shell">
+    <div class="gmaps-header">
+      <div>
+        <div class="gmaps-title">CRIADOR DE MUNDO REAL // GOOGLE MAPS 3D</div>
+        <div style="font-size:10px;color:var(--dim);letter-spacing:1px;">ESCOLHA QUALQUER CIDADE OU REGIÃO — O JOGO ESCANEIA RELEVO, ESTRADAS E CONSTRUÇÕES AUTOMATICAMENTE</div>
+      </div>
+      <button class="mini-btn red" id="btn-close-gmaps-modal" style="padding:7px 14px;font-weight:700;">FECHAR [ESC]</button>
+    </div>
+
+    <div class="gmaps-body">
+      <div class="gmaps-sidebar">
+        <div class="gmaps-stat-card">
+          <div style="color:var(--amb);font-size:9.5px;letter-spacing:1.2px;margin-bottom:4px;">ÁREA SELECIONADA</div>
+          <div style="font-family:'Oswald',sans-serif;font-size:17px;letter-spacing:1.2px;color:#fff;" id="gmaps-place-name">São Paulo, Brasil</div>
+          <div style="color:var(--dim);font-size:10px;margin-top:2px;" id="gmaps-coords-label">-23.5505, -46.6333</div>
+          <div style="color:#a8d48c;font-size:10px;margin-top:4px;" id="gmaps-box-label">Quadrado de captura: 1000m × 1000m (1.00 km²)</div>
+        </div>
+
+        <div class="gmaps-stat-card">
+          <div style="color:var(--txt);font-size:10px;letter-spacing:1px;">TAMANHO DO MAPA (KM²)</div>
+          <div class="size-btn-row" id="modal-size-chips">
+            <button class="size-chip" data-km2="0.5">0.5 km²</button>
+            <button class="size-chip active" data-km2="1">1 km²</button>
+            <button class="size-chip" data-km2="2">2 km²</button>
+            <button class="size-chip" data-km2="4">4 km²</button>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:10px;color:var(--dim);">
+            <span>PERSONALIZADO:</span>
+            <b id="gmaps-custom-km2-val">1.00 km²</b>
+          </div>
+          <input type="range" id="gmaps-size-slider" min="0.25" max="4.0" step="0.25" value="1.0" style="width:100%;accent-color:var(--amb);margin-top:4px;cursor:pointer;" />
+        </div>
+
+        <div class="gmaps-stat-card">
+          <div style="color:var(--txt);font-size:10px;letter-spacing:1px;margin-bottom:5px;">RELEVO &amp; OTIMIZAÇÃO 3D</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--dim);">
+            <span>ESCALA DO RELEVO:</span>
+            <b id="gmaps-relief-val">1.0x (REAL)</b>
+          </div>
+          <input type="range" id="gmaps-relief-slider" min="0.3" max="2.0" step="0.1" value="1.0" style="width:100%;accent-color:var(--amb);margin:3px 0 8px;cursor:pointer;" />
+          <div style="font-size:9.5px;color:#99a88d;line-height:1.45;">
+            • <b>Streaming + Frustum Culling + 3-Tier LOD</b> ativos<br/>
+            • Substitui POIs reais por <b>Casas 1/2 andares, Prédios, Hospitais, Comércios e Postos</b> exploráveis<br/>
+            • Clique no mapa para reposicionar a área
+          </div>
+        </div>
+
+        <div class="gmaps-stat-card">
+          <div style="color:var(--dim);font-size:9.5px;letter-spacing:1px;">ATALHOS RÁPIDOS</div>
+          <div class="gmaps-preset-grid">
+            <button class="mini-btn gmaps-preset-btn" data-lat="-23.5614" data-lng="-46.6559" data-name="Av. Paulista, São Paulo">SÃO PAULO</button>
+            <button class="mini-btn gmaps-preset-btn" data-lat="-22.9711" data-lng="-43.1822" data-name="Copacabana, Rio de Janeiro">RIO DE JANEIRO</button>
+            <button class="mini-btn gmaps-preset-btn" data-lat="-25.4284" data-lng="-49.2733" data-name="Centro, Curitiba">CURITIBA</button>
+            <button class="mini-btn gmaps-preset-btn" data-lat="38.7139" data-lng="-9.1394" data-name="Baixa, Lisboa">LISBOA</button>
+            <button class="mini-btn gmaps-preset-btn" data-lat="40.7580" data-lng="-73.9855" data-name="Midtown, Nova York">NOVA YORK</button>
+            <button class="mini-btn gmaps-preset-btn" data-lat="35.6595" data-lng="139.7004" data-name="Shibuya, Tóquio">TÓQUIO</button>
+          </div>
+        </div>
+
+        <button class="t-btn pri" id="btn-gmaps-generate" style="margin-top:auto;border-left-color:#78c264;background:rgba(32,56,28,0.96);padding:12px 14px;">
+          <span>ESCANEAR E GERAR MUNDO 3D</span>
+          <span style="font-size:10px;color:#b8f09c">[GO]</span>
+        </button>
+      </div>
+
+      <div class="gmaps-map-wrap">
+        <div class="gmaps-search-host" id="gmaps-search-host"></div>
+        <div id="gmaps-map-canvas"></div>
+        <div class="gmaps-maptype-bar">
+          <button class="mini-btn" id="btn-gmaps-type-hybrid" style="background:#3a4a30;border-color:#8db86c;color:#e6f7d4;">SATÉLITE</button>
+          <button class="mini-btn" id="btn-gmaps-type-roadmap">RUAS</button>
+          <button class="mini-btn" id="btn-gmaps-type-terrain">RELEVO</button>
+        </div>
+
+        <div class="gmaps-progress-overlay" id="gmaps-progress-overlay">
+          <div style="font-family:'Oswald',sans-serif;font-size:24px;letter-spacing:2.5px;color:#f2e8d4;" id="gmaps-prog-title">ESCANEANDO ÁREA REAL...</div>
+          <div style="font-size:11px;color:#a8d48c;margin-top:8px;max-width:460px;" id="gmaps-prog-step">Conectando ao Google Maps Platform...</div>
+          <div class="gmaps-prog-bar"><div class="gmaps-prog-fill" id="gmaps-prog-fill"></div></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1001,12 +1230,12 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.98;
 
-let currentDrawDistance = 110; // Draw Distance padrão (65m a 160m ajustável no menu)
+let currentDrawDistance = 130; // Draw Distance padrão (65m a 320m ajustável no menu)
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x828880, currentDrawDistance * 0.45, currentDrawDistance + 18);
+scene.fog = new THREE.Fog(0x828880, currentDrawDistance * 0.45, currentDrawDistance + 24);
 scene.background = new THREE.Color(0x828880);
 
-const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.04, Math.max(260, currentDrawDistance + 40));
+const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.04, Math.max(420, currentDrawDistance + 80));
 scene.add(camera);
 
 // Viewmodel Rig acoplado à câmera para 1ª Pessoa e Mira ADS Real (Alça/Massa & Red Dot!)
@@ -1926,6 +2155,108 @@ const worldGroup = new THREE.Group();
 scene.add(worldGroup);
 
 let colliders = [];
+let dynamicVehicleColliders = [];
+const COLLIDER_CELL = 24;
+let colliderGrid = new Map();
+
+function registerCollider(box) {
+  colliders.push(box);
+  if (box.isVehicleId) {
+    dynamicVehicleColliders.push(box);
+    return box;
+  }
+  const x0 = Math.floor(box.minX / COLLIDER_CELL);
+  const x1 = Math.floor(box.maxX / COLLIDER_CELL);
+  const z0 = Math.floor(box.minZ / COLLIDER_CELL);
+  const z1 = Math.floor(box.maxZ / COLLIDER_CELL);
+  for (let gx = x0; gx <= x1; gx++) {
+    for (let gz = z0; gz <= z1; gz++) {
+      const key = `${gx},${gz}`;
+      let cell = colliderGrid.get(key);
+      if (!cell) { cell = []; colliderGrid.set(key, cell); }
+      cell.push(box);
+    }
+  }
+  return box;
+}
+
+const _queryScratch = [];
+let _queryStamp = 1;
+function queryColliders(x, z, pad = 2.0) {
+  _queryScratch.length = 0;
+  _queryStamp++;
+  const stamp = _queryStamp;
+  const x0 = Math.floor((x - pad) / COLLIDER_CELL);
+  const x1 = Math.floor((x + pad) / COLLIDER_CELL);
+  const z0 = Math.floor((z - pad) / COLLIDER_CELL);
+  const z1 = Math.floor((z + pad) / COLLIDER_CELL);
+  for (let gx = x0; gx <= x1; gx++) {
+    for (let gz = z0; gz <= z1; gz++) {
+      const cell = colliderGrid.get(`${gx},${gz}`);
+      if (!cell) continue;
+      for (let i = 0; i < cell.length; i++) {
+        const b = cell[i];
+        if (b._qs !== stamp) { b._qs = stamp; _queryScratch.push(b); }
+      }
+    }
+  }
+  for (let i = 0; i < dynamicVehicleColliders.length; i++) {
+    _queryScratch.push(dynamicVehicleColliders[i]);
+  }
+  return _queryScratch;
+}
+
+function clearColliderGrid() {
+  colliderGrid.clear();
+  dynamicVehicleColliders.length = 0;
+}
+
+// Estado de Relevo Real (Google Maps Elevation Heightfield — O(1) bilinear lookup)
+const terrainState = {
+  active: false,
+  sizeX: 1000,
+  sizeZ: 1000,
+  gridN: 17,
+  heights: null,
+  minElev: 0,
+  maxElev: 0,
+  meanElev: 0,
+  reliefScale: 1.0
+};
+
+let realWorldMeta = {
+  active: false,
+  placeName: '',
+  areaKm2: 1.0,
+  sideMeters: 1000,
+  centerLat: -23.5614,
+  centerLng: -46.6559,
+  minElev: 0,
+  maxElev: 0,
+  roadCount: 0,
+  buildingCount: 0,
+  pois: []
+};
+
+function getTerrainHeight(x, z) {
+  if (!terrainState.active || !terrainState.heights) return 0;
+  const n = terrainState.gridN;
+  const u = THREE.MathUtils.clamp((x / terrainState.sizeX) + 0.5, 0, 1) * (n - 1);
+  const v = THREE.MathUtils.clamp((z / terrainState.sizeZ) + 0.5, 0, 1) * (n - 1);
+  const ix = Math.min(n - 2, Math.floor(u));
+  const iz = Math.min(n - 2, Math.floor(v));
+  const fx = u - ix;
+  const fz = v - iz;
+  const h = terrainState.heights;
+  const h00 = h[iz * n + ix];
+  const h10 = h[iz * n + (ix + 1)];
+  const h01 = h[(iz + 1) * n + ix];
+  const h11 = h[(iz + 1) * n + (ix + 1)];
+  const hx0 = h00 + (h10 - h00) * fx;
+  const hx1 = h01 + (h11 - h01) * fx;
+  return hx0 + (hx1 - hx0) * fz;
+}
+
 let shootableMeshes = [];
 let camCollideMeshes = [];
 let interactiveDoors = [];
@@ -1935,8 +2266,9 @@ let zombies = [];
 let lootItems = [];     // { uid, kind, subId, name, qty, attachments, pos, mesh, taken }
 let vehicles = [];      // Carros dirigíveis com física, atropelamento e explosão!
 let spawnCandidates = [];
-let streamingHouses = []; // Streaming e LOD por casa da cidade
+let streamingHouses = []; // Streaming, Frustum Culling e 3-Tier LOD por construção
 let streamingTrees = [];  // Streaming e LOD de vegetação
+let streamingChunks = []; // Streaming de chunks de terreno e malha viária real
 let activeParticles = [];
 let activeTracers = [];
 let decalPool = [];
@@ -1971,7 +2303,7 @@ const Z_BELT_MAT  = new THREE.MeshStandardMaterial({ color: 0x1a1614, roughness:
 
 function buildZombieEntity(id, x, z, rng) {
   const root = new THREE.Group();
-  root.position.set(x, 0, z);
+  root.position.set(x, getTerrainHeight(x, z), z);
   const scaleVar = 0.95 + rng() * 0.11;
   root.scale.setScalar(scaleVar);
 
@@ -2149,8 +2481,9 @@ const DRIVABLE_CAR_STYLES = [
 
 function buildDrivableVehicle(id, x, z, rotY, styleIdx) {
   const st = DRIVABLE_CAR_STYLES[styleIdx % DRIVABLE_CAR_STYLES.length];
+  const baseY = getTerrainHeight(x, z);
   const root = new THREE.Group();
-  root.position.set(x, 0, z);
+  root.position.set(x, baseY, z);
   root.rotation.y = rotY;
   worldGroup.add(root);
 
@@ -2217,15 +2550,15 @@ function buildDrivableVehicle(id, x, z, rotY, styleIdx) {
 
   // Colisor dinâmico AABB atualizado conforme o carro anda!
   const carCol = {
-    minX: x - 1.5, maxX: x + 1.5, minY: 0, maxY: 1.52, minZ: z - 2.3, maxZ: z + 2.3,
+    minX: x - 1.5, maxX: x + 1.5, minY: baseY, maxY: baseY + 1.52, minZ: z - 2.3, maxZ: z + 2.3,
     surface: 'metal', active: true, isVehicleId: id
   };
-  colliders.push(carCol);
+  registerCollider(carCol);
 
   const veh = {
     id, label: st.label, root, bodyGroup, chassis, cabin, bodyMat, cabMat, hlMat, headSpot,
     wheels, collider: carCol,
-    pos: new THREE.Vector3(x, 0, z),
+    pos: new THREE.Vector3(x, baseY, z),
     yaw: rotY, speed: 0, steer: 0,
     maxSpeed: st.maxSpeed, accel: st.accel,
     hp: st.maxHp, maxHp: st.maxHp,
@@ -2245,33 +2578,34 @@ function updateVehicleCollider(v) {
   const hw = (2.02 * c + 4.65 * s) * 0.5;
   const hd = (2.02 * s + 4.65 * c) * 0.5;
   v.collider.minX = v.pos.x - hw; v.collider.maxX = v.pos.x + hw;
+  v.collider.minY = v.pos.y;      v.collider.maxY = v.pos.y + 1.52;
   v.collider.minZ = v.pos.z - hd; v.collider.maxZ = v.pos.z + hd;
 }
 
 /* Geração de Casas com Mesas e Loot DayZ no Interior! */
 const HOUSE_COLORS = [0xa8ad9c, 0xc7bfa8, 0x8d9aa1, 0xb8a384, 0x9c8e80, 0xb2b6ad];
 
-function localAABB(lx, ly, lz, lw, lh, ld, ox, oz, dir, surface = 'wood') {
+function localAABB(lx, ly, lz, lw, lh, ld, ox, oz, dir, surface = 'wood', baseY = 0) {
   let wx, wz, ww, wd;
   if (dir === 0) { wx = ox + lx; wz = oz + lz; ww = lw; wd = ld; }
   else if (dir === 1) { wx = ox + lz; wz = oz - lx; ww = ld; wd = lw; }
   else if (dir === 2) { wx = ox - lx; wz = oz - lz; ww = lw; wd = ld; }
   else { wx = ox - lz; wz = oz + lx; ww = ld; wd = lw; }
-  return { minX: wx - ww * 0.5, maxX: wx + ww * 0.5, minY: ly - lh * 0.5, maxY: ly + lh * 0.5, minZ: wz - wd * 0.5, maxZ: wz + wd * 0.5, surface, active: true };
+  return { minX: wx - ww * 0.5, maxX: wx + ww * 0.5, minY: baseY + ly - lh * 0.5, maxY: baseY + ly + lh * 0.5, minZ: wz - wd * 0.5, maxZ: wz + wd * 0.5, surface, active: true };
 }
 
-function localPointToWorld(lx, ly, lz, ox, oz, dir) {
-  if (dir === 0) return new THREE.Vector3(ox + lx, ly, oz + lz);
-  if (dir === 1) return new THREE.Vector3(ox + lz, ly, oz - lx);
-  if (dir === 2) return new THREE.Vector3(ox - lx, ly, oz - lz);
-  return new THREE.Vector3(ox - lz, ly, oz + lx);
+function localPointToWorld(lx, ly, lz, ox, oz, dir, baseY = 0) {
+  if (dir === 0) return new THREE.Vector3(ox + lx, baseY + ly, oz + lz);
+  if (dir === 1) return new THREE.Vector3(ox + lz, baseY + ly, oz - lx);
+  if (dir === 2) return new THREE.Vector3(ox - lx, baseY + ly, oz - lz);
+  return new THREE.Vector3(ox - lz, baseY + ly, oz + lx);
 }
 
 function addWorldBox(w, h, d, x, y, z, mat, surface = 'concrete', tile = 1.6, cast = true, camB = false) {
   const m = new THREE.Mesh(regD(createWorldBoxGeo(w, h, d, tile, Math.max(0, y - h * 0.5))), mat);
   m.position.set(x, y, z); m.castShadow = cast; m.receiveShadow = true; m.userData.surface = surface;
   worldGroup.add(m);
-  if (surface !== 'none') colliders.push({ minX: x - w * 0.5, maxX: x + w * 0.5, minY: y - h * 0.5, maxY: y + h * 0.5, minZ: z - d * 0.5, maxZ: z + d * 0.5, surface, active: true });
+  if (surface !== 'none') registerCollider({ minX: x - w * 0.5, maxX: x + w * 0.5, minY: y - h * 0.5, maxY: y + h * 0.5, minZ: z - d * 0.5, maxZ: z + d * 0.5, surface, active: true });
   shootableMeshes.push(m);
   if (camB) camCollideMeshes.push(m);
   return m;
@@ -2307,8 +2641,8 @@ function rollRandomLootEntry(rng, lootIdx, highTier = false) {
   }
 }
 
-function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = false) {
-  const g = new THREE.Group(); g.position.set(ox, 0, oz);
+function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = false, baseY = 0) {
+  const g = new THREE.Group(); g.position.set(ox, baseY, oz);
   g.rotation.y = [0, Math.PI * 0.5, Math.PI, -Math.PI * 0.5][dir];
   worldGroup.add(g);
 
@@ -2328,10 +2662,35 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
   const wH2 = 2.86;
   const topY = isTwoStory ? (f2Y + wH2) : (fY + wH1);
 
-  const worldBounds = localAABB(0, topY * 0.5, 0, W, topY, D, ox, oz, dir, 'wood');
+  const extColorHex = HOUSE_COLORS[(rng() * HOUSE_COLORS.length) | 0];
+  const extMat = rng() < 0.30
+    ? Mats.brick
+    : regD(new THREE.MeshStandardMaterial({ map: Tex.siding, color: extColorHex, roughness: 0.88 }));
+
+  // Proxy ultraleve de LOD (Tier 1 para distância média/longa — reduz >90% draw calls!)
+  const lodProxy = new THREE.Group();
+  lodProxy.position.set(ox, baseY, oz);
+  lodProxy.rotation.y = g.rotation.y;
+  const proxyBody = new THREE.Mesh(
+    regD(new THREE.BoxGeometry(W, topY + (terrainState.active ? 2.4 : 0), D)),
+    regD(new THREE.MeshLambertMaterial({ color: extMat === Mats.brick ? 0x7c483b : extColorHex }))
+  );
+  proxyBody.position.y = topY * 0.5 - (terrainState.active ? 1.2 : 0);
+  const proxyRoof = new THREE.Mesh(
+    regD(new THREE.BoxGeometry(W + 0.6, 1.35, D + 0.6)),
+    regD(new THREE.MeshLambertMaterial({ color: 0x3b3532 }))
+  );
+  proxyRoof.position.y = topY + 0.65;
+  lodProxy.add(proxyBody, proxyRoof);
+  lodProxy.visible = false;
+  worldGroup.add(lodProxy);
+
+  const worldBounds = localAABB(0, topY * 0.5, 0, W, topY, D, ox, oz, dir, 'wood', baseY);
   const houseObj = {
     group: g,
-    center: new THREE.Vector3(ox, 0, oz),
+    lodProxy,
+    center: new THREE.Vector3(ox, baseY + topY * 0.4, oz),
+    radius: Math.hypot(W, D) * 0.62,
     interiorGroup,
     detailGroup,
     upperStoryGroup,
@@ -2343,18 +2702,15 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
       maxX: worldBounds.maxX,
       minZ: worldBounds.minZ,
       maxZ: worldBounds.maxZ,
-      fY,
-      f2Y,
-      topY,
+      fY: baseY + fY,
+      f2Y: baseY + f2Y,
+      topY: baseY + topY,
       stories: isTwoStory ? 2 : 1
     }
   };
   streamingHouses.push(houseObj);
 
-  const extMat = rng() < 0.30
-    ? Mats.brick
-    : regD(new THREE.MeshStandardMaterial({ map: Tex.siding, color: HOUSE_COLORS[(rng() * HOUSE_COLORS.length) | 0], roughness: 0.88 }));
-  roofZones.push(localAABB(0, topY * 0.5, 0, W, topY, D, ox, oz, dir, 'wood'));
+  roofZones.push(localAABB(0, topY * 0.5, 0, W, topY, D, ox, oz, dir, 'wood', baseY));
 
   const piece = (lx, ly, lz, lw, lh, ld, mat, surf = 'wood', col = true, camB = true, target = 'ext') => {
     const m = new THREE.Mesh(regD(createWorldBoxGeo(lw, lh, ld, 1.5, Math.max(0, ly - lh * 0.5))), mat);
@@ -2375,21 +2731,24 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
       g.add(m);
       houseObj.exteriorMeshes.push(m);
     }
-    if (col) colliders.push(localAABB(lx, ly, lz, lw, lh, ld, ox, oz, dir, surf));
+    if (col) registerCollider(localAABB(lx, ly, lz, lw, lh, ld, ox, oz, dir, surf, baseY));
     shootableMeshes.push(m);
     if (camB) camCollideMeshes.push(m);
     return m;
   };
 
-  // Fundação e piso térreo
+  // Fundação (estende para baixo em terrenos inclinados do Google Maps para nunca flutuar!)
+  if (terrainState.active) {
+    piece(0, -1.5, 0, W + 0.24, 3.0, D + 0.24, Mats.concrete, 'concrete', false, false, 'ext');
+  }
   piece(0, fY * 0.5, 0, W + 0.16, fY, D + 0.16, Mats.concrete, 'wood', true, false, 'ext');
   piece(0, fY + 0.01, 0, W - 0.12, 0.02, D - 0.12, Mats.woodFloor, 'wood', false, false, 'int');
 
   // Em casas de 2 andares, porta fica deslocada para a direita (+X) para deixar a escada limpa no lado esquerdo (-X)
   const doorX = isTwoStory ? (W * 0.16) : ((rng() - 0.5) * (W * 0.28));
   const walkL = lotD * 0.5 - D * 0.5;
-  if (walkL > 0.4) piece(doorX, 0.02, D * 0.5 + walkL * 0.5, 1.4, 0.04, walkL, Mats.concrete, 'asphalt', false, false, 'ext');
-  spawnCandidates.push(localPointToWorld(doorX, 0.12, D * 0.5 + 2.8, ox, oz, dir));
+  if (walkL > 0.4 && !terrainState.active) piece(doorX, 0.02, D * 0.5 + walkL * 0.5, 1.4, 0.04, walkL, Mats.concrete, 'asphalt', false, false, 'ext');
+  spawnCandidates.push(localPointToWorld(doorX, 0.12, D * 0.5 + 2.8, ox, oz, dir, baseY));
 
   // Construtor de janela (suporta térreo e 2º andar + abertura superior ventilada nos 2 lados!)
   const makeWindow = (cx, cz, alongX, winW = 1.36, floorBase = fY, wallTop = fY + wH1, targetGrp = 'ext', openBandH = 0) => {
@@ -2408,8 +2767,8 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
     const pane = new THREE.Mesh(regD(new THREE.BoxGeometry(alongX ? winW - 0.06 : 0.03, winH - 0.06, alongX ? 0.03 : winW - 0.06)), Mats.glass);
     pane.position.set(cx, sTop + winH * 0.5, cz);
     (targetGrp === 'upper' ? upperStoryGroup : detailGroup).add(pane);
-    const gCol = localAABB(cx, sTop + winH * 0.5, cz, alongX ? winW : 0.14, winH, alongX ? 0.14 : winW, ox, oz, dir, 'glass');
-    colliders.push(gCol);
+    const gCol = localAABB(cx, sTop + winH * 0.5, cz, alongX ? winW : 0.14, winH, alongX ? 0.14 : winW, ox, oz, dir, 'glass', baseY);
+    registerCollider(gCol);
 
     const offsetDist = 0.78;
     const outY = floorBase > 1.0 ? floorBase : 0;
@@ -2418,10 +2777,10 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
 
     const gd = {
       id: interactiveWindows.length, mesh: pane, collider: gCol, broken: false,
-      floorY: floorBase,
-      worldCenter: localPointToWorld(cx, sTop + winH * 0.5, cz, ox, oz, dir),
-      pointA: localPointToWorld(outL[0], outL[1], outL[2], ox, oz, dir),
-      pointB: localPointToWorld(inL[0], inL[1], inL[2], ox, oz, dir)
+      floorY: baseY + floorBase,
+      worldCenter: localPointToWorld(cx, sTop + winH * 0.5, cz, ox, oz, dir, baseY),
+      pointA: localPointToWorld(outL[0], outL[1], outL[2], ox, oz, dir, baseY),
+      pointB: localPointToWorld(inL[0], inL[1], inL[2], ox, oz, dir, baseY)
     };
     if (rng() < (floorBase > 1.0 ? 0.35 : 0.18)) { gd.broken = true; pane.visible = false; gCol.active = false; }
     pane.userData.destructibleGlass = gd;
@@ -2447,18 +2806,19 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
     leaf.position.set((dW - 0.04) * 0.5, dH * 0.5, 0); leaf.castShadow = true; leaf.userData.surface = 'wood';
     hinge.add(leaf);
 
-    const closedAABB = localAABB(cx, floorBase + dH * 0.5, cz, dW, dH, 0.18, ox, oz, dir, 'wood');
-    const openAABB = localAABB(cx - dW * 0.5 + 0.08, floorBase + dH * 0.5, cz + inSign * dW * 0.5, 0.18, dH, dW, ox, oz, dir, 'wood');
+    const closedAABB = localAABB(cx, floorBase + dH * 0.5, cz, dW, dH, 0.18, ox, oz, dir, 'wood', baseY);
+    const openAABB = localAABB(cx - dW * 0.5 + 0.08, floorBase + dH * 0.5, cz + inSign * dW * 0.5, 0.18, dH, dW, ox, oz, dir, 'wood', baseY);
     const isOpen = rng() < 0.32;
     closedAABB.active = !isOpen; openAABB.active = isOpen;
-    colliders.push(closedAABB, openAABB);
+    registerCollider(closedAABB);
+    registerCollider(openAABB);
 
     const openAngle = -inSign * 1.48;
     hinge.rotation.y = isOpen ? openAngle : 0;
     const dObj = {
       id: interactiveDoors.length, hinge, leafMesh: leaf, isOpen,
       currentAngle: hinge.rotation.y, targetAngle: hinge.rotation.y, openAngle,
-      closedAABB, openAABB, worldCenter: localPointToWorld(cx, floorBase + dH * 0.5, cz, ox, oz, dir)
+      closedAABB, openAABB, worldCenter: localPointToWorld(cx, floorBase + dH * 0.5, cz, ox, oz, dir, baseY)
     };
     leaf.userData.interactiveDoor = dObj;
     shootableMeshes.push(leaf); interactiveDoors.push(dObj);
@@ -2642,7 +3002,7 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
   }
   for (const [lx, ly, lz] of localLootSpots) {
     if (rng() < 0.90) {
-      const wp = localPointToWorld(lx, ly, lz, ox, oz, dir);
+      const wp = localPointToWorld(lx, ly, lz, ox, oz, dir, baseY);
       const isUpperSpot = ly > 2.0;
       const entry = rollRandomLootEntry(rng, lootCounterObj.n++, highTier || isUpperSpot);
       spawnLootObject(entry.uid, entry.kind, entry.subId, entry.name, entry.qty, wp.x, wp.y, wp.z, entry.extra);
@@ -2650,39 +3010,406 @@ function buildHouse(ox, oz, dir, lotW, lotD, rng, lootCounterObj, highTier = fal
   }
 }
 
+/* ============================================================================
+   CONSTRUÇÕES PRÉ-FEITAS PARA MUNDO REAL (HOSPITAIS, PRÉDIOS, COMÉRCIOS, POSTOS)
+   Todas 100% exploráveis por dentro, com escadas, loot temático, fundação e LOD!
+   ============================================================================ */
+function buildHospital(ox, oz, dir, rng, lootCounterObj, baseY = 0) {
+  const g = new THREE.Group(); g.position.set(ox, baseY, oz);
+  g.rotation.y = [0, Math.PI * 0.5, Math.PI, -Math.PI * 0.5][dir];
+  worldGroup.add(g);
+
+  const interiorGroup = new THREE.Group();
+  const detailGroup = new THREE.Group();
+  const upperStoryGroup = new THREE.Group();
+  const roofGroup = new THREE.Group();
+  g.add(interiorGroup, detailGroup, upperStoryGroup, roofGroup);
+
+  const W = 14.5, D = 11.5, fY = 0.22, wH1 = 3.25, f2SlabH = 0.20, f2Y = fY + wH1 + f2SlabH * 0.5, wH2 = 3.10, topY = f2Y + wH2, wT = 0.24;
+  const hospWallMat = regD(new THREE.MeshStandardMaterial({ color: 0xe6e8e2, roughness: 0.78 }));
+  const hospTrimMat = regD(new THREE.MeshStandardMaterial({ color: 0x3b7a8c, roughness: 0.65 }));
+  const redCrossMat = regD(new THREE.MeshStandardMaterial({ color: 0xc92a2a, roughness: 0.45, emissive: 0x350808 }));
+  const tileFloorMat = regD(new THREE.MeshStandardMaterial({ color: 0xd0d6d4, roughness: 0.55 }));
+
+  const lodProxy = new THREE.Group();
+  lodProxy.position.set(ox, baseY, oz); lodProxy.rotation.y = g.rotation.y;
+  const pBody = new THREE.Mesh(regD(new THREE.BoxGeometry(W, topY + 2.8, D)), regD(new THREE.MeshLambertMaterial({ color: 0xdbe0dc })));
+  pBody.position.y = topY * 0.5 - 1.4;
+  const pCrossH = new THREE.Mesh(regD(new THREE.BoxGeometry(2.6, 0.75, D + 0.3)), redCrossMat);
+  pCrossH.position.y = topY - 1.2;
+  const pCrossV = new THREE.Mesh(regD(new THREE.BoxGeometry(0.75, 2.6, D + 0.3)), redCrossMat);
+  pCrossV.position.y = topY - 1.2;
+  lodProxy.add(pBody, pCrossH, pCrossV);
+  lodProxy.visible = false;
+  worldGroup.add(lodProxy);
+
+  const wb = localAABB(0, topY * 0.5, 0, W, topY, D, ox, oz, dir, 'concrete', baseY);
+  const houseObj = {
+    group: g, lodProxy, center: new THREE.Vector3(ox, baseY + topY * 0.5, oz), radius: 11.5,
+    interiorGroup, detailGroup, upperStoryGroup, roofGroup, exteriorMeshes: [], shadowsActive: true,
+    bounds: { minX: wb.minX, maxX: wb.maxX, minZ: wb.minZ, maxZ: wb.maxZ, fY: baseY + fY, f2Y: baseY + f2Y, topY: baseY + topY, stories: 2 }
+  };
+  streamingHouses.push(houseObj);
+  roofZones.push(wb);
+
+  const piece = (lx, ly, lz, lw, lh, ld, mat, surf = 'concrete', col = true, camB = true, tgt = 'ext') => {
+    const m = new THREE.Mesh(regD(createWorldBoxGeo(lw, lh, ld, 1.8, Math.max(0, ly - lh * 0.5))), mat);
+    m.position.set(lx, ly, lz); m.castShadow = camB; m.receiveShadow = true; m.userData.surface = surf;
+    if (tgt === 'int') interiorGroup.add(m);
+    else if (tgt === 'upper') { upperStoryGroup.add(m); houseObj.exteriorMeshes.push(m); }
+    else if (tgt === 'roof') { roofGroup.add(m); m.userData.isRoof = true; houseObj.exteriorMeshes.push(m); }
+    else { g.add(m); houseObj.exteriorMeshes.push(m); }
+    if (col) registerCollider(localAABB(lx, ly, lz, lw, lh, ld, ox, oz, dir, surf, baseY));
+    shootableMeshes.push(m);
+    if (camB) camCollideMeshes.push(m);
+    return m;
+  };
+
+  // Fundação profunda p/ relevo + pisos térreo
+  piece(0, -1.6, 0, W + 0.3, 3.2, D + 0.3, Mats.concrete, 'concrete', false, false, 'ext');
+  piece(0, fY * 0.5, 0, W + 0.2, fY, D + 0.2, Mats.concrete, 'concrete', true, false, 'ext');
+  piece(0, fY + 0.015, 0, W - 0.3, 0.03, D - 0.3, tileFloorMat, 'concrete', false, false, 'int');
+
+  // Fachada frontal com entrada larga aberta de emergência (2.4m) + marquise de ambulância + Cruz Vermelha!
+  piece(-W * 0.5 + 2.9, fY + wH1 * 0.5, D * 0.5 - wT * 0.5, 5.8, wH1, wT, hospWallMat);
+  piece( W * 0.5 - 2.9, fY + wH1 * 0.5, D * 0.5 - wT * 0.5, 5.8, wH1, wT, hospWallMat);
+  piece(0, fY + 2.85, D * 0.5 - wT * 0.5, 2.9, 0.80, wT, hospWallMat);
+  // Marquise frontal emergência
+  piece(0, fY + 3.05, D * 0.5 + 1.65, 5.6, 0.24, 3.3, hospTrimMat, 'metal', true, true, 'ext');
+  piece(-2.5, fY + 1.5, D * 0.5 + 3.1, 0.24, 3.0, 0.24, Mats.poleMetal, 'metal', true, true, 'ext');
+  piece( 2.5, fY + 1.5, D * 0.5 + 3.1, 0.24, 3.0, 0.24, Mats.poleMetal, 'metal', true, true, 'ext');
+  // Paredes traseira e laterais térreo
+  piece(-W * 0.5 + 3.0, fY + wH1 * 0.5, -D * 0.5 + wT * 0.5, 6.0, wH1, wT, hospWallMat);
+  piece( W * 0.5 - 3.0, fY + wH1 * 0.5, -D * 0.5 + wT * 0.5, 6.0, wH1, wT, hospWallMat);
+  piece(0, fY + 2.85, -D * 0.5 + wT * 0.5, 2.5, 0.80, wT, hospWallMat);
+  piece(-W * 0.5 + wT * 0.5, fY + wH1 * 0.5, 0, wT, wH1, D, hospWallMat);
+  piece( W * 0.5 - wT * 0.5, fY + wH1 * 0.5, 0, wT, wH1, D, hospWallMat);
+
+  // Escada interna larga para o 2º andar (lado esquerdo interno)
+  const stairW = 1.65, stairX = -W * 0.5 + wT + stairW * 0.5 + 0.12, stepCount = 14, stairZStart = 2.6, stepDepth = 0.34;
+  for (let si = 0; si < stepCount; si++) {
+    const stepTop = fY + ((si + 1) / stepCount) * (f2Y - fY);
+    piece(stairX, stepTop - 0.07, stairZStart - (si + 0.5) * stepDepth, stairW, 0.14, stepDepth + 0.04, Mats.concrete, 'concrete', true, false, 'int');
+  }
+
+  // Laje do 2º andar (com vão para a escada)
+  const wellMaxX = -W * 0.5 + wT + stairW + 0.25;
+  const rightW = (W * 0.5 - wT) - wellMaxX;
+  piece(wellMaxX + rightW * 0.5, f2Y - f2SlabH * 0.5, 0, rightW, f2SlabH, D - wT * 2, tileFloorMat, 'concrete', true, true, 'upper');
+  piece((-W * 0.5 + wT + wellMaxX) * 0.5, f2Y - f2SlabH * 0.5, -D * 0.5 + 1.6, wellMaxX - (-W * 0.5 + wT), f2SlabH, 3.0, tileFloorMat, 'concrete', true, true, 'upper');
+  piece((-W * 0.5 + wT + wellMaxX) * 0.5, f2Y - f2SlabH * 0.5,  D * 0.5 - 1.4, wellMaxX - (-W * 0.5 + wT), f2SlabH, 2.6, tileFloorMat, 'concrete', true, true, 'upper');
+
+  // Paredes do 2º andar com vãos largos de janela panorâmica (excelente posição defensiva!)
+  const bandBot = f2Y + 0.95, bandTop = f2Y + wH2 - 0.70;
+  piece(0, f2Y + 0.48,  D * 0.5 - wT * 0.5, W, 0.96, wT, hospWallMat, 'concrete', true, true, 'upper');
+  piece(0, f2Y + wH2 - 0.35, D * 0.5 - wT * 0.5, W, 0.70, wT, hospWallMat, 'concrete', true, true, 'upper');
+  piece(0, f2Y + 0.48, -D * 0.5 + wT * 0.5, W, 0.96, wT, hospWallMat, 'concrete', true, true, 'upper');
+  piece(0, f2Y + wH2 - 0.35, -D * 0.5 + wT * 0.5, W, 0.70, wT, hospWallMat, 'concrete', true, true, 'upper');
+  piece(-W * 0.5 + wT * 0.5, f2Y + 0.48, 0, wT, 0.96, D, hospWallMat, 'concrete', true, true, 'upper');
+  piece(-W * 0.5 + wT * 0.5, f2Y + wH2 - 0.35, 0, wT, 0.70, D, hospWallMat, 'concrete', true, true, 'upper');
+  piece( W * 0.5 - wT * 0.5, f2Y + 0.48, 0, wT, 0.96, D, hospWallMat, 'concrete', true, true, 'upper');
+  piece( W * 0.5 - wT * 0.5, f2Y + wH2 - 0.35, 0, wT, 0.70, D, hospWallMat, 'concrete', true, true, 'upper');
+  // Pilares de canto do 2º andar
+  [[-W * 0.5 + 0.25, D * 0.5 - 0.25], [W * 0.5 - 0.25, D * 0.5 - 0.25], [-W * 0.5 + 0.25, -D * 0.5 + 0.25], [W * 0.5 - 0.25, -D * 0.5 + 0.25], [0, D * 0.5 - 0.25], [0, -D * 0.5 + 0.25]].forEach(([px, pz]) => {
+    piece(px, (bandBot + bandTop) * 0.5, pz, 0.42, bandTop - bandBot, 0.42, hospTrimMat, 'concrete', true, true, 'upper');
+  });
+
+  // Cruz Vermelha gigante na fachada frontal & teto plano com platibanda + heliponto visual
+  piece(0, f2Y + wH2 - 0.15, D * 0.5 + 0.08, 2.5, 0.65, 0.16, redCrossMat, 'metal', false, false, 'upper');
+  piece(0, f2Y + wH2 - 0.15, D * 0.5 + 0.08, 0.65, 2.5, 0.16, redCrossMat, 'metal', false, false, 'upper');
+  piece(0, topY + 0.12, 0, W + 0.4, 0.24, D + 0.4, Mats.concrete, 'concrete', false, true, 'roof');
+  piece(0, topY + 0.46,  D * 0.5 + 0.1, W + 0.4, 0.52, 0.22, hospTrimMat, 'concrete', false, false, 'roof');
+  piece(0, topY + 0.46, -D * 0.5 - 0.1, W + 0.4, 0.52, 0.22, hospTrimMat, 'concrete', false, false, 'roof');
+
+  // Balcão de recepção e macas no interior
+  piece(2.2, fY + 0.48, 1.4, 3.6, 0.96, 0.75, hospTrimMat, 'wood', true, false, 'int');
+  piece(3.4, f2Y + 0.42, -2.0, 2.1, 0.84, 0.95, hospWallMat, 'metal', true, false, 'upper');
+  piece(3.4, f2Y + 0.42,  1.8, 2.1, 0.84, 0.95, hospWallMat, 'metal', true, false, 'upper');
+
+  spawnCandidates.push(localPointToWorld(0, 0.18, D * 0.5 + 4.4, ox, oz, dir, baseY));
+
+  // Loot médico garantido + armas táticas no 2º andar!
+  const spots = [
+    [2.2, fY + 0.98, 1.4, 'med'], [0.0, fY + 0.04, -2.5, 'med'], [4.2, fY + 0.04, -2.0, 'med'],
+    [3.4, f2Y + 0.86, -2.0, 'med'], [3.4, f2Y + 0.86, 1.8, 'high'], [0.5, f2Y + 0.04, 0.2, 'high']
+  ];
+  for (const [lx, ly, lz, typ] of spots) {
+    const wp = localPointToWorld(lx, ly, lz, ox, oz, dir, baseY);
+    if (typ === 'med') {
+      spawnLootObject(`loot-${lootCounterObj.n++}`, 'medkit', 'medkit', 'Kit Médico Hospitalar (+50 HP)', 1, wp.x, wp.y, wp.z);
+    } else {
+      const entry = rollRandomLootEntry(rng, lootCounterObj.n++, true);
+      spawnLootObject(entry.uid, entry.kind, entry.subId, entry.name, entry.qty, wp.x, wp.y, wp.z, entry.extra);
+    }
+  }
+}
+
+function buildUrbanBuilding(ox, oz, dir, rng, lootCounterObj, baseY = 0, stories = 3) {
+  const g = new THREE.Group(); g.position.set(ox, baseY, oz);
+  g.rotation.y = [0, Math.PI * 0.5, Math.PI, -Math.PI * 0.5][dir];
+  worldGroup.add(g);
+
+  const interiorGroup = new THREE.Group();
+  const detailGroup = new THREE.Group();
+  const upperStoryGroup = new THREE.Group();
+  const roofGroup = new THREE.Group();
+  g.add(interiorGroup, detailGroup, upperStoryGroup, roofGroup);
+
+  const stCount = Math.max(2, Math.min(4, stories));
+  const W = 12.2 + rng() * 3.0, D = 10.6 + rng() * 2.4;
+  const fY = 0.20, storyH = 3.10, slabH = 0.20, wT = 0.24;
+  const f2Y = fY + storyH + slabH * 0.5;
+  const topY = fY + stCount * (storyH + slabH * 0.5);
+
+  const palette = [0x888d92, 0x9b8e7e, 0x6f7a84, 0xa29688, 0x7a7672];
+  const colHex = palette[(rng() * palette.length) | 0];
+  const wallMat = regD(new THREE.MeshStandardMaterial({ map: Tex.concrete, color: colHex, roughness: 0.85 }));
+  const accentMat = regD(new THREE.MeshStandardMaterial({ color: 0x343a40, roughness: 0.72 }));
+
+  const lodProxy = new THREE.Group();
+  lodProxy.position.set(ox, baseY, oz); lodProxy.rotation.y = g.rotation.y;
+  const pBody = new THREE.Mesh(regD(new THREE.BoxGeometry(W, topY + 3.0, D)), regD(new THREE.MeshLambertMaterial({ color: colHex })));
+  pBody.position.y = topY * 0.5 - 1.5;
+  const pCap = new THREE.Mesh(regD(new THREE.BoxGeometry(W + 0.35, 0.55, D + 0.35)), regD(new THREE.MeshLambertMaterial({ color: 0x2f3438 })));
+  pCap.position.y = topY + 0.25;
+  lodProxy.add(pBody, pCap);
+  lodProxy.visible = false;
+  worldGroup.add(lodProxy);
+
+  const wb = localAABB(0, topY * 0.5, 0, W, topY, D, ox, oz, dir, 'concrete', baseY);
+  const houseObj = {
+    group: g, lodProxy, center: new THREE.Vector3(ox, baseY + topY * 0.5, oz), radius: Math.hypot(W, D) * 0.65,
+    interiorGroup, detailGroup, upperStoryGroup, roofGroup, exteriorMeshes: [], shadowsActive: true,
+    bounds: { minX: wb.minX, maxX: wb.maxX, minZ: wb.minZ, maxZ: wb.maxZ, fY: baseY + fY, f2Y: baseY + f2Y, topY: baseY + topY, stories: 2 }
+  };
+  streamingHouses.push(houseObj);
+  roofZones.push(wb);
+
+  const piece = (lx, ly, lz, lw, lh, ld, mat, surf = 'concrete', col = true, camB = true, tgt = 'ext') => {
+    const m = new THREE.Mesh(regD(createWorldBoxGeo(lw, lh, ld, 2.0, Math.max(0, ly - lh * 0.5))), mat);
+    m.position.set(lx, ly, lz); m.castShadow = camB; m.receiveShadow = true; m.userData.surface = surf;
+    if (tgt === 'int') interiorGroup.add(m);
+    else if (tgt === 'upper') { upperStoryGroup.add(m); houseObj.exteriorMeshes.push(m); }
+    else if (tgt === 'roof') { roofGroup.add(m); m.userData.isRoof = true; houseObj.exteriorMeshes.push(m); }
+    else { g.add(m); houseObj.exteriorMeshes.push(m); }
+    if (col) registerCollider(localAABB(lx, ly, lz, lw, lh, ld, ox, oz, dir, surf, baseY));
+    shootableMeshes.push(m);
+    if (camB) camCollideMeshes.push(m);
+    return m;
+  };
+
+  piece(0, -1.8, 0, W + 0.3, 3.6, D + 0.3, Mats.concrete, 'concrete', false, false, 'ext');
+  piece(0, fY * 0.5, 0, W + 0.2, fY, D + 0.2, Mats.concrete, 'concrete', true, false, 'ext');
+
+  const stairW = 1.55, stairX = -W * 0.5 + wT + stairW * 0.5 + 0.10, wellMaxX = -W * 0.5 + wT + stairW + 0.22;
+
+  for (let s = 0; s < stCount; s++) {
+    const flY = fY + s * (storyH + slabH * 0.5);
+    const tgt = s === 0 ? 'ext' : 'upper';
+    if (s > 0) {
+      // Laje com vão da escada
+      const rightW = (W * 0.5 - wT) - wellMaxX;
+      piece(wellMaxX + rightW * 0.5, flY - slabH * 0.5, 0, rightW, slabH, D - wT * 2, Mats.concrete, 'concrete', true, true, 'upper');
+      piece((-W * 0.5 + wT + wellMaxX) * 0.5, flY - slabH * 0.5, -D * 0.5 + 1.5, wellMaxX - (-W * 0.5 + wT), slabH, 2.8, Mats.concrete, 'concrete', true, true, 'upper');
+      piece((-W * 0.5 + wT + wellMaxX) * 0.5, flY - slabH * 0.5,  D * 0.5 - 1.5, wellMaxX - (-W * 0.5 + wT), slabH, 2.8, Mats.concrete, 'concrete', true, true, 'upper');
+    }
+
+    if (s === 0) {
+      // Térreo com entrada frontal e traseira abertas
+      const sideSegW = (W - 2.4) * 0.5;
+      piece(-W * 0.5 + sideSegW * 0.5, flY + storyH * 0.5,  D * 0.5 - wT * 0.5, sideSegW, storyH, wT, wallMat, 'concrete', true, true, 'ext');
+      piece( W * 0.5 - sideSegW * 0.5, flY + storyH * 0.5,  D * 0.5 - wT * 0.5, sideSegW, storyH, wT, wallMat, 'concrete', true, true, 'ext');
+      piece(0, flY + storyH - 0.42, D * 0.5 - wT * 0.5, 2.4, 0.84, wT, accentMat, 'concrete', true, true, 'ext');
+      piece(0, flY + storyH * 0.5, -D * 0.5 + wT * 0.5, W, storyH, wT, wallMat, 'concrete', true, true, 'ext');
+      piece(-W * 0.5 + wT * 0.5, flY + storyH * 0.5, 0, wT, storyH, D, wallMat, 'concrete', true, true, 'ext');
+      piece( W * 0.5 - wT * 0.5, flY + storyH * 0.5, 0, wT, storyH, D, wallMat, 'concrete', true, true, 'ext');
+    } else {
+      // Andares superiores com janelões abertos panorâmicos para combate/sniper!
+      piece(0, flY + 0.48,  D * 0.5 - wT * 0.5, W, 0.96, wT, wallMat, 'concrete', true, true, 'upper');
+      piece(0, flY + storyH - 0.34, D * 0.5 - wT * 0.5, W, 0.68, wT, accentMat, 'concrete', true, true, 'upper');
+      piece(0, flY + 0.48, -D * 0.5 + wT * 0.5, W, 0.96, wT, wallMat, 'concrete', true, true, 'upper');
+      piece(0, flY + storyH - 0.34, -D * 0.5 + wT * 0.5, W, 0.68, wT, accentMat, 'concrete', true, true, 'upper');
+      piece(-W * 0.5 + wT * 0.5, flY + 0.48, 0, wT, 0.96, D, wallMat, 'concrete', true, true, 'upper');
+      piece(-W * 0.5 + wT * 0.5, flY + storyH - 0.34, 0, wT, 0.68, D, accentMat, 'concrete', true, true, 'upper');
+      piece( W * 0.5 - wT * 0.5, flY + 0.48, 0, wT, 0.96, D, wallMat, 'concrete', true, true, 'upper');
+      piece( W * 0.5 - wT * 0.5, flY + storyH - 0.34, 0, wT, 0.68, D, accentMat, 'concrete', true, true, 'upper');
+      [[-W * 0.5 + 0.25, D * 0.5 - 0.25], [W * 0.5 - 0.25, D * 0.5 - 0.25], [-W * 0.5 + 0.25, -D * 0.5 + 0.25], [W * 0.5 - 0.25, -D * 0.5 + 0.25]].forEach(([px, pz]) => {
+        piece(px, flY + storyH * 0.5, pz, 0.46, storyH, 0.46, accentMat, 'concrete', true, true, 'upper');
+      });
+    }
+
+    // Escada para o andar acima (até o penúltimo andar)
+    if (s < stCount - 1) {
+      const nextFlY = fY + (s + 1) * (storyH + slabH * 0.5);
+      const steps = 13, zStart = 2.2, sDepth = 0.32;
+      for (let si = 0; si < steps; si++) {
+        const sTop = flY + ((si + 1) / steps) * (nextFlY - flY);
+        piece(stairX, sTop - 0.07, zStart - (si + 0.5) * sDepth, stairW, 0.14, sDepth + 0.04, Mats.concrete, 'concrete', true, false, s === 0 ? 'int' : 'upper');
+      }
+    }
+
+    // Loot em cada andar (andares altos = loot de alto nível!)
+    const wpLoot = localPointToWorld(2.2 + (rng() - 0.5) * 2.5, flY + 0.05, (rng() - 0.5) * 3.5, ox, oz, dir, baseY);
+    const entry = rollRandomLootEntry(rng, lootCounterObj.n++, s >= 1);
+    spawnLootObject(entry.uid, entry.kind, entry.subId, entry.name, entry.qty, wpLoot.x, wpLoot.y, wpLoot.z, entry.extra);
+  }
+
+  // Cobertura / Teto ocultável
+  piece(0, topY + 0.12, 0, W + 0.3, 0.24, D + 0.3, Mats.concrete, 'concrete', false, true, 'roof');
+  piece(0, topY + 0.48,  D * 0.5, W + 0.3, 0.52, 0.22, accentMat, 'concrete', false, false, 'roof');
+  piece(0, topY + 0.48, -D * 0.5, W + 0.3, 0.52, 0.22, accentMat, 'concrete', false, false, 'roof');
+  spawnCandidates.push(localPointToWorld(0, 0.18, D * 0.5 + 3.4, ox, oz, dir, baseY));
+}
+
+function buildCommercialBuilding(ox, oz, dir, rng, lootCounterObj, baseY = 0, kind = 'shop') {
+  const g = new THREE.Group(); g.position.set(ox, baseY, oz);
+  g.rotation.y = [0, Math.PI * 0.5, Math.PI, -Math.PI * 0.5][dir];
+  worldGroup.add(g);
+
+  const interiorGroup = new THREE.Group();
+  const detailGroup = new THREE.Group();
+  const upperStoryGroup = new THREE.Group();
+  const roofGroup = new THREE.Group();
+  g.add(interiorGroup, detailGroup, upperStoryGroup, roofGroup);
+
+  const W = kind === 'police' ? 12.6 : 10.6;
+  const D = kind === 'gas' ? 8.6 : 9.4;
+  const fY = 0.18, wH = 3.35, topY = fY + wH, wT = 0.22;
+
+  const theme = kind === 'police'
+    ? { wall: 0x7c8692, awning: 0x224675, highTier: true }
+    : (kind === 'gas'
+      ? { wall: 0xd6d2c6, awning: 0xc24a28, highTier: true }
+      : { wall: 0xc8beaa, awning: rng() < 0.5 ? 0x3b6e4c : 0xb56d2c, highTier: false });
+
+  const wallMat = regD(new THREE.MeshStandardMaterial({ map: Tex.concrete, color: theme.wall, roughness: 0.84 }));
+  const awningMat = regD(new THREE.MeshStandardMaterial({ color: theme.awning, roughness: 0.62 }));
+
+  const lodProxy = new THREE.Group();
+  lodProxy.position.set(ox, baseY, oz); lodProxy.rotation.y = g.rotation.y;
+  const pBody = new THREE.Mesh(regD(new THREE.BoxGeometry(W, topY + 2.4, D)), regD(new THREE.MeshLambertMaterial({ color: theme.wall })));
+  pBody.position.y = topY * 0.5 - 1.2;
+  const pBand = new THREE.Mesh(regD(new THREE.BoxGeometry(W + 0.5, 0.72, D + 0.5)), awningMat);
+  pBand.position.y = topY + 0.25;
+  lodProxy.add(pBody, pBand);
+  lodProxy.visible = false;
+  worldGroup.add(lodProxy);
+
+  const wb = localAABB(0, topY * 0.5, 0, W, topY, D, ox, oz, dir, 'concrete', baseY);
+  const houseObj = {
+    group: g, lodProxy, center: new THREE.Vector3(ox, baseY + topY * 0.5, oz), radius: Math.hypot(W, D) * 0.65,
+    interiorGroup, detailGroup, upperStoryGroup, roofGroup, exteriorMeshes: [], shadowsActive: true,
+    bounds: { minX: wb.minX, maxX: wb.maxX, minZ: wb.minZ, maxZ: wb.maxZ, fY: baseY + fY, f2Y: baseY + topY, topY: baseY + topY, stories: 1 }
+  };
+  streamingHouses.push(houseObj);
+  roofZones.push(wb);
+
+  const piece = (lx, ly, lz, lw, lh, ld, mat, surf = 'concrete', col = true, camB = true, tgt = 'ext') => {
+    const m = new THREE.Mesh(regD(createWorldBoxGeo(lw, lh, ld, 1.6, Math.max(0, ly - lh * 0.5))), mat);
+    m.position.set(lx, ly, lz); m.castShadow = camB; m.receiveShadow = true; m.userData.surface = surf;
+    if (tgt === 'int') interiorGroup.add(m);
+    else if (tgt === 'roof') { roofGroup.add(m); m.userData.isRoof = true; houseObj.exteriorMeshes.push(m); }
+    else { g.add(m); houseObj.exteriorMeshes.push(m); }
+    if (col) registerCollider(localAABB(lx, ly, lz, lw, lh, ld, ox, oz, dir, surf, baseY));
+    shootableMeshes.push(m);
+    if (camB) camCollideMeshes.push(m);
+    return m;
+  };
+
+  piece(0, -1.6, 0, W + 0.3, 3.2, D + 0.3, Mats.concrete, 'concrete', false, false, 'ext');
+  piece(0, fY * 0.5, 0, W + 0.2, fY, D + 0.2, Mats.concrete, 'concrete', true, false, 'ext');
+
+  // Frente aberta de loja com vitrines baixas + toldo colorido
+  const sideW = (W - 2.2) * 0.5;
+  piece(-W * 0.5 + sideW * 0.5, fY + 0.45, D * 0.5 - wT * 0.5, sideW, 0.90, wT, wallMat);
+  piece( W * 0.5 - sideW * 0.5, fY + 0.45, D * 0.5 - wT * 0.5, sideW, 0.90, wT, wallMat);
+  piece(0, fY + wH - 0.40, D * 0.5 - wT * 0.5, W, 0.80, wT, wallMat);
+  piece(-W * 0.5 + 0.22, fY + wH * 0.5, D * 0.5 - 0.22, 0.44, wH, 0.44, wallMat);
+  piece( W * 0.5 - 0.22, fY + wH * 0.5, D * 0.5 - 0.22, 0.44, wH, 0.44, wallMat);
+  piece(0, fY + wH - 0.20, D * 0.5 + 0.78, W + 0.4, 0.42, 1.55, awningMat, 'metal', false, true, 'ext');
+
+  // Paredes fundos e laterais
+  piece(0, fY + wH * 0.5, -D * 0.5 + wT * 0.5, W, wH, wT, wallMat);
+  piece(-W * 0.5 + wT * 0.5, fY + wH * 0.5, 0, wT, wH, D, wallMat);
+  piece( W * 0.5 - wT * 0.5, fY + wH * 0.5, 0, wT, wH, D, wallMat);
+
+  // Cobertura de bombas se for Posto de Gasolina!
+  if (kind === 'gas') {
+    piece(0, fY + 4.0, D * 0.5 + 4.4, W + 1.4, 0.35, 5.2, awningMat, 'metal', false, true, 'ext');
+    piece(-W * 0.36, fY + 2.0, D * 0.5 + 4.4, 0.32, 4.0, 0.32, Mats.poleMetal, 'metal', true, true, 'ext');
+    piece( W * 0.36, fY + 2.0, D * 0.5 + 4.4, 0.32, 4.0, 0.32, Mats.poleMetal, 'metal', true, true, 'ext');
+    piece(-1.6, fY + 0.78, D * 0.5 + 4.4, 0.9, 1.56, 0.7, Mats.brick, 'metal', true, false, 'ext');
+    piece( 1.6, fY + 0.78, D * 0.5 + 4.4, 0.9, 1.56, 0.7, Mats.brick, 'metal', true, false, 'ext');
+  }
+
+  // Teto ocultável + balcão interno
+  piece(0, topY + 0.10, 0, W + 0.3, 0.20, D + 0.3, Mats.roof, 'concrete', false, true, 'roof');
+  piece(0, fY + 0.46, -D * 0.22, W * 0.58, 0.92, 0.72, Mats.darkWood, 'wood', true, false, 'int');
+
+  spawnCandidates.push(localPointToWorld(0, 0.18, D * 0.5 + (kind === 'gas' ? 7.8 : 3.2), ox, oz, dir, baseY));
+
+  const lootSpots = [[0, fY + 0.94, -D * 0.22], [-2.4, fY + 0.04, 1.2], [2.4, fY + 0.04, 1.2], [0, fY + 0.04, -D * 0.38]];
+  for (const [lx, ly, lz] of lootSpots) {
+    if (rng() < 0.85) {
+      const wp = localPointToWorld(lx, ly, lz, ox, oz, dir, baseY);
+      const entry = rollRandomLootEntry(rng, lootCounterObj.n++, theme.highTier);
+      spawnLootObject(entry.uid, entry.kind, entry.subId, entry.name, entry.qty, wp.x, wp.y, wp.z, entry.extra);
+    }
+  }
+}
+
+const SHARED_TREE_GEO = {
+  trunk: new THREE.CylinderGeometry(0.18, 0.26, 2.4, 6),
+  pine0: new THREE.ConeGeometry(1.75, 2.4, 6),
+  pine1: new THREE.ConeGeometry(1.37, 2.4, 6),
+  pine2: new THREE.ConeGeometry(0.99, 2.4, 6),
+  oak:   new THREE.DodecahedronGeometry(1.85, 0)
+};
+
 function buildTree(x, z, rng) {
-  const g = new THREE.Group(); g.position.set(x, 0, z); g.scale.setScalar(0.85 + rng() * 0.6); worldGroup.add(g);
+  const baseY = getTerrainHeight(x, z);
+  const g = new THREE.Group(); g.position.set(x, baseY, z); g.scale.setScalar(0.85 + rng() * 0.6); worldGroup.add(g);
   const meshes = [];
-  const tr = new THREE.Mesh(regD(new THREE.CylinderGeometry(0.18, 0.26, 2.4, 7)), Mats.trunk); tr.position.y = 1.2; tr.castShadow = true; g.add(tr); meshes.push(tr);
+  const tr = new THREE.Mesh(SHARED_TREE_GEO.trunk, Mats.trunk); tr.position.y = 1.2; tr.castShadow = true; g.add(tr); meshes.push(tr);
   if (rng() < 0.6) {
+    const pGeos = [SHARED_TREE_GEO.pine0, SHARED_TREE_GEO.pine1, SHARED_TREE_GEO.pine2];
     for (let i = 0; i < 3; i++) {
-      const cn = new THREE.Mesh(regD(new THREE.ConeGeometry(1.75 - i * 0.38, 2.4, 7)), Mats.pine);
+      const cn = new THREE.Mesh(pGeos[i], Mats.pine);
       cn.position.y = 2.7 + i * 1.25; cn.castShadow = true; g.add(cn); meshes.push(cn);
     }
   } else {
-    const cr = new THREE.Mesh(regD(new THREE.DodecahedronGeometry(1.85, 0)), Mats.oak);
+    const cr = new THREE.Mesh(SHARED_TREE_GEO.oak, Mats.oak);
     cr.position.y = 3.5; cr.castShadow = true; g.add(cr); meshes.push(cr);
   }
-  colliders.push({ minX: x - 0.3, maxX: x + 0.3, minY: 0, maxY: 3.0, minZ: z - 0.3, maxZ: z + 0.3, surface: 'wood', active: true });
-  streamingTrees.push({ group: g, pos: new THREE.Vector3(x, 0, z), meshes, shadowActive: true });
+  registerCollider({ minX: x - 0.3, maxX: x + 0.3, minY: baseY, maxY: baseY + 3.0, minZ: z - 0.3, maxZ: z + 0.3, surface: 'wood', active: true });
+  streamingTrees.push({ group: g, pos: new THREE.Vector3(x, baseY + 2.2, z), meshes, shadowActive: true });
 }
 
 /* ============================================================================
-   SISTEMA DE STREAMING DE CENÁRIO, LOD & DRAW DISTANCE
-   (Elimina lag ao olhar para a cidade culling objetos distantes e sombras)
+   SISTEMA DE STREAMING DE CENÁRIO, FRUSTUM CULLING, 3-TIER LOD & DRAW DISTANCE
+   (Otimizado para mapas reais de 0.5 km² a 4 km² rodando a 60 FPS!)
    ============================================================================ */
 let streamingTimer = 0;
+const _cullFrustum = new THREE.Frustum();
+const _cullProjMat = new THREE.Matrix4();
+const _cullSphere = new THREE.Sphere();
+
 function updateSceneStreamingAndLOD(dt) {
   streamingTimer -= dt;
   if (streamingTimer > 0) return;
-  streamingTimer = 0.08; // 12 verificações por segundo
+  streamingTimer = 0.065; // ~15 atualizações/s
+
+  camera.updateMatrixWorld();
+  _cullProjMat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  _cullFrustum.setFromProjectionMatrix(_cullProjMat);
 
   const px = player.pos.x, pz = player.pos.z;
-  const drawDistSq = currentDrawDistance * currentDrawDistance;
-  const nearDistSq = 44 * 44; // Interior visível a até 44m
-  const detailDistSq = 62 * 62;
+  const drawDist = currentDrawDistance;
+  const drawDistSq = drawDist * drawDist;
+  const nearDistSq = Math.min(54, drawDist * 0.55) ** 2;   // Tier 0: Detalhe completo + interiores + sombras
+  const midFullDistSq = Math.min(76, drawDist * 0.72) ** 2; // Tier 1: Troca para proxy LOD ultraleve acima disso!
 
-  // 1. Streaming & LOD de Casas da Cidade
+  // 1. Streaming, Frustum Culling & 3-Tier LOD de Construções (Casas, Prédios, Hospitais, Comércios)
   for (let i = 0; i < streamingHouses.length; i++) {
     const h = streamingHouses[i];
     const dx = h.center.x - px, dz = h.center.z - pz;
@@ -2690,13 +3417,33 @@ function updateSceneStreamingAndLOD(dt) {
 
     if (dSq > drawDistSq) {
       if (h.group.visible) h.group.visible = false;
+      if (h.lodProxy && h.lodProxy.visible) h.lodProxy.visible = false;
       continue;
     }
+
+    // Frustum Culling (mantém sempre visível se estiver muito próximo <24m para sombras/reflexos)
+    if (dSq > 576) {
+      _cullSphere.set(h.center, h.radius || 11);
+      if (!_cullFrustum.intersectsSphere(_cullSphere)) {
+        if (h.group.visible) h.group.visible = false;
+        if (h.lodProxy && h.lodProxy.visible) h.lodProxy.visible = false;
+        continue;
+      }
+    }
+
+    // Tier 1 (Distância média/longa): exibe apenas o proxy LOD de 2 malhas (economia maciça de GPU!)
+    if (h.lodProxy && dSq > midFullDistSq) {
+      if (h.group.visible) h.group.visible = false;
+      if (!h.lodProxy.visible) h.lodProxy.visible = true;
+      continue;
+    }
+
+    if (h.lodProxy && h.lodProxy.visible) h.lodProxy.visible = false;
     if (!h.group.visible) h.group.visible = true;
 
     if (dSq > nearDistSq) {
       if (h.interiorGroup.visible) h.interiorGroup.visible = false;
-      if (dSq > detailDistSq && h.detailGroup.visible) h.detailGroup.visible = false;
+      if (h.detailGroup.visible) h.detailGroup.visible = false;
       if (h.shadowsActive) {
         for (let m = 0; m < h.exteriorMeshes.length; m++) h.exteriorMeshes[m].castShadow = false;
         h.shadowsActive = false;
@@ -2711,30 +3458,57 @@ function updateSceneStreamingAndLOD(dt) {
     }
   }
 
-  // 2. Streaming de Árvores e Vegetação
+  // 2. Streaming de Chunks de Terreno e Estradas Reais (Frustum + Distância)
+  const chunkMaxDistSq = (drawDist + 145) * (drawDist + 145);
+  for (let i = 0; i < streamingChunks.length; i++) {
+    const ch = streamingChunks[i];
+    const dx = ch.center.x - px, dz = ch.center.z - pz;
+    const dSq = dx * dx + dz * dz;
+    let vis = dSq <= chunkMaxDistSq;
+    if (vis && dSq > ch.radius * ch.radius * 1.4) {
+      _cullSphere.set(ch.center, ch.radius);
+      vis = _cullFrustum.intersectsSphere(_cullSphere);
+    }
+    if (ch.mesh.visible !== vis) ch.mesh.visible = vis;
+  }
+
+  // 3. Streaming & Frustum Culling de Árvores e Vegetação
   for (let i = 0; i < streamingTrees.length; i++) {
     const tr = streamingTrees[i];
     const dx = tr.pos.x - px, dz = tr.pos.z - pz;
     const dSq = dx * dx + dz * dz;
     if (dSq > drawDistSq * 1.05) {
       if (tr.group.visible) tr.group.visible = false;
-    } else {
-      if (!tr.group.visible) tr.group.visible = true;
-      const sh = dSq < (42 * 42);
-      if (tr.shadowActive !== sh) {
-        tr.shadowActive = sh;
-        for (let m = 0; m < tr.meshes.length; m++) tr.meshes[m].castShadow = sh;
+      continue;
+    }
+    if (dSq > 400) {
+      _cullSphere.set(tr.pos, 4.2);
+      if (!_cullFrustum.intersectsSphere(_cullSphere)) {
+        if (tr.group.visible) tr.group.visible = false;
+        continue;
       }
+    }
+    if (!tr.group.visible) tr.group.visible = true;
+    const sh = dSq < (42 * 42);
+    if (tr.shadowActive !== sh) {
+      tr.shadowActive = sh;
+      for (let m = 0; m < tr.meshes.length; m++) tr.meshes[m].castShadow = sh;
     }
   }
 
-  // 3. Distance Culling de Loot no Chão
+  // 4. Distance Culling de Loot no Chão e Zumbis Distantes
   for (let i = 0; i < lootItems.length; i++) {
     const it = lootItems[i];
     if (it.taken) continue;
     const dx = it.pos.x - px, dz = it.pos.z - pz;
-    const vis = (dx * dx + dz * dz) < (48 * 48);
+    const vis = (dx * dx + dz * dz) < (52 * 52);
     if (it.mesh.visible !== vis) it.mesh.visible = vis;
+  }
+  for (let i = 0; i < zombies.length; i++) {
+    const z = zombies[i];
+    const dx = z.root.position.x - px, dz = z.root.position.z - pz;
+    const vis = (dx * dx + dz * dz) < drawDistSq;
+    if (z.root.visible !== vis) z.root.visible = vis;
   }
 }
 
@@ -2744,10 +3518,13 @@ function clearMap() {
   for (const p of activeParticles) { scene.remove(p.mesh); if (p.ownGeo) p.mesh.geometry.dispose(); if (p.ownMat) p.mesh.material.dispose(); }
   for (const tr of activeTracers) { scene.remove(tr.line); tr.line.geometry.dispose(); tr.line.material.dispose(); }
   for (const o of mapDisposables) if (o && typeof o.dispose === 'function') o.dispose();
-  colliders = []; shootableMeshes = []; camCollideMeshes = []; interactiveDoors = []; interactiveWindows = [];
+  colliders = []; clearColliderGrid();
+  shootableMeshes = []; camCollideMeshes = []; interactiveDoors = []; interactiveWindows = [];
   roofZones = []; zombies = []; lootItems = []; vehicles = []; spawnCandidates = [];
-  streamingHouses = []; streamingTrees = [];
+  streamingHouses = []; streamingTrees = []; streamingChunks = [];
   activeParticles = []; activeTracers = []; decalPool = []; mapDisposables = [];
+  terrainState.active = false; terrainState.heights = null;
+  realWorldMeta.active = false; realWorldMeta.pois = [];
   zombiesKilled = 0;
 }
 
@@ -2899,7 +3676,7 @@ function applySkyPreset(presetIdx, seedForClouds = 1337) {
   skyDomeTex.colorSpace = THREE.SRGBColorSpace;
 
   if (!skyDomeMesh) {
-    const skyGeo = new THREE.SphereGeometry(220, 32, 18);
+    const skyGeo = new THREE.SphereGeometry(360, 32, 18);
     const skyMat = new THREE.MeshBasicMaterial({ map: skyDomeTex, side: THREE.BackSide, fog: false, depthWrite: false });
     skyDomeMesh = new THREE.Mesh(skyGeo, skyMat);
     skyDomeMesh.renderOrder = -100;
@@ -3024,12 +3801,12 @@ function generateProceduralMap(seedVal = null) {
   vehDefs.forEach(([vx, vz, vr, stIdx], idx) => buildDrivableVehicle(`car-${idx}`, vx, vz, vr, stIdx));
 
   // Limites da floresta
-  colliders.push(
+  [
     { minX:-88, maxX:-82, minY:0, maxY:12, minZ:-215, maxZ:215, surface:'wood', active:true },
     { minX:82,  maxX:88,  minY:0, maxY:12, minZ:-215, maxZ:215, surface:'wood', active:true },
     { minX:-90, maxX:90,  minY:0, maxY:12, minZ:-205, maxZ:-199, surface:'wood', active:true },
     { minX:-90, maxX:90,  minY:0, maxY:12, minZ:199,  maxZ:205, surface:'wood', active:true }
-  );
+  ].forEach(registerCollider);
   for (let z = -198; z <= 198; z += 12) {
     buildTree(-84 - rng() * 10, z, rng);
     buildTree(84 + rng() * 10, z, rng);
@@ -3062,8 +3839,893 @@ function generateProceduralMap(seedVal = null) {
   document.getElementById('menu-seed-title').textContent = `${southCity} — ${northCity} (#${currentSeed})`;
   document.getElementById('menu-seed-stats').textContent =
     `${houseCount} Casas | ${lootItems.length} Itens de Loot | ${vehicles.length} Carros Dirigíveis`;
+  const modeBadge = document.getElementById('menu-world-mode-badge');
+  if (modeBadge) modeBadge.textContent = 'PROCEDURAL PADRÃO';
 
   respawnLocalSurvivor(true);
+}
+
+/* ============================================================================
+   8B. GERADOR PROCEDURAL DE MUNDO REAL (GOOGLE MAPS PLATFORM 3D)
+   Escaneia Relevo (Elevation API), Estradas (Routes API) e Construções
+   (Places API New) e constrói mundo 3D com Streaming, Frustum Culling e LOD!
+   ============================================================================ */
+const GMP_ATTRIBUTION_ID = 'gmp_mcp_codeassist_v1_aistudio';
+
+const gmapsPickerState = {
+  sdkPromise: null,
+  map: null,
+  marker: null,
+  rect: null,
+  previewPolylines: [],
+  autocompleteEl: null,
+  centerLat: -23.5614,
+  centerLng: -46.6559,
+  placeName: 'Av. Paulista, São Paulo',
+  areaKm2: 1.0,
+  reliefScale: 1.0,
+  isGenerating: false,
+  worldMode: 'procedural' // 'procedural' | 'realworld'
+};
+
+function checkAndDispatchQuotaError(err, source = 'sdk') {
+  if (!err) return false;
+  const status = err.status || err.code || (err.response && err.response.status);
+  const msg = String(err.message || err.status || err || '');
+  if (
+    status === 429 ||
+    status === 'OVER_QUERY_LIMIT' ||
+    status === 'RESOURCE_EXHAUSTED' ||
+    /OverQuotaMapError|QuotaExceededError|OVER_QUERY_LIMIT|RESOURCE_EXHAUSTED|429/i.test(msg)
+  ) {
+    try { window.dispatchEvent(new CustomEvent('gmp-quota-exceeded', { detail: { source, msg } })); } catch (_) {}
+    return true;
+  }
+  return false;
+}
+
+function getAreaHalfMeters(km2) {
+  return Math.sqrt(Math.max(0.25, Math.min(4.0, km2))) * 500;
+}
+
+function getLatLngBoundsForSquare(lat, lng, km2) {
+  const halfM = getAreaHalfMeters(km2);
+  const dLat = halfM / 110540;
+  const cosLat = Math.max(0.15, Math.cos(lat * Math.PI / 180));
+  const dLng = halfM / (111320 * cosLat);
+  return { north: lat + dLat, south: lat - dLat, east: lng + dLng, west: lng - dLng, halfM, sideM: halfM * 2 };
+}
+
+function latLngToLocalXZ(lat, lng, cLat, cLng) {
+  const cosLat = Math.max(0.15, Math.cos(cLat * Math.PI / 180));
+  return {
+    x: (lng - cLng) * 111320 * cosLat,
+    z: -(lat - cLat) * 110540
+  };
+}
+
+function ensureGoogleMapsSDK() {
+  if (gmapsPickerState.sdkPromise) return gmapsPickerState.sdkPromise;
+  gmapsPickerState.sdkPromise = (async () => {
+    const res = await fetch('/api/maps-config', { cache: 'no-store' });
+    if (!res.ok) throw new Error('Falha ao obter configuração do Google Maps.');
+    const cfg = await res.json();
+    if (!cfg.configured || !cfg.apiKey) {
+      throw new Error('Chave do Google Maps não configurada no servidor.');
+    }
+    if (!window.google || !window.google.maps || !window.google.maps.importLibrary) {
+      // Official Google Maps JS API Dynamic Library Bootstrap Loader
+      ((g) => {
+        var h, a, k, p = 'The Google Maps JavaScript API', c = 'google', l = 'importLibrary', q = '__ib__', m = document, b = window;
+        b = b[c] || (b[c] = {});
+        var d = b.maps || (b.maps = {}), r = new Set(), e = new URLSearchParams();
+        var u = () => h || (h = new Promise(async (f, n) => {
+          await (a = m.createElement('script'));
+          e.set('libraries', [...r] + '');
+          for (k in g) e.set(k.replace(/[A-Z]/g, t => '_' + t[0].toLowerCase()), g[k]);
+          e.set('callback', c + '.maps.' + q);
+          a.src = `https://maps.${c}apis.com/maps/api/js?` + e;
+          d[q] = f;
+          a.onerror = () => (h = n(Error(p + ' could not load.')));
+          a.nonce = m.querySelector('script[nonce]')?.nonce || '';
+          m.head.append(a);
+        }));
+        d[l] ? console.warn(p + ' only loads once.') : (d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)));
+      })({
+        key: cfg.apiKey,
+        v: 'weekly',
+        internalUsageAttributionIds: GMP_ATTRIBUTION_ID
+      });
+    }
+    await google.maps.importLibrary('maps');
+    return true;
+  })().catch((err) => {
+    gmapsPickerState.sdkPromise = null;
+    checkAndDispatchQuotaError(err, 'bootstrap');
+    throw err;
+  });
+  return gmapsPickerState.sdkPromise;
+}
+
+function updateGmapsSelectionUI() {
+  const sq = getLatLngBoundsForSquare(gmapsPickerState.centerLat, gmapsPickerState.centerLng, gmapsPickerState.areaKm2);
+  const sideRounded = Math.round(sq.sideM);
+  const kmStr = gmapsPickerState.areaKm2.toFixed(2);
+  const sizeLabel = `${kmStr} km² (${sideRounded}m × ${sideRounded}m)`;
+
+  const menuLbl = document.getElementById('menu-real-size-label');
+  if (menuLbl) menuLbl.textContent = sizeLabel;
+  const placeEl = document.getElementById('gmaps-place-name');
+  if (placeEl) placeEl.textContent = gmapsPickerState.placeName;
+  const coordsEl = document.getElementById('gmaps-coords-label');
+  if (coordsEl) coordsEl.textContent = `${gmapsPickerState.centerLat.toFixed(4)}, ${gmapsPickerState.centerLng.toFixed(4)}`;
+  const boxEl = document.getElementById('gmaps-box-label');
+  if (boxEl) boxEl.textContent = `Quadrado de captura: ${sideRounded}m × ${sideRounded}m (${kmStr} km²)`;
+  const customVal = document.getElementById('gmaps-custom-km2-val');
+  if (customVal) customVal.textContent = `${kmStr} km²`;
+  const slider = document.getElementById('gmaps-size-slider');
+  if (slider && Math.abs(parseFloat(slider.value) - gmapsPickerState.areaKm2) > 0.01) slider.value = String(gmapsPickerState.areaKm2);
+
+  document.querySelectorAll('#menu-size-chips .size-chip, #modal-size-chips .size-chip').forEach((btn) => {
+    const v = parseFloat(btn.dataset.km2);
+    btn.classList.toggle('active', Math.abs(v - gmapsPickerState.areaKm2) < 0.05);
+  });
+
+  if (gmapsPickerState.marker) {
+    gmapsPickerState.marker.position = { lat: gmapsPickerState.centerLat, lng: gmapsPickerState.centerLng };
+  }
+  if (gmapsPickerState.rect) {
+    gmapsPickerState.rect.setBounds({ north: sq.north, south: sq.south, east: sq.east, west: sq.west });
+  }
+}
+
+function setGmapsProgress(active, title = '', step = '', pct = 0) {
+  const ov = document.getElementById('gmaps-progress-overlay');
+  if (!ov) return;
+  ov.classList.toggle('active', active);
+  if (title) document.getElementById('gmaps-prog-title').textContent = title;
+  if (step) document.getElementById('gmaps-prog-step').textContent = step;
+  document.getElementById('gmaps-prog-fill').style.width = `${THREE.MathUtils.clamp(pct, 0, 100)}%`;
+}
+
+async function openGoogleMapsPickerModal() {
+  if (netState.isClient) {
+    showToast('APENAS O HOST PODE CRIAR UM NOVO MAPA!');
+    return;
+  }
+  const modal = document.getElementById('gmaps-modal');
+  modal.classList.add('open');
+  updateGmapsSelectionUI();
+
+  if (gmapsPickerState.map) {
+    google.maps.event.trigger(gmapsPickerState.map, 'resize');
+    gmapsPickerState.map.panTo({ lat: gmapsPickerState.centerLat, lng: gmapsPickerState.centerLng });
+    return;
+  }
+
+  setGmapsProgress(true, 'CARREGANDO GOOGLE MAPS...', 'Inicializando mapa interativo e busca de locais...', 25);
+  try {
+    await ensureGoogleMapsSDK();
+    const { Map, Rectangle } = await google.maps.importLibrary('maps');
+    const { AdvancedMarkerElement, PinElement } = await google.maps.importLibrary('marker');
+    const { PlaceAutocompleteElement } = await google.maps.importLibrary('places');
+
+    const mapEl = document.getElementById('gmaps-map-canvas');
+    const center = { lat: gmapsPickerState.centerLat, lng: gmapsPickerState.centerLng };
+    const map = new Map(mapEl, {
+      center,
+      zoom: 15,
+      mapId: 'DEMO_MAP_ID',
+      mapTypeId: 'hybrid',
+      disableDefaultUI: false,
+      streetViewControl: false,
+      fullscreenControl: false,
+      mapTypeControl: false,
+      internalUsageAttributionIds: [GMP_ATTRIBUTION_ID]
+    });
+
+    const pin = new PinElement({
+      background: '#c97e38',
+      borderColor: '#fff2dc',
+      glyphColor: '#11140f',
+      scale: 1.05
+    });
+    const marker = new AdvancedMarkerElement({
+      map,
+      position: center,
+      title: 'Centro do Mapa 3D',
+      content: pin.element
+    });
+
+    const sq = getLatLngBoundsForSquare(center.lat, center.lng, gmapsPickerState.areaKm2);
+    const rect = new Rectangle({
+      map,
+      bounds: { north: sq.north, south: sq.south, east: sq.east, west: sq.west },
+      strokeColor: '#9ef082',
+      strokeOpacity: 0.95,
+      strokeWeight: 2.5,
+      fillColor: '#6f8b52',
+      fillOpacity: 0.16,
+      clickable: false
+    });
+
+    map.addListener('click', (ev) => {
+      if (!ev.latLng) return;
+      gmapsPickerState.centerLat = ev.latLng.lat();
+      gmapsPickerState.centerLng = ev.latLng.lng();
+      gmapsPickerState.placeName = `Área Selecionada (${gmapsPickerState.centerLat.toFixed(3)}, ${gmapsPickerState.centerLng.toFixed(3)})`;
+      updateGmapsSelectionUI();
+    });
+
+    // Busca moderna via PlaceAutocompleteElement (Zero-Legacy)
+    const searchHost = document.getElementById('gmaps-search-host');
+    searchHost.innerHTML = '';
+    const autocomplete = new PlaceAutocompleteElement({});
+    autocomplete.setAttribute('internal-usage-attribution-ids', GMP_ATTRIBUTION_ID);
+    autocomplete.setAttribute('placeholder', 'Buscar cidade, bairro ou endereço real...');
+    autocomplete.addEventListener('gmp-select', async ({ placePrediction }) => {
+      try {
+        const place = placePrediction.toPlace();
+        await place.fetchFields({ fields: ['displayName', 'formattedAddress', 'location'] });
+        if (place.location) {
+          gmapsPickerState.centerLat = place.location.lat();
+          gmapsPickerState.centerLng = place.location.lng();
+          gmapsPickerState.placeName = place.displayName || place.formattedAddress || 'Área Real';
+          map.setCenter(place.location);
+          map.setZoom(gmapsPickerState.areaKm2 >= 2 ? 14 : 15);
+          updateGmapsSelectionUI();
+        }
+      } catch (err) {
+        checkAndDispatchQuotaError(err, 'autocomplete');
+      }
+    });
+    searchHost.appendChild(autocomplete);
+
+    gmapsPickerState.map = map;
+    gmapsPickerState.marker = marker;
+    gmapsPickerState.rect = rect;
+    gmapsPickerState.autocompleteEl = autocomplete;
+    updateGmapsSelectionUI();
+    setGmapsProgress(false);
+  } catch (err) {
+    setGmapsProgress(false);
+    showToast('ERRO AO CARREGAR GOOGLE MAPS — VERIFIQUE A CONEXÃO/COTA');
+    console.warn('Google Maps load error:', err);
+  }
+}
+
+async function fetchRealWorldAreaData(centerLat, centerLng, areaKm2, reliefScale) {
+  await ensureGoogleMapsSDK();
+  const sq = getLatLngBoundsForSquare(centerLat, centerLng, areaKm2);
+  const { sideM, halfM } = sq;
+
+  // 1) RELEVO REAL (1 única chamada ElevationService com grade 17x17 = 289 pontos <= 512 limite!)
+  setGmapsProgress(true, '1/4 ESCANEANDO RELEVO REAL', 'Consultando malha altimétrica 17×17 via Elevation API...', 20);
+  const gridN = 17;
+  const elevLocs = [];
+  for (let iz = 0; iz < gridN; iz++) {
+    const fz = iz / (gridN - 1); // 0 = Norte (-halfM), 1 = Sul (+halfM)
+    const lat = sq.north - fz * (sq.north - sq.south);
+    for (let ix = 0; ix < gridN; ix++) {
+      const fx = ix / (gridN - 1); // 0 = Oeste (-halfM), 1 = Leste (+halfM)
+      const lng = sq.west + fx * (sq.east - sq.west);
+      elevLocs.push({ lat, lng });
+    }
+  }
+
+  let rawElevs = new Float32Array(gridN * gridN);
+  let minElev = 0, maxElev = 0, meanElev = 0;
+  try {
+    const { ElevationService } = await google.maps.importLibrary('elevation');
+    const elevator = new ElevationService();
+    const elevResp = await elevator.getElevationForLocations({ locations: elevLocs });
+    const results = elevResp && elevResp.results ? elevResp.results : [];
+    if (results.length === gridN * gridN) {
+      let sum = 0, mn = Infinity, mx = -Infinity;
+      for (let i = 0; i < results.length; i++) {
+        const e = Number(results[i].elevation) || 0;
+        rawElevs[i] = e;
+        sum += e;
+        if (e < mn) mn = e;
+        if (e > mx) mx = e;
+      }
+      meanElev = sum / results.length;
+      minElev = mn;
+      maxElev = mx;
+    }
+  } catch (err) {
+    checkAndDispatchQuotaError(err, 'elevation');
+    // Fallback suave de colinas suaves caso a API de elevação falhe
+    for (let iz = 0; iz < gridN; iz++) {
+      for (let ix = 0; ix < gridN; ix++) {
+        rawElevs[iz * gridN + ix] = Math.sin(ix * 0.45) * 3.5 + Math.cos(iz * 0.42) * 3.0;
+      }
+    }
+    minElev = -6; maxElev = 6; meanElev = 0;
+  }
+
+  // Converte elevações absolutas em relevo 3D jogável relativo à média (mantendo rampas dirigíveis)
+  const heights = new Float32Array(gridN * gridN);
+  const maxSpan = Math.max(1, maxElev - minElev);
+  const autoDamp = maxSpan > 90 ? (65 / maxSpan) : 0.72;
+  for (let i = 0; i < rawElevs.length; i++) {
+    heights[i] = THREE.MathUtils.clamp((rawElevs[i] - meanElev) * autoDamp * reliefScale, -36, 48);
+  }
+
+  // 2) ESTRADAS REAIS (Routes API moderna — 5 corredores estratégicos cruzando a área!)
+  setGmapsProgress(true, '2/4 IDENTIFICANDO ESTRADAS REAIS', 'Extraindo malha viária real via Google Maps Routes API...', 48);
+  const roadPolylines = [];
+  const clearPreviews = () => {
+    for (const pl of gmapsPickerState.previewPolylines) pl.setMap(null);
+    gmapsPickerState.previewPolylines = [];
+  };
+  clearPreviews();
+
+  try {
+    const { Route } = await google.maps.importLibrary('routes');
+    const { Polyline } = await google.maps.importLibrary('maps');
+    const padLat = (sq.north - sq.south) * 0.42;
+    const padLng = (sq.east - sq.west) * 0.42;
+    const corridors = [
+      [{ lat: centerLat - padLat, lng: centerLng }, { lat: centerLat + padLat, lng: centerLng }], // S -> N
+      [{ lat: centerLat, lng: centerLng - padLng }, { lat: centerLat, lng: centerLng + padLng }], // W -> E
+      [{ lat: centerLat - padLat * 0.85, lng: centerLng - padLng * 0.85 }, { lat: centerLat + padLat * 0.85, lng: centerLng + padLng * 0.85 }], // SW -> NE
+      [{ lat: centerLat + padLat * 0.85, lng: centerLng - padLng * 0.85 }, { lat: centerLat - padLat * 0.85, lng: centerLng + padLng * 0.85 }], // NW -> SE
+      [{ lat: centerLat - padLat * 0.55, lng: centerLng - padLng * 0.55 }, { lat: centerLat - padLat * 0.55, lng: centerLng + padLng * 0.55 }]  // Eixo secundário Sul
+    ];
+
+    const routeResults = await Promise.allSettled(corridors.map(([origin, destination]) =>
+      Route.computeRoutes({
+        origin,
+        destination,
+        travelMode: 'DRIVE',
+        polylineQuality: 'HIGH_QUALITY',
+        fields: ['path', 'distanceMeters']
+      })
+    ));
+
+    for (const r of routeResults) {
+      if (r.status === 'rejected') {
+        checkAndDispatchQuotaError(r.reason, 'routes');
+        continue;
+      }
+      const route = r.value && r.value.routes && r.value.routes[0];
+      if (!route || !route.path || route.path.length < 2) continue;
+
+      if (gmapsPickerState.map) {
+        const preview = new Polyline({
+          path: route.path,
+          strokeColor: '#f5b841',
+          strokeOpacity: 0.9,
+          strokeWeight: 3,
+          map: gmapsPickerState.map
+        });
+        gmapsPickerState.previewPolylines.push(preview);
+      }
+
+      const localPts = [];
+      for (const ll of route.path) {
+        const lat = typeof ll.lat === 'function' ? ll.lat() : ll.lat;
+        const lng = typeof ll.lng === 'function' ? ll.lng() : ll.lng;
+        const pt = latLngToLocalXZ(lat, lng, centerLat, centerLng);
+        if (Math.abs(pt.x) <= halfM * 1.05 && Math.abs(pt.z) <= halfM * 1.05) {
+          if (localPts.length === 0 || Math.hypot(pt.x - localPts[localPts.length - 1].x, pt.z - localPts[localPts.length - 1].z) >= 5.5) {
+            localPts.push(pt);
+          }
+        }
+      }
+      if (localPts.length >= 2) roadPolylines.push(localPts);
+    }
+  } catch (err) {
+    checkAndDispatchQuotaError(err, 'routes');
+  }
+
+  // 3) CONSTRUÇÕES & POIs REAIS (Places API New — 3 consultas otimizadas cobrindo Hospitais, Prédios e Comércios)
+  setGmapsProgress(true, '3/4 IDENTIFICANDO CONSTRUÇÕES REAIS', 'Mapeando hospitais, prédios, comércios e casas via Places API...', 74);
+  const detectedPlaces = [];
+  const seenKeys = new Set();
+
+  try {
+    const { Place, SearchNearbyRankPreference } = await google.maps.importLibrary('places');
+    const searchRadius = Math.min(2000, Math.round(halfM * 0.96));
+    const batches = [
+      { category: 'medical_emerg', types: ['hospital', 'pharmacy', 'police', 'fire_station', 'gas_station'] },
+      { category: 'urban_tall',    types: ['hotel', 'university', 'school', 'shopping_mall', 'supermarket', 'bank', 'local_government_office'] },
+      { category: 'neighborhood',  types: ['restaurant', 'cafe', 'store', 'church', 'gym', 'bakery', 'park'] }
+    ];
+
+    const placeResults = await Promise.allSettled(batches.map((batch) =>
+      Place.searchNearby({
+        fields: ['displayName', 'location', 'primaryType', 'types'],
+        locationRestriction: { center: { lat: centerLat, lng: centerLng }, radius: searchRadius },
+        includedPrimaryTypes: batch.types,
+        maxResultCount: 20,
+        rankPreference: SearchNearbyRankPreference.POPULARITY
+      })
+    ));
+
+    for (let bi = 0; bi < placeResults.length; bi++) {
+      const res = placeResults[bi];
+      if (res.status === 'rejected') {
+        checkAndDispatchQuotaError(res.reason, 'places');
+        continue;
+      }
+      const list = (res.value && res.value.places) ? res.value.places : [];
+      for (const pl of list) {
+        if (!pl.location) continue;
+        const lat = typeof pl.location.lat === 'function' ? pl.location.lat() : pl.location.lat;
+        const lng = typeof pl.location.lng === 'function' ? pl.location.lng() : pl.location.lng;
+        const local = latLngToLocalXZ(lat, lng, centerLat, centerLng);
+        if (Math.abs(local.x) > halfM - 24 || Math.abs(local.z) > halfM - 24) continue;
+        const key = `${Math.round(local.x / 12)},${Math.round(local.z / 12)}`;
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
+
+        const pType = String(pl.primaryType || (pl.types && pl.types[0]) || '').toLowerCase();
+        let prefab = 'house';
+        if (pType.includes('hospital') || pType.includes('pharmacy') || pType.includes('health')) prefab = 'hospital';
+        else if (pType.includes('police') || pType.includes('fire_station')) prefab = 'police';
+        else if (pType.includes('gas_station')) prefab = 'gas';
+        else if (pType.includes('hotel') || pType.includes('university') || pType.includes('school') || pType.includes('bank') || pType.includes('shopping_mall') || pType.includes('government') || pType.includes('apartment')) prefab = 'building';
+        else if (pType.includes('park')) prefab = 'park';
+        else if (pType.includes('store') || pType.includes('supermarket') || pType.includes('restaurant') || pType.includes('cafe') || pType.includes('bakery') || pType.includes('gym')) prefab = 'shop';
+
+        detectedPlaces.push({
+          name: pl.displayName || pType.toUpperCase() || 'LOCAL',
+          type: pType,
+          prefab,
+          x: local.x,
+          z: local.z
+        });
+      }
+    }
+  } catch (err) {
+    checkAndDispatchQuotaError(err, 'places');
+  }
+
+  return {
+    centerLat, centerLng, areaKm2, sideM, halfM, reliefScale,
+    placeName: gmapsPickerState.placeName,
+    gridN, heights, minElev, maxElev, meanElev,
+    roadPolylines, detectedPlaces
+  };
+}
+
+function buildTerrainChunks(sizeX, sizeZ) {
+  // Divide o relevo real em 4x4 = 16 chunks streamáveis para Frustum Culling + alta performance!
+  const chunksPerSide = 4;
+  const chunkW = sizeX / chunksPerSide;
+  const chunkD = sizeZ / chunksPerSide;
+  const segs = 24; // 24x24 por chunk => malha total 96x96 de altíssima suavidade!
+
+  const terrainMat = regD(new THREE.MeshStandardMaterial({
+    map: Tex.grass,
+    vertexColors: true,
+    roughness: 0.94,
+    metalness: 0.02
+  }));
+
+  for (let cz = 0; cz < chunksPerSide; cz++) {
+    for (let cx = 0; cx < chunksPerSide; cx++) {
+      const centerX = -sizeX * 0.5 + (cx + 0.5) * chunkW;
+      const centerZ = -sizeZ * 0.5 + (cz + 0.5) * chunkD;
+      const geo = regD(new THREE.PlaneGeometry(chunkW, chunkD, segs, segs));
+      geo.rotateX(-Math.PI * 0.5);
+
+      const pos = geo.attributes.position;
+      const uv = geo.attributes.uv;
+      const colors = new Float32Array(pos.count * 3);
+      let avgY = 0;
+
+      for (let i = 0; i < pos.count; i++) {
+        const wx = centerX + pos.getX(i);
+        const wz = centerZ + pos.getZ(i);
+        const wy = getTerrainHeight(wx, wz);
+        pos.setY(i, wy);
+        avgY += wy;
+
+        // Tiling contínuo de textura no espaço mundial
+        uv.setXY(i, wx / 4.2, wz / 4.2);
+
+        // Coloração natural por altitude e inclinação (grama em planos, terra/rocha em encostas íngremes!)
+        const hDx = getTerrainHeight(wx + 2.5, wz) - getTerrainHeight(wx - 2.5, wz);
+        const hDz = getTerrainHeight(wx, wz + 2.5) - getTerrainHeight(wx, wz - 2.5);
+        const slope = Math.min(1, Math.hypot(hDx, hDz) / 3.8);
+        const elevNorm = THREE.MathUtils.clamp((wy + 12) / 38, 0, 1);
+
+        const r = THREE.MathUtils.lerp(0.68 + elevNorm * 0.14, 0.72, slope);
+        const g = THREE.MathUtils.lerp(0.78 - elevNorm * 0.08, 0.63, slope);
+        const b = THREE.MathUtils.lerp(0.58 + elevNorm * 0.08, 0.52, slope);
+        colors[i * 3] = r; colors[i * 3 + 1] = g; colors[i * 3 + 2] = b;
+      }
+      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      geo.computeVertexNormals();
+
+      const mesh = new THREE.Mesh(geo, terrainMat);
+      mesh.position.set(centerX, 0, centerZ);
+      mesh.receiveShadow = true;
+      mesh.castShadow = false;
+      mesh.userData.surface = 'grass';
+      worldGroup.add(mesh);
+      shootableMeshes.push(mesh);
+      camCollideMeshes.push(mesh);
+
+      streamingChunks.push({
+        mesh,
+        center: new THREE.Vector3(centerX, avgY / pos.count, centerZ),
+        radius: Math.hypot(chunkW, chunkD) * 0.62
+      });
+    }
+  }
+}
+
+function buildRealWorldRoads(roadPolylines) {
+  const roadSegments = [];
+  if (!roadPolylines || roadPolylines.length === 0) return roadSegments;
+
+  const roadW = 9.4;
+  const halfW = roadW * 0.5;
+  const roadMat = regD(new THREE.MeshStandardMaterial({
+    map: Tex.asphalt,
+    roughness: 0.90,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2
+  }));
+  const lineMat = regD(new THREE.MeshBasicMaterial({
+    color: 0xc9a846,
+    polygonOffset: true,
+    polygonOffsetFactor: -3,
+    polygonOffsetUnits: -3
+  }));
+
+  for (const poly of roadPolylines) {
+    // Subdivide segmentos longos a cada ~10m para abraçar fielmente colinas e vales!
+    const dense = [poly[0]];
+    for (let i = 1; i < poly.length; i++) {
+      const a = poly[i - 1], b = poly[i];
+      const dist = Math.hypot(b.x - a.x, b.z - a.z);
+      const steps = Math.max(1, Math.ceil(dist / 10));
+      for (let s = 1; s <= steps; s++) {
+        const t = s / steps;
+        dense.push({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
+      }
+    }
+
+    const verts = [], uvs = [], indices = [];
+    const lVerts = [], lIndices = [];
+    let distAcc = 0;
+    let sumX = 0, sumY = 0, sumZ = 0;
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+
+    for (let i = 0; i < dense.length; i++) {
+      const curr = dense[i];
+      const prev = dense[Math.max(0, i - 1)];
+      const next = dense[Math.min(dense.length - 1, i + 1)];
+      let tx = next.x - prev.x, tz = next.z - prev.z;
+      const len = Math.hypot(tx, tz) || 1;
+      tx /= len; tz /= len;
+      const nx = -tz, nz = tx;
+
+      if (i > 0) {
+        distAcc += Math.hypot(curr.x - prev.x, curr.z - prev.z);
+        roadSegments.push({ ax: prev.x, az: prev.z, bx: curr.x, bz: curr.z, tx, tz });
+      }
+
+      const lx = curr.x - nx * halfW, lz = curr.z - nz * halfW;
+      const rx = curr.x + nx * halfW, rz = curr.z + nz * halfW;
+      const ly = getTerrainHeight(lx, lz) + 0.14;
+      const ry = getTerrainHeight(rx, rz) + 0.14;
+      const cy = getTerrainHeight(curr.x, curr.z) + 0.17;
+
+      verts.push(lx, ly, lz, rx, ry, rz);
+      uvs.push(0, distAcc / 4.5, 1, distAcc / 4.5);
+
+      const clx = curr.x - nx * 0.14, clz = curr.z - nz * 0.14;
+      const crx = curr.x + nx * 0.14, crz = curr.z + nz * 0.14;
+      lVerts.push(clx, cy, clz, crx, cy, crz);
+
+      sumX += curr.x; sumY += cy; sumZ += curr.z;
+      if (curr.x < minX) minX = curr.x; if (curr.x > maxX) maxX = curr.x;
+      if (curr.z < minZ) minZ = curr.z; if (curr.z > maxZ) maxZ = curr.z;
+
+      if (i > 0) {
+        const bIdx = (i - 1) * 2;
+        indices.push(bIdx, bIdx + 1, bIdx + 2, bIdx + 1, bIdx + 3, bIdx + 2);
+        if (i % 2 === 1) {
+          lIndices.push(bIdx, bIdx + 1, bIdx + 2, bIdx + 1, bIdx + 3, bIdx + 2);
+        }
+      }
+    }
+
+    if (indices.length > 0) {
+      const rGeo = regD(new THREE.BufferGeometry());
+      rGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+      rGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      rGeo.setIndex(indices);
+      rGeo.computeVertexNormals();
+      const rMesh = new THREE.Mesh(rGeo, roadMat);
+      rMesh.receiveShadow = true;
+      rMesh.userData.surface = 'asphalt';
+      worldGroup.add(rMesh);
+      shootableMeshes.push(rMesh);
+
+      const center = new THREE.Vector3(sumX / dense.length, sumY / dense.length, sumZ / dense.length);
+      const radius = Math.max(40, Math.hypot(maxX - minX, maxZ - minZ) * 0.58);
+      streamingChunks.push({ mesh: rMesh, center, radius });
+
+      if (lIndices.length > 0) {
+        const lGeo = regD(new THREE.BufferGeometry());
+        lGeo.setAttribute('position', new THREE.Float32BufferAttribute(lVerts, 3));
+        lGeo.setIndex(lIndices);
+        const lMesh = new THREE.Mesh(lGeo, lineMat);
+        worldGroup.add(lMesh);
+        streamingChunks.push({ mesh: lMesh, center, radius });
+      }
+    }
+  }
+  return roadSegments;
+}
+
+function pointToSegmentDistSq(px, pz, ax, az, bx, bz) {
+  const vx = bx - ax, vz = bz - az;
+  const wx = px - ax, wz = pz - az;
+  const c1 = vx * wx + vz * wz;
+  if (c1 <= 0) return (px - ax) ** 2 + (pz - az) ** 2;
+  const c2 = vx * vx + vz * vz;
+  if (c2 <= c1) return (px - bx) ** 2 + (pz - bz) ** 2;
+  const t = c1 / c2;
+  const projX = ax + t * vx, projZ = az + t * vz;
+  return (px - projX) ** 2 + (pz - projZ) ** 2;
+}
+
+function generateRealWorldMap(areaData) {
+  setGmapsProgress(true, '4/4 CONSTRUINDO MUNDO 3D REAL', 'Gerando relevo, estradas, hospitais, prédios, casas e LOD...', 92);
+  clearMap();
+
+  const {
+    centerLat, centerLng, areaKm2, sideM, halfM, reliefScale,
+    placeName, gridN, heights, minElev, maxElev, meanElev,
+    roadPolylines, detectedPlaces
+  } = areaData;
+
+  currentSeed = Math.abs(Math.round((centerLat * 10000 + centerLng * 10000))) % 9000 + 1000;
+  const rng = mulberry32(currentSeed * 9137);
+
+  // Configura estado de relevo global para física 100% adaptada ao terreno real!
+  terrainState.active = true;
+  terrainState.sizeX = sideM;
+  terrainState.sizeZ = sideM;
+  terrainState.gridN = gridN;
+  terrainState.heights = heights;
+  terrainState.minElev = minElev;
+  terrainState.maxElev = maxElev;
+  terrainState.meanElev = meanElev;
+  terrainState.reliefScale = reliefScale;
+
+  // Garante Draw Distance adequado para mapas reais amplos
+  if (currentDrawDistance < 145) {
+    currentDrawDistance = 160;
+    const ddSlider = document.getElementById('draw-dist-slider');
+    if (ddSlider) ddSlider.value = '160';
+    camera.far = Math.max(460, currentDrawDistance + 90);
+    camera.updateProjectionMatrix();
+  }
+
+  const chosenSkyIdx = gameConfig.skyPresetIndex >= 0 ? gameConfig.skyPresetIndex : 0;
+  const wth = applySkyPreset(chosenSkyIdx, currentSeed);
+
+  // 1. Terreno 3D em 16 chunks streamáveis com relevo real!
+  buildTerrainChunks(sideM, sideM);
+
+  // 2. Se nenhuma rota foi retornada (área muito remota), cria cruzamento rural sobre o relevo real
+  const effectiveRoads = roadPolylines.length > 0 ? roadPolylines : [
+    [{ x: 0, z: -halfM * 0.85 }, { x: 0, z: 0 }, { x: 0, z: halfM * 0.85 }],
+    [{ x: -halfM * 0.85, z: 0 }, { x: 0, z: 0 }, { x: halfM * 0.85, z: 0 }]
+  ];
+  const roadSegments = buildRealWorldRoads(effectiveRoads);
+
+  const isTooCloseToRoad = (x, z, minClear = 12.5) => {
+    const minSq = minClear * minClear;
+    for (let i = 0; i < roadSegments.length; i++) {
+      const s = roadSegments[i];
+      if (pointToSegmentDistSq(x, z, s.ax, s.az, s.bx, s.bz) < minSq) return true;
+    }
+    return false;
+  };
+
+  const placedBuildings = [];
+  const canPlaceBuilding = (x, z, radius = 12) => {
+    if (Math.abs(x) > halfM - 22 || Math.abs(z) > halfM - 22) return false;
+    if (isTooCloseToRoad(x, z, radius * 0.72 + 4.8)) return false;
+    for (let i = 0; i < placedBuildings.length; i++) {
+      const b = placedBuildings[i];
+      const d = radius + b.r;
+      if ((x - b.x) ** 2 + (z - b.z) ** 2 < d * d) return false;
+    }
+    return true;
+  };
+
+  const nearestRoadDir = (x, z) => {
+    let bestD = Infinity, bestSeg = null;
+    for (let i = 0; i < roadSegments.length; i++) {
+      const s = roadSegments[i];
+      const d = pointToSegmentDistSq(x, z, s.ax, s.az, s.bx, s.bz);
+      if (d < bestD) { bestD = d; bestSeg = s; }
+    }
+    if (!bestSeg) return (rng() * 4) | 0;
+    const mx = (bestSeg.ax + bestSeg.bx) * 0.5, mz = (bestSeg.az + bestSeg.bz) * 0.5;
+    const dx = mx - x, dz = mz - z;
+    if (Math.abs(dx) > Math.abs(dz)) return dx > 0 ? 1 : 3;
+    return dz > 0 ? 0 : 2;
+  };
+
+  const lootCounter = { n: 1 };
+  let stats = { hospitals: 0, buildings: 0, shops: 0, houses: 0, parks: 0 };
+
+  // 3. Substituição automática de POIs reais do Google Maps por Construções Pré-Feitas Exploráveis!
+  for (const poi of detectedPlaces) {
+    if (poi.prefab === 'park') {
+      stats.parks++;
+      for (let t = 0; t < 6; t++) {
+        const tx = poi.x + (rng() - 0.5) * 28, tz = poi.z + (rng() - 0.5) * 28;
+        if (!isTooCloseToRoad(tx, tz, 8.5)) buildTree(tx, tz, rng);
+      }
+      continue;
+    }
+
+    const rNeed = poi.prefab === 'hospital' ? 14 : (poi.prefab === 'building' ? 13 : 11);
+    let px = poi.x, pz = poi.z;
+    // Se o pin do Google Maps cair exatamente no meio do asfalto, desloca suavemente para a calçada adjacente!
+    if (!canPlaceBuilding(px, pz, rNeed)) {
+      let nudged = false;
+      for (const ang of [0, 1.57, 3.14, 4.71, 0.78, 2.35, 3.92, 5.5]) {
+        const tx = poi.x + Math.cos(ang) * 16;
+        const tz = poi.z + Math.sin(ang) * 16;
+        if (canPlaceBuilding(tx, tz, rNeed)) { px = tx; pz = tz; nudged = true; break; }
+      }
+      if (!nudged) continue;
+    }
+
+    const dir = nearestRoadDir(px, pz);
+    const by = getTerrainHeight(px, pz);
+    placedBuildings.push({ x: px, z: pz, r: rNeed, name: poi.name, prefab: poi.prefab });
+
+    if (poi.prefab === 'hospital') {
+      buildHospital(px, pz, dir, rng, lootCounter, by);
+      stats.hospitals++;
+    } else if (poi.prefab === 'building') {
+      buildUrbanBuilding(px, pz, dir, rng, lootCounter, by, 2 + ((rng() * 2) | 0));
+      stats.buildings++;
+    } else if (poi.prefab === 'police' || poi.prefab === 'gas' || poi.prefab === 'shop') {
+      buildCommercialBuilding(px, pz, dir, rng, lootCounter, by, poi.prefab);
+      stats.shops++;
+    } else {
+      buildHouse(px, pz, dir, 21, 20, rng, lootCounter, false, by);
+      stats.houses++;
+    }
+  }
+
+  // 4. Povoamento urbano/residencial inteligente ao longo das estradas reais detectadas (casas & prédios de quarteirão!)
+  const maxRoadsideBuildings = Math.min(85, Math.round(32 + areaKm2 * 26));
+  const segStep = Math.max(1, Math.floor(roadSegments.length / maxRoadsideBuildings));
+  for (let i = 0; i < roadSegments.length && placedBuildings.length < (detectedPlaces.length + maxRoadsideBuildings); i += segStep) {
+    const seg = roadSegments[i];
+    const mx = (seg.ax + seg.bx) * 0.5, mz = (seg.az + seg.bz) * 0.5;
+    const nx = -seg.tz, nz = seg.tx;
+    for (const side of [-1, 1]) {
+      const distOff = 17 + rng() * 6;
+      const bx = mx + nx * side * distOff;
+      const bz = mz + nz * side * distOff;
+      if (!canPlaceBuilding(bx, bz, 11.5)) continue;
+      const dir = nearestRoadDir(bx, bz);
+      const by = getTerrainHeight(bx, bz);
+      const roll = rng();
+      if (roll < 0.12 && stats.buildings < 18) {
+        buildUrbanBuilding(bx, bz, dir, rng, lootCounter, by, 2 + ((rng() * 2) | 0));
+        stats.buildings++;
+        placedBuildings.push({ x: bx, z: bz, r: 12.5, name: 'Prédio Urbano', prefab: 'building' });
+      } else if (roll < 0.22) {
+        buildCommercialBuilding(bx, bz, dir, rng, lootCounter, by, 'shop');
+        stats.shops++;
+        placedBuildings.push({ x: bx, z: bz, r: 11.5, name: 'Comércio Local', prefab: 'shop' });
+      } else {
+        buildHouse(bx, bz, dir, 20.5, 20, rng, lootCounter, rng() < 0.25, by);
+        stats.houses++;
+        placedBuildings.push({ x: bx, z: bz, r: 11.0, name: 'Residência', prefab: 'house' });
+      }
+    }
+  }
+
+  // 5. Vegetação espalhada fora das estradas e construções (com geometrias compartilhadas + frustum culling!)
+  const treeTarget = Math.min(260, Math.round(90 + areaKm2 * 70));
+  for (let t = 0; t < treeTarget; t++) {
+    const tx = (rng() - 0.5) * (sideM - 30);
+    const tz = (rng() - 0.5) * (sideM - 30);
+    if (!canPlaceBuilding(tx, tz, 6.2)) continue;
+    buildTree(tx, tz, rng);
+  }
+
+  // 6. Veículos Dirigíveis posicionados diretamente nas estradas reais!
+  const carTarget = Math.min(14, Math.max(6, Math.round(6 + areaKm2 * 3)));
+  const carStep = Math.max(1, Math.floor(roadSegments.length / carTarget));
+  for (let ci = 0, si = 1; ci < carTarget && si < roadSegments.length; ci++, si += carStep) {
+    const seg = roadSegments[si];
+    const vx = (seg.ax + seg.bx) * 0.5 + (-seg.tz) * 2.2;
+    const vz = (seg.az + seg.bz) * 0.5 + ( seg.tx) * 2.2;
+    if (Math.abs(vx) > halfM - 20 || Math.abs(vz) > halfM - 20) continue;
+    const rotY = Math.atan2(-seg.tx, -seg.tz);
+    buildDrivableVehicle(`car-${ci}`, vx, vz, rotY, ci % DRIVABLE_CAR_STYLES.length);
+  }
+
+  // 7. Limites invisíveis da área real selecionada (impede cair fora do quadrado km²)
+  const edge = halfM - 6;
+  [
+    { minX: -halfM - 4, maxX: -edge,      minY: -60, maxY: 80, minZ: -halfM, maxZ: halfM, surface: 'wood', active: true },
+    { minX:  edge,      maxX:  halfM + 4, minY: -60, maxY: 80, minZ: -halfM, maxZ: halfM, surface: 'wood', active: true },
+    { minX: -halfM,     maxX:  halfM,     minY: -60, maxY: 80, minZ: -halfM - 4, maxZ: -edge, surface: 'wood', active: true },
+    { minX: -halfM,     maxX:  halfM,     minY: -60, maxY: 80, minZ:  edge, maxZ:  halfM + 4, surface: 'wood', active: true }
+  ].forEach(registerCollider);
+
+  // 8. Zumbis distribuídos próximos às vias e quarteirões (se ativado!)
+  if (gameConfig.enableZombies) {
+    const zCount = Math.min(95, Math.round(45 + areaKm2 * 18));
+    for (let i = 0; i < zCount; i++) {
+      let zx = (rng() - 0.5) * (sideM * 0.65);
+      let zz = (rng() - 0.5) * (sideM * 0.65);
+      if (roadSegments.length > 0 && rng() < 0.72) {
+        const s = roadSegments[(rng() * roadSegments.length) | 0];
+        zx = (s.ax + s.bx) * 0.5 + (rng() - 0.5) * 26;
+        zz = (s.az + s.bz) * 0.5 + (rng() - 0.5) * 26;
+      }
+      const zEnt = buildZombieEntity(`z-${i}`, zx, zz, rng);
+      worldGroup.add(zEnt.root);
+      zombies.push(zEnt);
+    }
+  }
+
+  // Garante pontos de spawn limpos em cima da estrada/centro do mapa!
+  if (roadSegments.length > 0) {
+    const midSeg = roadSegments[Math.floor(roadSegments.length * 0.5)];
+    const sx = (midSeg.ax + midSeg.bx) * 0.5;
+    const sz = (midSeg.az + midSeg.bz) * 0.5;
+    spawnCandidates.unshift(new THREE.Vector3(sx, getTerrainHeight(sx, sz) + 0.25, sz));
+  } else {
+    spawnCandidates.unshift(new THREE.Vector3(0, getTerrainHeight(0, 0) + 0.25, 0));
+  }
+
+  const totalBuildings = stats.hospitals + stats.buildings + stats.shops + stats.houses;
+  realWorldMeta = {
+    active: true,
+    placeName,
+    areaKm2,
+    sideMeters: Math.round(sideM),
+    centerLat, centerLng,
+    minElev: Math.round(minElev),
+    maxElev: Math.round(maxElev),
+    roadCount: effectiveRoads.length,
+    buildingCount: totalBuildings,
+    pois: placedBuildings.filter(b => b.name && b.name !== 'Residência')
+  };
+
+  document.getElementById('hud-clock').textContent = `${wth.clock} · ${wth.name}`;
+  document.getElementById('hud-seed').textContent = `GMAPS · ${areaKm2.toFixed(2)} km²`;
+  document.getElementById('hud-kills').textContent = `ZUMBIS: 0 / ${zombies.length}`;
+  document.getElementById('menu-seed-title').textContent = `${placeName.toUpperCase()} (${areaKm2.toFixed(2)} km²)`;
+  document.getElementById('menu-seed-stats').textContent =
+    `${totalBuildings} Construções (${stats.hospitals} Hosp · ${stats.buildings} Prédios · ${stats.shops} Comércios · ${stats.houses} Casas) | Relevo ${Math.round(minElev)}m–${Math.round(maxElev)}m | ${vehicles.length} Carros`;
+  const modeBadge = document.getElementById('menu-world-mode-badge');
+  if (modeBadge) modeBadge.textContent = `GOOGLE MAPS REAL · ${areaKm2.toFixed(2)} KM²`;
+
+  respawnLocalSurvivor(true);
+  // Centraliza o jogador no primeiro ponto seguro de spawn do mapa real
+  if (spawnCandidates.length > 0) {
+    player.pos.copy(spawnCandidates[0]);
+    player.pos.y = getTerrainHeight(player.pos.x, player.pos.z) + 0.22;
+  }
+  setGmapsProgress(false);
+  document.getElementById('gmaps-modal').classList.remove('open');
+  showToast(`MUNDO REAL GERADO // ${placeName.toUpperCase()} (${areaKm2.toFixed(2)} KM²)`);
 }
 
 /* ============================================================================
@@ -3358,8 +5020,10 @@ function respawnLocalSurvivor(resetItems = true) {
 }
 
 function resolveCircleWorldCollisions(pos, radius, minY, maxY, stepH, ignoreVehicleId = null) {
+  const nearby = queryColliders(pos.x, pos.z, radius + 1.5);
   for (let it = 0; it < 2; it++) {
-    for (const b of colliders) {
+    for (let i = 0; i < nearby.length; i++) {
+      const b = nearby[i];
       if (!b.active || b.maxY <= minY + stepH || b.minY >= maxY) continue;
       if (ignoreVehicleId && b.isVehicleId === ignoreVehicleId) continue;
       const cx = Math.max(b.minX, Math.min(pos.x, b.maxX));
@@ -3763,7 +5427,8 @@ function updateLocalPlayer(dt) {
   if (player.drivingCar) {
     omni.root.visible = false;
     fpWeaponRig.visible = false;
-    player.pos.copy(player.drivingCar.pos).setY(0.35);
+    player.pos.copy(player.drivingCar.pos);
+    player.pos.y = player.drivingCar.pos.y + 0.35;
     player.yaw = player.drivingCar.yaw;
     return;
   }
@@ -3788,7 +5453,9 @@ function updateLocalPlayer(dt) {
     const wantsCrouch = !!(keys['ControlLeft'] || keys['ControlRight'] || keys['KeyC']);
     if (!wantsCrouch && player.crouching) {
       let blocked = false;
-      for (const b of colliders) {
+      const headNear = queryColliders(player.pos.x, player.pos.z, 0.8);
+      for (let i = 0; i < headNear.length; i++) {
+        const b = headNear[i];
         if (!b.active) continue;
         if (player.pos.x + 0.30 > b.minX && player.pos.x - 0.30 < b.maxX &&
             player.pos.z + 0.30 > b.minZ && player.pos.z - 0.30 < b.maxZ) {
@@ -3869,8 +5536,10 @@ function updateLocalPlayer(dt) {
     resolveCircleWorldCollisions(player.pos, player.radius, player.pos.y, player.pos.y + player.height, stepH);
 
     player.pos.y += player.vel.y * dt;
-    let floorH = 0, surf = 'grass';
-    for (const b of colliders) {
+    let floorH = getTerrainHeight(player.pos.x, player.pos.z), surf = 'grass';
+    const floorNear = queryColliders(player.pos.x, player.pos.z, 0.8);
+    for (let i = 0; i < floorNear.length; i++) {
+      const b = floorNear[i];
       if (!b.active) continue;
       if (player.pos.x + 0.28 > b.minX && player.pos.x - 0.28 < b.maxX &&
           player.pos.z + 0.28 > b.minZ && player.pos.z - 0.28 < b.maxZ) {
@@ -4048,9 +5717,9 @@ function updateCameraAndWeaponViewmodel(dt) {
     camera.position.lerp(desCam, Math.min(1, dt * 12));
     camera.lookAt(v.pos.x - backX * 2.2, v.pos.y + 1.05, v.pos.z - backZ * 2.2);
 
-    const snapX = Math.round(v.pos.x * 0.5) * 2, snapZ = Math.round(v.pos.z * 0.5) * 2;
-    sunLight.target.position.set(snapX, 0, snapZ);
-    sunLight.position.set(snapX + currentSunOffset.x, currentSunOffset.y, snapZ + currentSunOffset.z);
+    const snapX = Math.round(v.pos.x * 0.5) * 2, snapY = Math.round(v.pos.y), snapZ = Math.round(v.pos.z * 0.5) * 2;
+    sunLight.target.position.set(snapX, snapY, snapZ);
+    sunLight.position.set(snapX + currentSunOffset.x, snapY + currentSunOffset.y, snapZ + currentSunOffset.z);
     return;
   }
 
@@ -4276,9 +5945,9 @@ function updateCameraAndWeaponViewmodel(dt) {
     flashlight.position.set(player.pos.x, eyeY - 0.16, player.pos.z);
     flashlight.target.position.copy(aimWorldPoint);
   }
-  const snapX = Math.round(player.pos.x * 0.5) * 2, snapZ = Math.round(player.pos.z * 0.5) * 2;
-  sunLight.target.position.set(snapX, 0, snapZ);
-  sunLight.position.set(snapX + currentSunOffset.x, currentSunOffset.y, snapZ + currentSunOffset.z);
+  const snapX = Math.round(player.pos.x * 0.5) * 2, snapY = Math.round(player.pos.y), snapZ = Math.round(player.pos.z * 0.5) * 2;
+  sunLight.target.position.set(snapX, snapY, snapZ);
+  sunLight.position.set(snapX + currentSunOffset.x, snapY + currentSunOffset.y, snapZ + currentSunOffset.z);
 }
 
 /* ============================================================================
@@ -4628,7 +6297,8 @@ function exitVehicle() {
   veh.driverId = null;
   player.drivingCar = null;
   const sideX = Math.cos(veh.yaw) * 2.15, sideZ = -Math.sin(veh.yaw) * 2.15;
-  player.pos.set(veh.pos.x - sideX, 0.15, veh.pos.z - sideZ);
+  const ex = veh.pos.x - sideX, ez = veh.pos.z - sideZ;
+  player.pos.set(ex, getTerrainHeight(ex, ez) + 0.15, ez);
   player.vel.set(0, 0, 0);
   document.getElementById('vehicle-hud').style.display = 'none';
   sfx.playDoorToggle(false);
@@ -4726,16 +6396,20 @@ function updateVehicles(dt) {
       v.pos.x += fwdX * v.speed * dt;
       v.pos.z += fwdZ * v.speed * dt;
 
-      // Colisão do carro contra prédios, árvores e outros carros!
+      // Colisão do carro contra prédios, árvores e outros carros (O(1) Spatial Hash Grid!)
       let crashed = false;
-      for (const b of colliders) {
-        if (!b.active || b.isVehicleId === v.id || b.maxY <= 0.45) continue;
+      const carNear = queryColliders(v.pos.x, v.pos.z, 2.5);
+      for (let i = 0; i < carNear.length; i++) {
+        const b = carNear[i];
+        if (!b.active || b.isVehicleId === v.id || b.maxY <= v.pos.y + 0.45 || b.minY >= v.pos.y + 2.0) continue;
         const cx = Math.max(b.minX, Math.min(v.pos.x, b.maxX));
         const cz = Math.max(b.minZ, Math.min(v.pos.z, b.maxZ));
         const dx = v.pos.x - cx, dz = v.pos.z - cz;
         if (dx * dx + dz * dz < 1.45 * 1.45) {
           crashed = true;
-          v.pos.set(prevX - fwdX * Math.sign(v.speed) * 0.18, 0, prevZ - fwdZ * Math.sign(v.speed) * 0.18);
+          const backX = prevX - fwdX * Math.sign(v.speed) * 0.18;
+          const backZ = prevZ - fwdZ * Math.sign(v.speed) * 0.18;
+          v.pos.set(backX, getTerrainHeight(backX, backZ), backZ);
           break;
         }
       }
@@ -4808,8 +6482,19 @@ function updateVehicles(dt) {
       v.pos.z += -Math.cos(v.yaw) * v.speed * dt;
     }
 
+    v.pos.y = getTerrainHeight(v.pos.x, v.pos.z);
     v.root.position.copy(v.pos);
     v.root.rotation.y = v.yaw;
+    if (terrainState.active) {
+      const fX = -Math.sin(v.yaw) * 1.8, fZ = -Math.cos(v.yaw) * 1.8;
+      const rX =  Math.cos(v.yaw) * 1.0, rZ = -Math.sin(v.yaw) * 1.0;
+      const pitchSlope = Math.atan2(getTerrainHeight(v.pos.x + fX, v.pos.z + fZ) - getTerrainHeight(v.pos.x - fX, v.pos.z - fZ), 3.6);
+      const rollSlope  = Math.atan2(getTerrainHeight(v.pos.x - rX, v.pos.z - rZ) - getTerrainHeight(v.pos.x + rX, v.pos.z + rZ), 2.0);
+      v.root.rotation.x = THREE.MathUtils.lerp(v.root.rotation.x, THREE.MathUtils.clamp(pitchSlope, -0.35, 0.35), Math.min(1, dt * 8));
+      v.root.rotation.z = THREE.MathUtils.lerp(v.root.rotation.z, THREE.MathUtils.clamp(rollSlope, -0.25, 0.25), Math.min(1, dt * 8));
+    } else {
+      v.root.rotation.x = 0; v.root.rotation.z = 0;
+    }
     updateVehicleCollider(v);
 
     for (const wh of v.wheels) {
@@ -5926,7 +7611,8 @@ function updateZombies(dt) {
           const slideMult = (1 - t / 0.45) * dt;
           zp.x += (z.knockX || 0) * slideMult * 0.55;
           zp.z += (z.knockZ || 0) * slideMult * 0.55;
-          resolveCircleWorldCollisions(zp, 0.35, 0, 1.8, 0.35);
+          zp.y = getTerrainHeight(zp.x, zp.z);
+          resolveCircleWorldCollisions(zp, 0.35, zp.y, zp.y + 1.8, 0.35);
         }
 
         const buckle = THREE.MathUtils.smoothstep(t, 0.0, 0.32);
@@ -6025,7 +7711,8 @@ function updateZombies(dt) {
       zp.z += -Math.cos(z.yaw) * moveSpd * dt;
     }
 
-    resolveCircleWorldCollisions(zp, 0.35, 0, 1.8, 0.35);
+    zp.y = getTerrainHeight(zp.x, zp.z);
+    resolveCircleWorldCollisions(zp, 0.35, zp.y, zp.y + 1.8, 0.35);
 
     z.root.rotation.y = z.yaw;
     const cycleRate = z.legHit ? (moveSpd * 2.8 + 0.9) : (moveSpd * 3.9 + 1.1);
@@ -6402,8 +8089,9 @@ function updateWorldFXAndHUD(dt) {
     p.mesh.position.addScaledVector(p.vel, dt);
     p.mesh.rotation.x += p.rotVel.x * dt;
     p.mesh.rotation.y += p.rotVel.y * dt;
-    if (!p.noGravity && p.mesh.position.y < 0.025) {
-      p.mesh.position.y = 0.025; p.vel.y = Math.abs(p.vel.y) * 0.3; p.vel.x *= 0.6; p.vel.z *= 0.6;
+    const pGround = getTerrainHeight(p.mesh.position.x, p.mesh.position.z) + 0.025;
+    if (!p.noGravity && p.mesh.position.y < pGround) {
+      p.mesh.position.y = pGround; p.vel.y = Math.abs(p.vel.y) * 0.3; p.vel.x *= 0.6; p.vel.z *= 0.6;
       if (!p.bounced) { p.bounced = true; sfx.playClick(4100, 0.04); }
     }
     if (p.life <= 0) {
@@ -6445,10 +8133,24 @@ function updateWorldFXAndHUD(dt) {
 
   const pz = player.pos.z;
   const banner = document.getElementById('zone-banner');
-  if (pz > 72) banner.textContent = `${southCity} // SETOR SUL`;
-  else if (pz < -72) banner.textContent = `${northCity} // SETOR NORTE`;
-  else if (Math.abs(pz) <= 22) banner.textContent = 'POSTO RURAL // KM 0';
-  else banner.textContent = `RODOVIA ESTADUAL // ${southCity} ↔ ${northCity}`;
+  if (realWorldMeta.active) {
+    let nearPoi = '';
+    let bestD = 55 * 55;
+    for (let i = 0; i < realWorldMeta.pois.length; i++) {
+      const poi = realWorldMeta.pois[i];
+      const d2 = (poi.x - player.pos.x) ** 2 + (poi.z - player.pos.z) ** 2;
+      if (d2 < bestD) { bestD = d2; nearPoi = poi.name; }
+    }
+    const realAlt = Math.round(terrainState.meanElev + player.pos.y);
+    banner.textContent = nearPoi
+      ? `${realWorldMeta.placeName} // ${nearPoi} · ALT ${realAlt}M`
+      : `${realWorldMeta.placeName} // ${realWorldMeta.areaKm2.toFixed(2)} KM² · ALT ${realAlt}M`;
+  } else {
+    if (pz > 72) banner.textContent = `${southCity} // SETOR SUL`;
+    else if (pz < -72) banner.textContent = `${northCity} // SETOR NORTE`;
+    else if (Math.abs(pz) <= 22) banner.textContent = 'POSTO RURAL // KM 0';
+    else banner.textContent = `RODOVIA ESTADUAL // ${southCity} ↔ ${northCity}`;
+  }
 
   // Esconde crosshair artificial quando estiver na Mira de Ferro Real 1ª Pessoa ou dirigindo!
   const cross = document.getElementById('crosshair');
@@ -6506,7 +8208,14 @@ function togglePartyModal(forceOpen = null) {
 }
 
 window.addEventListener('keydown', (e) => {
-  if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+  const gmapsModalEl = document.getElementById('gmaps-modal');
+  if (gmapsModalEl && gmapsModalEl.classList.contains('open')) {
+    if (e.code === 'Escape' && !gmapsPickerState.isGenerating) {
+      gmapsModalEl.classList.remove('open');
+    }
+    return;
+  }
+  if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'GMP-PLACE-AUTOCOMPLETE')) return;
   if (['Tab', 'AltLeft', 'AltRight', 'Space'].includes(e.code)) e.preventDefault();
   keys[e.code] = true;
 
@@ -6838,13 +8547,129 @@ document.getElementById('btn-open-party-from-inv').onclick = () => togglePartyMo
 document.getElementById('btn-close-party').onclick = () => togglePartyModal(false);
 document.getElementById('draw-dist-slider').oninput = (e) => {
   currentDrawDistance = parseFloat(e.target.value);
-  camera.far = Math.max(260, currentDrawDistance + 40);
+  camera.far = Math.max(420, currentDrawDistance + 80);
   camera.updateProjectionMatrix();
   if (scene.fog) {
     scene.fog.near = currentDrawDistance * 0.45;
-    scene.fog.far = currentDrawDistance + 18;
+    scene.fog.far = currentDrawDistance + 24;
   }
   showToast(`DRAW DISTANCE: ${Math.round(currentDrawDistance)}M`);
+};
+
+// Banner de Cota do Google Maps Demo Key (Case A — Non-Intrusive Top Bar)
+window.addEventListener('gmp-quota-exceeded', () => {
+  const b = document.getElementById('gmp-quota-banner');
+  if (b) b.classList.add('visible');
+});
+const dismissQuotaBtn = document.getElementById('btn-dismiss-gmp-quota');
+if (dismissQuotaBtn) {
+  dismissQuotaBtn.onclick = () => document.getElementById('gmp-quota-banner').classList.remove('visible');
+}
+
+// Controles de Criação de Mundo (Procedural Padrão vs Real Google Maps)
+function setWorldCreationMode(mode) {
+  gmapsPickerState.worldMode = mode;
+  const isReal = mode === 'realworld';
+  document.getElementById('btn-mode-procedural').classList.toggle('active', !isReal);
+  document.getElementById('btn-mode-realworld').classList.toggle('active', isReal);
+  document.getElementById('realworld-quick-config').style.display = isReal ? 'block' : 'none';
+}
+
+document.getElementById('btn-mode-procedural').onclick = () => {
+  setWorldCreationMode('procedural');
+  if (realWorldMeta.active && !netState.isClient) {
+    generateProceduralMap();
+    showToast(`MODO PROCEDURAL PADRÃO // SEED #${currentSeed}`);
+  }
+};
+document.getElementById('btn-mode-realworld').onclick = () => {
+  setWorldCreationMode('realworld');
+  updateGmapsSelectionUI();
+};
+document.getElementById('btn-open-gmaps-modal').onclick = () => {
+  sfx.init();
+  openGoogleMapsPickerModal();
+};
+document.getElementById('btn-open-gmaps-top').onclick = () => {
+  sfx.init();
+  document.getElementById('tab-btn-solo').click();
+  setWorldCreationMode('realworld');
+  openGoogleMapsPickerModal();
+};
+document.getElementById('btn-close-gmaps-modal').onclick = () => {
+  if (gmapsPickerState.isGenerating) return;
+  document.getElementById('gmaps-modal').classList.remove('open');
+};
+
+document.querySelectorAll('#menu-size-chips .size-chip, #modal-size-chips .size-chip').forEach((btn) => {
+  btn.onclick = () => {
+    gmapsPickerState.areaKm2 = parseFloat(btn.dataset.km2) || 1.0;
+    updateGmapsSelectionUI();
+    if (gmapsPickerState.map) {
+      gmapsPickerState.map.setZoom(gmapsPickerState.areaKm2 >= 3 ? 13 : (gmapsPickerState.areaKm2 >= 1.5 ? 14 : 15));
+    }
+  };
+});
+
+document.getElementById('gmaps-size-slider').oninput = (e) => {
+  gmapsPickerState.areaKm2 = parseFloat(e.target.value) || 1.0;
+  updateGmapsSelectionUI();
+};
+
+document.getElementById('gmaps-relief-slider').oninput = (e) => {
+  gmapsPickerState.reliefScale = parseFloat(e.target.value) || 1.0;
+  const lbl = gmapsPickerState.reliefScale < 0.7 ? 'SUAVE' : (gmapsPickerState.reliefScale > 1.3 ? 'DRAMÁTICO' : 'REAL');
+  document.getElementById('gmaps-relief-val').textContent = `${gmapsPickerState.reliefScale.toFixed(1)}x (${lbl})`;
+};
+
+document.querySelectorAll('.gmaps-preset-btn').forEach((btn) => {
+  btn.onclick = () => {
+    gmapsPickerState.centerLat = parseFloat(btn.dataset.lat);
+    gmapsPickerState.centerLng = parseFloat(btn.dataset.lng);
+    gmapsPickerState.placeName = btn.dataset.name;
+    updateGmapsSelectionUI();
+    if (gmapsPickerState.map) {
+      gmapsPickerState.map.setCenter({ lat: gmapsPickerState.centerLat, lng: gmapsPickerState.centerLng });
+      gmapsPickerState.map.setZoom(gmapsPickerState.areaKm2 >= 2 ? 14 : 15);
+    }
+  };
+});
+
+function setGmapsMapType(typeId, activeBtnId) {
+  if (gmapsPickerState.map) gmapsPickerState.map.setMapTypeId(typeId);
+  ['btn-gmaps-type-hybrid', 'btn-gmaps-type-roadmap', 'btn-gmaps-type-terrain'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const active = id === activeBtnId;
+    el.style.background = active ? '#3a4a30' : '';
+    el.style.borderColor = active ? '#8db86c' : '';
+    el.style.color = active ? '#e6f7d4' : '';
+  });
+}
+document.getElementById('btn-gmaps-type-hybrid').onclick = () => setGmapsMapType('hybrid', 'btn-gmaps-type-hybrid');
+document.getElementById('btn-gmaps-type-roadmap').onclick = () => setGmapsMapType('roadmap', 'btn-gmaps-type-roadmap');
+document.getElementById('btn-gmaps-type-terrain').onclick = () => setGmapsMapType('terrain', 'btn-gmaps-type-terrain');
+
+document.getElementById('btn-gmaps-generate').onclick = async () => {
+  if (gmapsPickerState.isGenerating) return;
+  gmapsPickerState.isGenerating = true;
+  sfx.init();
+  try {
+    const areaData = await fetchRealWorldAreaData(
+      gmapsPickerState.centerLat,
+      gmapsPickerState.centerLng,
+      gmapsPickerState.areaKm2,
+      gmapsPickerState.reliefScale
+    );
+    generateRealWorldMap(areaData);
+  } catch (err) {
+    setGmapsProgress(false);
+    checkAndDispatchQuotaError(err, 'generate');
+    showToast('ERRO AO ESCANEAR ÁREA — TENTE NOVAMENTE OU OUTRA REGIÃO');
+    console.warn('Real-world generation error:', err);
+  } finally {
+    gmapsPickerState.isGenerating = false;
+  }
 };
 document.getElementById('sens-slider').oninput = (e) => { mouseSensitivity = parseFloat(e.target.value); };
 document.getElementById('step-vol-slider').oninput = (e) => { sfx.stepVolMult = parseFloat(e.target.value); };
@@ -6938,8 +8763,8 @@ function animate() {
     const rightX = -toZ / len, rightZ = toX / len;
     camera.lookAt(player.pos.x - rightX * 0.56, player.pos.y + 1.06, player.pos.z - rightZ * 0.56);
 
-    sunLight.target.position.set(player.pos.x, 0, player.pos.z);
-    sunLight.position.set(player.pos.x + currentSunOffset.x, currentSunOffset.y, player.pos.z + currentSunOffset.z);
+    sunLight.target.position.set(player.pos.x, player.pos.y, player.pos.z);
+    sunLight.position.set(player.pos.x + currentSunOffset.x, player.pos.y + currentSunOffset.y, player.pos.z + currentSunOffset.z);
   }
 
   updateSceneStreamingAndLOD(dt);

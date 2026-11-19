@@ -27,6 +27,34 @@ const MIME = {
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = '0.0.0.0';
 
+function readDotEnvKey() {
+  const candidates = ['.env.local', '.env'];
+  const keys = ['GOOGLE_MAPS_API_KEY', 'VITE_GOOGLE_MAPS_API_KEY', 'MAPS_API_KEY'];
+  for (const k of keys) {
+    if (process.env[k] && process.env[k].trim()) return process.env[k].trim();
+  }
+  for (const file of candidates) {
+    try {
+      const full = path.join(__dirname, file);
+      if (!fs.existsSync(full)) continue;
+      const text = fs.readFileSync(full, 'utf8');
+      for (const line of text.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const idx = trimmed.indexOf('=');
+        if (idx === -1) continue;
+        const name = trimmed.slice(0, idx).trim();
+        let val = trimmed.slice(idx + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1);
+        }
+        if (keys.includes(name) && val) return val;
+      }
+    } catch {}
+  }
+  return '';
+}
+
 const server = http.createServer((req, res) => {
   let pathname;
   try {
@@ -35,6 +63,16 @@ const server = http.createServer((req, res) => {
   } catch {
     res.writeHead(400);
     res.end('Bad Request');
+    return;
+  }
+
+  if (pathname === '/api/maps-config') {
+    const apiKey = readDotEnvKey();
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store'
+    });
+    res.end(JSON.stringify({ configured: Boolean(apiKey), apiKey }));
     return;
   }
 
