@@ -913,25 +913,21 @@
     </div>
 
     <div class="menu-body">
-      <!-- ABA 1: JOGAR & MAPA -->
+      <!-- ABA 1: MAPA REAL & INICIAR SERVIDOR -->
       <div class="tab-pane active" id="pane-solo">
         <div class="sector-box">
           <div class="menu-section-head">
-            <span>Modo de Geração do Mundo</span>
-            <span class="menu-section-sub" id="menu-world-mode-badge">Procedural Padrão</span>
-          </div>
-          <div class="world-mode-row">
-            <button class="mode-btn active" id="btn-mode-procedural">Procedural Padrão</button>
-            <button class="mode-btn" id="btn-mode-realworld">Mundo Real (Mapa)</button>
+            <span>Gerador de Mapa Real (Google Maps)</span>
+            <span class="menu-section-sub" id="menu-world-mode-badge">Google Maps 3D</span>
           </div>
 
-          <div id="realworld-quick-config" style="display:none;margin-top:12px;padding-top:10px;border-top:1px solid rgba(168,162,142,0.16);">
+          <div id="realworld-quick-config" style="display:block;margin-top:6px;">
             <div class="menu-grid-2">
               <div>
                 <div style="font-size:10px;color:var(--dim);margin-bottom:4px;">Provedor do Mapa</div>
                 <div class="provider-row" id="menu-provider-row" style="margin-top:0;">
-                  <button class="provider-btn active" id="btn-menu-prov-osm">OpenStreetMap</button>
-                  <button class="provider-btn" id="btn-menu-prov-gmaps">Google Maps</button>
+                  <button class="provider-btn gmaps-active" id="btn-menu-prov-gmaps">Google Maps</button>
+                  <button class="provider-btn" id="btn-menu-prov-osm">OpenStreetMap</button>
                 </div>
               </div>
               <div>
@@ -948,24 +944,33 @@
               </div>
             </div>
             <button class="t-btn" id="btn-open-gmaps-modal" style="margin-top:10px;border-color:#72a868;background:rgba(28,44,28,0.95);">
-              <span>Escolher Cidade ou Área no Mapa Real</span>
+              <span>1. Escolher Cidade ou Área no Mapa (Google Maps)</span>
               <span style="font-size:10px;color:#a8d48c">Abrir Mapa</span>
             </button>
           </div>
         </div>
 
-        <div class="sector-box">
+        <div class="sector-box" id="map-ready-server-box" style="transition:border-color .2s, box-shadow .2s;">
           <div class="menu-section-head">
-            <span>Mapa Carregado</span>
-            <button class="mini-btn" id="btn-new-map">Gerar Nova Seed [N]</button>
+            <span>2. Mapa Carregado &amp; Iniciar Servidor</span>
+            <span class="menu-section-sub" id="map-ready-badge" style="color:var(--amb);">Escolha um mapa acima</span>
           </div>
-          <div style="font-family:'Oswald',sans-serif;font-size:21px;letter-spacing:1.6px;color:#fff;" id="menu-seed-title">CARREGANDO...</div>
-          <div style="font-size:10.5px;color:#9aa687;margin-top:3px;" id="menu-seed-stats">Preparando mundo...</div>
+          <div style="font-family:'Oswald',sans-serif;font-size:20px;letter-spacing:1.4px;color:#fff;" id="menu-seed-title">SELECIONE UM LOCAL NO GOOGLE MAPS</div>
+          <div style="font-size:10.5px;color:#9aa687;margin-top:3px;" id="menu-seed-stats">Gere a cidade desejada acima para liberar o servidor multiplayer neste mapa.</div>
+
+          <div id="map-ready-host-controls" style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(168,162,142,0.16);">
+            <div class="field-row" style="margin-bottom:4px;">
+              <input type="text" id="inp-quick-server-name" class="txt-input" maxlength="28" value="Servidor Knox #1 [PvP/Loot]" placeholder="Nome do servidor..." />
+              <button class="mini-btn" id="btn-quick-host-server" style="padding:8px 14px;background:rgba(46,74,36,0.95);border-color:#8fd66c;color:#e4ffd6;font-weight:700;">Gerar Servidor Agora</button>
+              <button class="mini-btn" id="btn-quick-leave-room" style="padding:8px 12px;display:none;font-weight:700;">Sair da Sala</button>
+              <button class="mini-btn" id="btn-quick-stop-server" style="padding:8px 14px;background:#c23d33;color:#fff;border-color:#e05544;display:none;font-weight:700;">Fechar Servidor</button>
+            </div>
+            <div id="map-ready-server-hint" style="font-size:10px;color:var(--dim);">Assim que gerar o mapa, clique em <b>Gerar Servidor Agora</b> para abrir a sala online com esse mapa para seus amigos.</div>
+          </div>
         </div>
 
         <div class="btn-stack">
           <button class="t-btn pri" id="btn-play"><span>Iniciar / Voltar para a Partida</span><span style="font-size:10.5px;opacity:0.85;">Clique para jogar</span></button>
-          <button class="t-btn" id="btn-open-gmaps-top" style="border-color:#5a7d52;"><span>Explorar Cidade Real (OpenStreetMap / Google Maps)</span><span style="font-size:10px;color:#a8d48c;">Mapa Real</span></button>
           <button class="t-btn" id="btn-esc-stop-server" style="display:none;background:#75221c;border-color:#b5392e;color:#fff;"><span>Encerrar Meu Servidor Online</span><span style="font-size:10px;color:#ffa39b;">Finalizar</span></button>
         </div>
       </div>
@@ -6874,6 +6879,7 @@ function clearStreetLamps() {
 }
 
 function updateStreetlightsForSky(sky) {
+  const wasNight = streetLampSystem.isNight;
   const isNight = !!(sky && sky.isNight);
   const nf = isNight ? (sky.nightFactor ?? 1.0) : 0;
   streetLampSystem.isNight = isNight;
@@ -6884,24 +6890,26 @@ function updateStreetlightsForSky(sky) {
       streetLampSystem.bulbMat.color.setHex(0xffe9b5);
       streetLampSystem.bulbMat.emissive.setHex(0xffb84d);
       streetLampSystem.bulbMat.emissiveIntensity = 1.6 + nf * 1.5;
-    } else {
+    } else if (wasNight || streetLampSystem.bulbMat.emissiveIntensity !== 0) {
       streetLampSystem.bulbMat.color.setHex(0x8a9296);
       streetLampSystem.bulbMat.emissive.setHex(0x000000);
       streetLampSystem.bulbMat.emissiveIntensity = 0;
     }
-    streetLampSystem.bulbMat.needsUpdate = true;
+    // NUNCA usar bulbMat.needsUpdate = true aqui: color/emissive são uniforms WebGL e needsUpdate força recompilação do shader travando a página!
   }
   if (streetLampSystem.coneMesh && streetLampSystem.coneMat) {
     streetLampSystem.coneMesh.visible = isNight;
     streetLampSystem.coneMat.opacity = isNight ? (0.09 + nf * 0.08) : 0;
   }
   if (!isNight) {
-    for (let i = 0; i < streetLampSystem.pointLights.length; i++) {
-      streetLampSystem.pointLights[i].intensity = 0;
-      streetLampSystem.pointLights[i].visible = false;
+    if (wasNight) {
+      for (let i = 0; i < streetLampSystem.pointLights.length; i++) {
+        streetLampSystem.pointLights[i].intensity = 0;
+        streetLampSystem.pointLights[i].visible = false;
+      }
     }
-  } else {
-    streetLampSystem.poolTimer = 0; // força atualização imediata no próximo tick
+  } else if (!wasNight) {
+    streetLampSystem.poolTimer = 0; // só força recálculo imediato na transição dia -> noite
   }
 }
 
@@ -7836,7 +7844,7 @@ function generateProceduralMap(seedVal = null) {
 const GMP_ATTRIBUTION_ID = 'gmp_mcp_codeassist_v1_aistudio';
 
 const gmapsPickerState = {
-  provider: 'osm', // 'osm' (gratuito sem API) | 'gmaps' (Google Maps)
+  provider: 'gmaps', // 'gmaps' (Google Maps padrão) | fallback automático 'osm' se sem API Key
   sdkPromise: null,
   map: null,
   marker: null,
@@ -7856,7 +7864,7 @@ const gmapsPickerState = {
   areaKm2: 1.0,
   reliefScale: 1.0,
   isGenerating: false,
-  worldMode: 'procedural' // 'procedural' | 'realworld'
+  worldMode: 'realworld'
 };
 
 function checkAndDispatchQuotaError(err, source = 'sdk') {
@@ -10189,7 +10197,15 @@ function buildWorldFromBlueprint(bp, isRemoteSync = false) {
   if (!isRemoteSync) {
     setGmapsProgress(false);
     document.getElementById('gmaps-modal').classList.remove('open');
-    showToast(`MUNDO REAL (${provTag}) // ${totalBuildings} CONSTRUÇÕES · ${realWorldMeta.intersectionCount} CRUZAMENTOS · HASH #${currentWorldHash.slice(0, 6)}`);
+    const quickNameInp = document.getElementById('inp-quick-server-name');
+    const srvNameInp = document.getElementById('inp-server-name');
+    const suggested = `Knox · ${realWorldMeta.placeName}`.slice(0, 28);
+    if (quickNameInp && (!quickNameInp.value || quickNameInp.value.startsWith('Servidor Knox #1') || quickNameInp.value.startsWith('Knox · '))) {
+      quickNameInp.value = suggested;
+      if (srvNameInp) srvNameInp.value = suggested;
+    }
+    if (typeof syncServerControlButtonsUI === 'function') syncServerControlButtonsUI();
+    showToast(`MAPA PRONTO (${realWorldMeta.placeName}) — CLIQUE EM "GERAR SERVIDOR AGORA" PARA ABRIR A SALA!`);
     if (typeof syncHostWorldToNetwork === 'function' && netState.isHost) {
       syncHostWorldToNetwork();
     }
@@ -13787,6 +13803,46 @@ function syncServerControlButtonsUI() {
   const hostBtn = document.getElementById('btn-host-server');
   if (hostBtn) hostBtn.style.display = connected ? 'none' : 'inline-block';
 
+  // Controles integrados de Servidor junto da geração de mapa na Aba 1
+  const quickHostBtn = document.getElementById('btn-quick-host-server');
+  const quickLeaveBtn = document.getElementById('btn-quick-leave-room');
+  const quickStopBtn = document.getElementById('btn-quick-stop-server');
+  const readyBox = document.getElementById('map-ready-server-box');
+  const readyBadge = document.getElementById('map-ready-badge');
+  const readyHint = document.getElementById('map-ready-server-hint');
+  const mapReady = !!(typeof realWorldMeta !== 'undefined' && realWorldMeta.active && currentWorldBlueprint);
+  if (quickHostBtn) {
+    quickHostBtn.style.display = connected ? 'none' : 'inline-block';
+    quickHostBtn.style.opacity = mapReady ? '1' : '0.68';
+    quickHostBtn.title = mapReady ? 'Criar servidor online com o mapa gerado agora' : 'Gere primeiro um mapa no Google Maps acima';
+  }
+  if (quickLeaveBtn) quickLeaveBtn.style.display = connected ? 'inline-block' : 'none';
+  if (quickStopBtn) {
+    quickStopBtn.style.display = hasOwnedServer ? 'inline-block' : 'none';
+    quickStopBtn.textContent = canCloseCurrent ? 'Fechar Servidor' : `Fechar (${ownedRoomCode || ''})`;
+  }
+  if (readyBox && readyBadge) {
+    if (connected && netState.roomCode) {
+      readyBox.style.borderColor = '#8fd66c';
+      readyBox.style.boxShadow = '0 0 0 1px rgba(143,214,108,0.28)';
+      readyBadge.textContent = `SALA ATIVA · ${netState.roomCode}`;
+      readyBadge.style.color = '#9ef082';
+      if (readyHint) readyHint.innerHTML = `Servidor online no código <b>${escapeHtml(netState.roomCode)}</b>. Seus amigos já podem entrar na aba Servidores Online!`;
+    } else if (typeof realWorldMeta !== 'undefined' && realWorldMeta.active) {
+      readyBox.style.borderColor = '#8fd66c';
+      readyBox.style.boxShadow = '0 0 14px rgba(143,214,108,0.16)';
+      readyBadge.textContent = 'MAPA PRONTO · GERE O SERVIDOR AGORA';
+      readyBadge.style.color = '#9ef082';
+      if (readyHint) readyHint.innerHTML = `Mapa <b>${escapeHtml(realWorldMeta.placeName)}</b> pronto! Clique em <b>Gerar Servidor Agora</b> para iniciar a sala multiplayer.`;
+    } else {
+      readyBox.style.borderColor = '';
+      readyBox.style.boxShadow = '';
+      readyBadge.textContent = 'Escolha um mapa acima';
+      readyBadge.style.color = 'var(--amb)';
+      if (readyHint) readyHint.innerHTML = 'Assim que gerar o mapa no Google Maps acima, clique em <b>Gerar Servidor Agora</b> para abrir a sala com seus amigos.';
+    }
+  }
+
   const hudStatus = document.getElementById('hud-net-status');
   const menuInfo = document.getElementById('menu-net-info');
   if (netState.migrating && netState.roomCode) {
@@ -14420,6 +14476,7 @@ function handleNetworkPacket(pkt, fromConn = null) {
       spawnLootObject(pkt.uid, pkt.kind, pkt.subId, pkt.name, pkt.qty, pkt.x, pkt.y, pkt.z, pkt.extra);
     }
   } else if (pkt.t === 'env_sync') {
+    if (pkt.senderId && pkt.senderId === player.id) return;
     if (typeof pkt.cycleMode === 'number') {
       timeOfDayState.cycleMode = pkt.cycleMode;
       const cycBtn = document.getElementById('dev-btn-time-cycle');
@@ -14622,19 +14679,53 @@ async function postVercelServerHeartbeat(action = 'upsert', override = null) {
   }
 }
 
+const PEER_JS_OPTIONS = {
+  debug: 0,
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' }
+    ]
+  }
+};
+
+function createPeerInstance(id = undefined) {
+  return id ? new window.Peer(id, PEER_JS_OPTIONS) : new window.Peer(PEER_JS_OPTIONS);
+}
+
+function schedulePeerSignalingReconnect(p) {
+  if (!p || p.destroyed || netState.peer !== p || netState.closedByOwner || netState.intentionalLeave) return;
+  if (p._sigReconnecting) return;
+  p._sigReconnecting = true;
+  setTimeout(() => {
+    p._sigReconnecting = false;
+    if (!p || p.destroyed || netState.peer !== p || netState.closedByOwner || netState.intentionalLeave) return;
+    if (p.disconnected) {
+      try { p.reconnect(); } catch (_) {}
+    }
+  }, 1500);
+}
+
 function attachHostPeerListeners(p) {
+  p.on('disconnected', () => schedulePeerSignalingReconnect(p));
   p.on('connection', (conn) => {
-    conn.on('open', () => {
-      // Envia pacote authoritative de boas-vindas com WorldBlueprint ID/Hash + estado vivo do mapa
-      conn.send({
-        t: 'welcome',
-        ...buildWorldWelcomePayload()
-      });
-    });
+    conn.on('error', () => {});
     conn.on('data', (data) => {
       if (data && data.t === 'join_hello') {
         netState.clientConns.set(conn.peer, conn);
         conn.playerId = data.playerId;
+        if (!conn._welcomed) {
+          conn._welcomed = true;
+          // Envia pacote authoritative de boas-vindas SOMENTE para jogadores reais (não para scanners ping_info!)
+          try {
+            conn.send({
+              t: 'welcome',
+              ...buildWorldWelcomePayload()
+            });
+          } catch (_) {}
+        }
         showToast(`${data.nick} ENTROU NO SERVIDOR!`);
         broadcastRoomMeta();
         postVercelServerHeartbeat('upsert');
@@ -14667,8 +14758,10 @@ function bindAsHostForRoom(desiredId, opts = {}) {
   let attempt = 0;
   const tryBind = () => {
     if (netState.closedByOwner || netState.intentionalLeave) return;
-    const p = new window.Peer(desiredId);
+    const p = createPeerInstance(desiredId);
+    let peerOpened = false;
     p.on('open', async (id) => {
+      peerOpened = true;
       if (netState.peer && netState.peer !== p) {
         try { netState.peer.destroy(); } catch (_) {}
       }
@@ -14702,7 +14795,14 @@ function bindAsHostForRoom(desiredId, opts = {}) {
     });
 
     p.on('error', (err) => {
-      if (err.type === 'unavailable-id' && attempt < maxRetries) {
+      // Depois de aberto, erros transitórios de sinalização NÃO derrubam o host nem desconectam os amigos!
+      if (peerOpened && netState.peer === p) {
+        if (err && (err.type === 'network' || err.type === 'disconnected' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed')) {
+          schedulePeerSignalingReconnect(p);
+        }
+        return;
+      }
+      if (err && err.type === 'unavailable-id' && attempt < maxRetries) {
         attempt++;
         try { p.destroy(); } catch (_) {}
         netState.migrationTimer = setTimeout(tryBind, 1100);
@@ -14713,7 +14813,7 @@ function bindAsHostForRoom(desiredId, opts = {}) {
         } else {
           netState.migrating = false;
           syncServerControlButtonsUI();
-          showToast(`ERRO DE REDE: ${err.type}`);
+          showToast(`ERRO DE REDE: ${err ? err.type : 'desconhecido'}`);
         }
       }
     });
@@ -14724,6 +14824,11 @@ function bindAsHostForRoom(desiredId, opts = {}) {
 }
 
 function createOnlineServer() {
+  if (!currentWorldBlueprint || !realWorldMeta.active) {
+    showToast('GERE UM MAPA NO GOOGLE MAPS ANTES DE CRIAR O SERVIDOR');
+    if (typeof openGoogleMapsPickerModal === 'function') openGoogleMapsPickerModal();
+    return;
+  }
   if (typeof window.Peer === 'undefined') {
     showToast('BIBLIOTECA PEERJS AINDA CARREGANDO...');
     return;
@@ -14732,7 +14837,11 @@ function createOnlineServer() {
   netState.closedByOwner = false;
   netState.intentionalLeave = false;
   player.nick = saveSurvivorNick(document.getElementById('inp-nickname').value);
-  const desiredName = (document.getElementById('inp-server-name').value || 'Servidor Knox').trim();
+  const quickNameEl = document.getElementById('inp-quick-server-name');
+  const srvNameEl = document.getElementById('inp-server-name');
+  const desiredName = ((quickNameEl && quickNameEl.value) || (srvNameEl && srvNameEl.value) || 'Servidor Knox').trim();
+  if (quickNameEl) quickNameEl.value = desiredName;
+  if (srvNameEl) srvNameEl.value = desiredName;
 
   // Tenta alocar um dos 6 slots públicos automáticos (para aparecer na lista de todos na hora!)
   let slotIdx = 0;
@@ -14741,8 +14850,10 @@ function createOnlineServer() {
       ? PUBLIC_SLOTS[slotIdx]
       : 'knox-room-' + Math.floor(1000 + Math.random() * 8999);
 
-    const p = new window.Peer(desiredId);
+    const p = createPeerInstance(desiredId);
+    let peerOpened = false;
     p.on('open', async (id) => {
+      peerOpened = true;
       netState.peer = p;
       netState.isHost = true;
       netState.isClient = false;
@@ -14764,12 +14875,18 @@ function createOnlineServer() {
     });
 
     p.on('error', (err) => {
-      if (err.type === 'unavailable-id' && slotIdx < PUBLIC_SLOTS.length) {
+      if (peerOpened && netState.peer === p) {
+        if (err && (err.type === 'network' || err.type === 'disconnected' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed')) {
+          schedulePeerSignalingReconnect(p);
+        }
+        return;
+      }
+      if (err && err.type === 'unavailable-id' && slotIdx < PUBLIC_SLOTS.length) {
         slotIdx++;
-        p.destroy();
+        try { p.destroy(); } catch (_) {}
         tryBindSlot();
       } else {
-        showToast(`ERRO DE REDE: ${err.type}`);
+        showToast(`ERRO DE REDE: ${err ? err.type : 'desconhecido'}`);
       }
     });
 
@@ -14869,10 +14986,14 @@ function joinOnlineServer(roomPeerId, opts = {}) {
   let opened = false;
   let fallbackTriggered = false;
   let connectTimeout = null;
+  let retryTimer = null;
+  let joinRetries = 0;
+
   const triggerStandbyResumeOrClaim = async () => {
     if (fallbackTriggered || opened || netState.closedByOwner || netState.intentionalLeave) return;
     fallbackTriggered = true;
     if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
     const meta = effectiveResumeMeta || fallbackMeta;
     if (meta) {
       if (netState.peer) { try { netState.peer.destroy(); } catch (_) {} }
@@ -14896,7 +15017,56 @@ function joinOnlineServer(roomPeerId, opts = {}) {
     }
   };
 
-  const p = new window.Peer();
+  const p = createPeerInstance();
+  p.on('disconnected', () => schedulePeerSignalingReconnect(p));
+
+  const openDataConn = () => {
+    if (opened || p.destroyed || netState.peer !== p || netState.closedByOwner || netState.intentionalLeave) return;
+    const conn = p.connect(targetId, { reliable: true });
+    netState.hostConn = conn;
+
+    conn.on('error', () => {});
+    conn.on('open', () => {
+      if (netState.hostConn !== conn) return;
+      opened = true;
+      if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+      conn.send({ t: 'join_hello', playerId: player.id, nick: player.nick });
+      if (isCurrentRoomOwner()) {
+        conn.send({ t: 'owner_sync', ownerId: LOCAL_OWNER_ID, ownerName: player.nick });
+      }
+      syncServerControlButtonsUI();
+      if (!isReconnect) {
+        try { canvas.requestPointerLock(); } catch (_) {}
+      } else {
+        showToast(`RECONECTADO À SALA ${targetId}!`);
+      }
+    });
+    conn.on('data', (data) => handleNetworkPacket(data, null));
+    conn.on('close', () => {
+      if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
+      if (netState.hostConn !== conn) return;
+      if (netState.closedByOwner || netState.intentionalLeave) {
+        disconnectSession({ keepServerAlive: !netState.closedByOwner });
+        return;
+      }
+      if (!opened && (effectiveResumeMeta || fallbackMeta)) {
+        triggerStandbyResumeOrClaim();
+        return;
+      }
+      if (!opened) return;
+      // Queda inesperada do host atual -> inicia migração automática para manter o servidor online!
+      const savedMeta = {
+        serverName: netState.serverName,
+        ownerId: netState.ownerId,
+        ownerName: netState.ownerName,
+        hostOrder: Array.isArray(netState.hostOrder) ? netState.hostOrder.slice() : [],
+        worldId: netState.worldId
+      };
+      startHostMigrationOrReconnect(targetId, savedMeta);
+    });
+  };
+
   p.on('open', () => {
     netState.peer = p;
     netState.isClient = true;
@@ -14912,58 +15082,37 @@ function joinOnlineServer(roomPeerId, opts = {}) {
     }
     syncServerControlButtonsUI();
 
-    const conn = p.connect(targetId, { reliable: true });
-    netState.hostConn = conn;
+    openDataConn();
 
     // Timeout rápido caso a sala esteja em standby (ninguém respondendo no PeerJS)
     connectTimeout = setTimeout(() => {
       if (!opened && (effectiveResumeMeta || fallbackMeta)) {
         triggerStandbyResumeOrClaim();
       }
-    }, 3200);
-
-    conn.on('open', () => {
-      opened = true;
-      clearTimeout(connectTimeout);
-      conn.send({ t: 'join_hello', playerId: player.id, nick: player.nick });
-      if (isCurrentRoomOwner()) {
-        conn.send({ t: 'owner_sync', ownerId: LOCAL_OWNER_ID, ownerName: player.nick });
-      }
-      syncServerControlButtonsUI();
-      if (!isReconnect) {
-        try { canvas.requestPointerLock(); } catch (_) {}
-      } else {
-        showToast(`RECONECTADO À SALA ${targetId}!`);
-      }
-    });
-    conn.on('data', (data) => handleNetworkPacket(data, null));
-    conn.on('close', () => {
-      clearTimeout(connectTimeout);
-      if (netState.hostConn !== conn) return;
-      if (netState.closedByOwner || netState.intentionalLeave) {
-        disconnectSession({ keepServerAlive: !netState.closedByOwner });
-        return;
-      }
-      if (!opened && (effectiveResumeMeta || fallbackMeta)) {
-        triggerStandbyResumeOrClaim();
-        return;
-      }
-      // Queda inesperada do host atual -> inicia migração automática para manter o servidor online!
-      const savedMeta = {
-        serverName: netState.serverName,
-        ownerId: netState.ownerId,
-        ownerName: netState.ownerName,
-        hostOrder: Array.isArray(netState.hostOrder) ? netState.hostOrder.slice() : [],
-        worldId: netState.worldId
-      };
-      startHostMigrationOrReconnect(targetId, savedMeta);
-    });
+    }, 4500);
   });
+
   p.on('error', (err) => {
-    if (err.type === 'peer-unavailable' && (effectiveResumeMeta || fallbackMeta)) {
+    const errType = err && err.type ? err.type : '';
+    // CRÍTICO: Se o DataChannel WebRTC já está aberto (jogador já entrou na sala!),
+    // erros transitórios de sinalização PeerJS (peer-unavailable/network/disconnected) NÃO devem exibir erro nem expulsar o jogador!
+    if (opened && netState.hostConn && netState.hostConn.open) {
+      if (errType === 'network' || errType === 'disconnected' || errType === 'server-error' || errType === 'socket-error' || errType === 'socket-closed') {
+        schedulePeerSignalingReconnect(p);
+      }
+      return;
+    }
+    if (errType === 'peer-unavailable' && (effectiveResumeMeta || fallbackMeta)) {
       triggerStandbyResumeOrClaim();
-    } else {
-      showToast(`FALHA AO CONECTAR: ${err.type}`);
+      return;
+    }
+    if (errType === 'peer-unavailable' && joinRetries < 2 && !p.destroyed && netState.peer === p) {
+      joinRetries++;
+      retryTimer = setTimeout(() => openDataConn(), joinRetries * 950);
+      return;
+    }
+    if (!opened) {
+      showToast(`FALHA AO CONECTAR: ${errType || 'erro de rede'}`);
       if (!isReconnect) disconnectSession({ keepServerAlive: true });
     }
   });
@@ -15015,7 +15164,7 @@ function leaveCurrentRoom() {
 function sendRemoteOwnerCloseToPeer(targetPeerId) {
   if (!targetPeerId || typeof window.Peer === 'undefined') return;
   try {
-    const killer = new window.Peer();
+    const killer = createPeerInstance();
     let done = false;
     const cleanup = () => { if (!done) { done = true; try { killer.destroy(); } catch (_) {} } };
     setTimeout(cleanup, 6000);
@@ -15171,7 +15320,7 @@ async function refreshServerListUI() {
       ...Array.from(foundMap.keys())
     ]));
     await new Promise((resolve) => {
-      const scanner = new window.Peer();
+      const scanner = createPeerInstance();
       let done = false;
       const finish = () => {
         if (done) return;
@@ -16821,7 +16970,7 @@ function updateWorldFXAndHUD(dt) {
     timeOfDayState.hours = (timeOfDayState.hours + rate * dt) % 24;
     timeOfDayState.hudTimer -= dt;
     if (timeOfDayState.hudTimer <= 0) {
-      timeOfDayState.hudTimer = 0.065;
+      timeOfDayState.hudTimer = 0.12;
       setTimeOfDay(timeOfDayState.hours);
     }
   }
@@ -16988,13 +17137,6 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.code === 'Escape' && (inventoryOpen || partyOpen)) {
     toggleInventoryModal(false);
-    return;
-  }
-
-  if (e.code === 'KeyN' && !e.repeat && !netState.isClient) {
-    sfx.init();
-    generateProceduralMap();
-    showToast(`NOVO MAPA // SEED #${currentSeed}`);
     return;
   }
 
@@ -17196,6 +17338,11 @@ if (nickInputEl) {
 
 const startOrResumePlay = () => {
   sfx.init();
+  if (!netState.isClient && !netState.isHost && (!currentWorldBlueprint || !realWorldMeta.active)) {
+    showToast('ESCOLHA E GERE UM MAPA NO GOOGLE MAPS PARA INICIAR');
+    if (typeof openGoogleMapsPickerModal === 'function') openGoogleMapsPickerModal();
+    return;
+  }
   const cleanNick = saveSurvivorNick(document.getElementById('inp-nickname').value);
   if (nickInputEl) nickInputEl.value = cleanNick;
   player.nick = cleanNick;
@@ -17283,14 +17430,17 @@ if (devBtnInfAmmo) {
   devBtnInfAmmo.onclick = () => handleToggleInfiniteMode();
 }
 
-// === CONTROLE DE HORA DO DIA & ATMOSFERA NO PAINEL DEV [F1] (SINCRONIZADO PARA TODOS!) ===
+// === CONTROLE DE HORA DO DIA & ATMOSFERA NO PAINEL DEV [F1] (OTIMIZADO E SINCRONIZADO PARA TODOS!) ===
 let _lastEnvBroadcastAt = 0;
+let _pendingTimeSliderHour = null;
+let _timeSliderRaf = 0;
 function broadcastEnvSync(force = false) {
   const now = performance.now();
-  if (!force && now - _lastEnvBroadcastAt < 120) return;
+  if (!force && now - _lastEnvBroadcastAt < 320) return;
   _lastEnvBroadcastAt = now;
   netBroadcast({
     t: 'env_sync',
+    senderId: player.id,
     hours: Number(timeOfDayState.hours),
     stormMode: !!timeOfDayState.stormMode,
     cycleMode: Number(timeOfDayState.cycleMode) || 0
@@ -17309,12 +17459,25 @@ const devTimeSlider = document.getElementById('dev-time-slider');
 if (devTimeSlider) {
   devTimeSlider.oninput = (e) => {
     const h = parseFloat(e.target.value);
-    if (Number.isFinite(h)) {
-      setTimeOfDay(h);
-      broadcastEnvSync(false);
+    if (!Number.isFinite(h)) return;
+    _pendingTimeSliderHour = h;
+    if (!_timeSliderRaf) {
+      _timeSliderRaf = requestAnimationFrame(() => {
+        _timeSliderRaf = 0;
+        if (_pendingTimeSliderHour !== null) {
+          const targetH = _pendingTimeSliderHour;
+          _pendingTimeSliderHour = null;
+          setTimeOfDay(targetH);
+          broadcastEnvSync(false);
+        }
+      });
     }
   };
-  devTimeSlider.onchange = () => broadcastEnvSync(true);
+  devTimeSlider.onchange = (e) => {
+    const h = parseFloat(e.target.value);
+    if (Number.isFinite(h)) setTimeOfDay(h);
+    broadcastEnvSync(true);
+  };
 }
 document.querySelectorAll('.dev-time-preset').forEach((btn) => {
   btn.onclick = () => {
@@ -17596,12 +17759,18 @@ document.getElementById('btn-join-code').onclick = () => {
   const resumeMeta = (owned && owned.peerId === code) ? owned : null;
   joinOnlineServer(code, { resumeMeta });
 };
-document.getElementById('btn-new-map').onclick = () => {
-  if (netState.isClient) { showToast('APENAS O HOST PODE MUDAR O MAPA!'); return; }
-  sfx.init();
-  generateProceduralMap();
-  showToast(`NOVA SEED GERADA: #${currentSeed}`);
-};
+const quickServerNameInp = document.getElementById('inp-quick-server-name');
+const mainServerNameInp = document.getElementById('inp-server-name');
+if (quickServerNameInp && mainServerNameInp) {
+  quickServerNameInp.addEventListener('input', () => { mainServerNameInp.value = quickServerNameInp.value; });
+  mainServerNameInp.addEventListener('input', () => { quickServerNameInp.value = mainServerNameInp.value; });
+}
+const quickHostBtnEl = document.getElementById('btn-quick-host-server');
+if (quickHostBtnEl) quickHostBtnEl.onclick = () => { sfx.init(); createOnlineServer(); };
+const quickLeaveBtnEl = document.getElementById('btn-quick-leave-room');
+if (quickLeaveBtnEl) quickLeaveBtnEl.onclick = () => leaveCurrentRoom();
+const quickStopBtnEl = document.getElementById('btn-quick-stop-server');
+if (quickStopBtnEl) quickStopBtnEl.onclick = () => stopHostedServer();
 document.getElementById('btn-close-inv').onclick = () => toggleInventoryModal(false);
 document.getElementById('btn-open-party-from-inv').onclick = () => togglePartyModal(true);
 document.getElementById('btn-close-party').onclick = () => togglePartyModal(false);
@@ -17627,27 +17796,18 @@ if (dismissQuotaBtn) {
   dismissQuotaBtn.onclick = () => document.getElementById('gmp-quota-banner').classList.remove('visible');
 }
 
-// Controles de Criação de Mundo (Procedural Padrão vs Mundo Real OSM / Google Maps)
-function setWorldCreationMode(mode) {
-  gmapsPickerState.worldMode = mode;
-  const isReal = mode === 'realworld';
-  document.getElementById('btn-mode-procedural').classList.toggle('active', !isReal);
-  document.getElementById('btn-mode-realworld').classList.toggle('active', isReal);
-  document.getElementById('realworld-quick-config').style.display = isReal ? 'block' : 'none';
-}
-
-document.getElementById('btn-mode-procedural').onclick = () => {
-  setWorldCreationMode('procedural');
-  if (realWorldMeta.active && !netState.isClient) {
-    generateProceduralMap();
-    showToast(`MODO PROCEDURAL PADRÃO // SEED #${currentSeed}`);
-  }
-};
-document.getElementById('btn-mode-realworld').onclick = () => {
-  setWorldCreationMode('realworld');
-  syncMapProviderButtonsUI();
-  updateGmapsSelectionUI();
-};
+// Modo único de Mundo Real (Google Maps com fallback transparente para OpenStreetMap caso sem API Key)
+gmapsPickerState.worldMode = 'realworld';
+fetch('/api/maps-config', { cache: 'no-store' })
+  .then((r) => (r.ok ? r.json() : null))
+  .then((cfg) => {
+    gmapsPickerState.provider = (cfg && cfg.configured && cfg.apiKey) ? 'gmaps' : 'osm';
+    syncMapProviderButtonsUI();
+  })
+  .catch(() => {
+    gmapsPickerState.provider = 'osm';
+    syncMapProviderButtonsUI();
+  });
 
 ['btn-menu-prov-osm', 'btn-modal-prov-osm'].forEach((id) => {
   const el = document.getElementById(id);
@@ -17708,16 +17868,13 @@ if (osmSearchInput) {
   });
 }
 
-document.getElementById('btn-open-gmaps-modal').onclick = () => {
-  sfx.init();
-  openGoogleMapsPickerModal();
-};
-document.getElementById('btn-open-gmaps-top').onclick = () => {
-  sfx.init();
-  document.getElementById('tab-btn-solo').click();
-  setWorldCreationMode('realworld');
-  openGoogleMapsPickerModal();
-};
+const openGmapsModalBtn = document.getElementById('btn-open-gmaps-modal');
+if (openGmapsModalBtn) {
+  openGmapsModalBtn.onclick = () => {
+    sfx.init();
+    openGoogleMapsPickerModal();
+  };
+}
 document.getElementById('btn-close-gmaps-modal').onclick = () => {
   if (gmapsPickerState.isGenerating) return;
   document.getElementById('gmaps-modal').classList.remove('open');
@@ -17841,6 +17998,14 @@ window.addEventListener('beforeunload', () => {
    17. INICIALIZAÇÃO DO MUNDO & LOOP PRINCIPAL (MODELOS 100% PROCEDURAIS)
    ============================================================================ */
 generateProceduralMap();
+if (!realWorldMeta.active) {
+  const seedTitleEl = document.getElementById('menu-seed-title');
+  const seedStatsEl = document.getElementById('menu-seed-stats');
+  const modeBadgeEl = document.getElementById('menu-world-mode-badge');
+  if (seedTitleEl) seedTitleEl.textContent = 'SELECIONE UM LOCAL NO GOOGLE MAPS';
+  if (seedStatsEl) seedStatsEl.textContent = 'Abra o mapa acima para escanear sua cidade e iniciar o servidor multiplayer.';
+  if (modeBadgeEl) modeBadgeEl.textContent = 'GOOGLE MAPS 3D';
+}
 syncServerControlButtonsUI();
 setTimeout(() => refreshServerListUI(), 500);
 
