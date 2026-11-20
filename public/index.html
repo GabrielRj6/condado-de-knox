@@ -980,9 +980,10 @@
           <div class="field-row" style="margin-bottom:4px;">
             <input type="text" id="inp-server-name" class="txt-input" maxlength="28" value="Servidor Knox #1 [PvP/Loot]" placeholder="Nome da sala..." />
             <button class="mini-btn" id="btn-host-server" style="padding:8px 14px;border-color:var(--amb);color:#f5d59c;font-weight:700;">Criar Sala</button>
-            <button class="mini-btn" id="btn-stop-server" style="padding:8px 14px;background:#c23d33;color:#fff;border-color:#e05544;display:none;font-weight:700;">Encerrar</button>
+            <button class="mini-btn" id="btn-leave-room" style="padding:8px 12px;display:none;font-weight:700;">Sair da Sala</button>
+            <button class="mini-btn" id="btn-stop-server" style="padding:8px 14px;background:#c23d33;color:#fff;border-color:#e05544;display:none;font-weight:700;">Fechar Servidor</button>
           </div>
-          <div style="font-size:10px;color:var(--dim);">Amigos podem entrar pela lista abaixo ou colando o código da sala. Mapas reais são sincronizados automaticamente.</div>
+          <div style="font-size:10px;color:var(--dim);">Se o criador cair ou fechar a aba, o servidor continua aberto com seus amigos e aparece aqui para você voltar. Apenas o criador pode fechar o servidor.</div>
         </div>
 
         <div class="sector-box">
@@ -13376,12 +13377,36 @@ const PUBLIC_SLOTS = ['knox-br-room-1', 'knox-br-room-2', 'knox-br-room-3', 'kno
 const remotePlayers = new Map(); // peerOrPlayerId -> { id, nick, teamId, hp, dead, pos, targetPos, yaw, pitch, crouch, sprint, weaponId, inCarId, rig, tagEl, hitboxes }
 let pendingTeamInvite = null;    // { fromId, fromNick, teamId }
 
+// Identidade persistente do criador da sala (mantém permissão de "Fechar Servidor" mesmo após fechar a aba e reconectar!)
+const OWNED_SERVER_STORAGE_KEY = 'knox_owned_server_v1';
+function getOrCreateStorageToken(key, prefix) {
+  try {
+    let val = localStorage.getItem(key);
+    if (!val) {
+      val = prefix + '-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+      localStorage.setItem(key, val);
+    }
+    return val;
+  } catch (_) {
+    return prefix + '-' + Math.random().toString(36).slice(2, 10);
+  }
+}
+const LOCAL_OWNER_ID = getOrCreateStorageToken('knox_owner_id_v1', 'own');
+const LOCAL_OWNER_KEY = getOrCreateStorageToken('knox_owner_key_v1', 'key');
+
 const netState = {
   peer: null,
   isHost: false,
   isClient: false,
   roomCode: null,
   serverName: '',
+  ownerId: null,
+  ownerName: '',
+  hostOrder: [],
+  migrating: false,
+  closedByOwner: false,
+  intentionalLeave: false,
+  migrationTimer: null,
   worldId: null,
   hostConn: null,
   clientConns: new Map(), // peerId -> DataConnection
@@ -13390,6 +13415,115 @@ const netState = {
   syncAcc: 0,
   heartbeatAcc: 0
 };
+
+function isCurrentRoomOwner() {
+  return Boolean(netState.roomCode && netState.ownerId && netState.ownerId === LOCAL_OWNER_ID);
+}
+
+function saveOwnedServerMeta(override = null) {
+  try {
+    const data = override || {
+      peerId: netState.roomCode,
+      name: netState.serverName || 'Servidor Knox',
+      ownerId: LOCAL_OWNER_ID,
+      ownerName: netState.ownerName || player.nick || 'Omni',
+      seed: currentSeed,
+      worldMode: currentWorldBlueprint ? currentWorldBlueprint.provider : 'procedural',
+      placeName: realWorldMeta.active ? realWorldMeta.placeName : '',
+      areaKm2: realWorldMeta.active ? realWorldMeta.areaKm2 : 0,
+      worldId: netState.worldId || '',
+      worldHash: currentWorldHash || '',
+      updatedAt: Date.now()
+    };
+    if (!data.peerId) return;
+    localStorage.setItem(OWNED_SERVER_STORAGE_KEY, JSON.stringify(data));
+  } catch (_) {}
+}
+
+function loadOwnedServerMeta() {
+  try {
+    const raw = localStorage.getItem(OWNED_SERVER_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.peerId) return null;
+    if (Date.now() - (parsed.updatedAt || 0) > 2 * 60 * 60 * 1000) {
+      localStorage.removeItem(OWNED_SERVER_STORAGE_KEY);
+      return null;
+    }
+    return parsed;
+  } catch (_) {
+    return null;
+  }
+}
+
+function clearOwnedServerMeta(roomCode = null) {
+  try {
+    if (!roomCode) {
+      localStorage.removeItem(OWNED_SERVER_STORAGE_KEY);
+      return;
+    }
+    const cur = loadOwnedServerMeta();
+    if (!cur || cur.peerId === roomCode) {
+      localStorage.removeItem(OWNED_SERVER_STORAGE_KEY);
+    }
+  } catch (_) {}
+}
+
+function getConnectedHostOrder() {
+  const ids = [];
+  for (const conn of netState.clientConns.values()) {
+    if (conn && conn.open && conn.playerId && !ids.includes(conn.playerId)) {
+      ids.push(conn.playerId);
+    }
+  }
+  return ids;
+}
+
+function broadcastRoomMeta() {
+  if (!netState.isHost) return;
+  netState.hostOrder = getConnectedHostOrder();
+  netBroadcast({
+    t: 'room_meta',
+    serverName: netState.serverName,
+    ownerId: netState.ownerId,
+    ownerName: netState.ownerName,
+    hostOrder: netState.hostOrder,
+    worldId: netState.worldId || ''
+  });
+}
+
+function syncServerControlButtonsUI() {
+  const connected = !!(netState.isHost || netState.isClient);
+  const canClose = isCurrentRoomOwner();
+  const hudStop = document.getElementById('hud-stop-server-btn');
+  if (hudStop) hudStop.style.display = canClose ? 'inline-block' : 'none';
+  const stopBtn = document.getElementById('btn-stop-server');
+  if (stopBtn) stopBtn.style.display = canClose ? 'inline-block' : 'none';
+  const escStop = document.getElementById('btn-esc-stop-server');
+  if (escStop) escStop.style.display = canClose ? 'block' : 'none';
+  const leaveBtn = document.getElementById('btn-leave-room');
+  if (leaveBtn) leaveBtn.style.display = connected ? 'inline-block' : 'none';
+  const hostBtn = document.getElementById('btn-host-server');
+  if (hostBtn) hostBtn.style.display = connected ? 'none' : 'inline-block';
+
+  const hudStatus = document.getElementById('hud-net-status');
+  const menuInfo = document.getElementById('menu-net-info');
+  if (netState.migrating && netState.roomCode) {
+    if (hudStatus) hudStatus.textContent = `RECONECTANDO // ${netState.roomCode}`;
+    if (menuInfo) menuInfo.textContent = `Mantendo sala ativa: ${netState.serverName || netState.roomCode}...`;
+  } else if (netState.isHost && netState.roomCode) {
+    const hostTag = canClose ? 'HOST' : 'HOST TEMP.';
+    if (hudStatus) hudStatus.textContent = `${hostTag} // SALA: ${netState.roomCode}`;
+    if (menuInfo) menuInfo.textContent = `Hospedando: ${netState.serverName} | Código: ${netState.roomCode}`;
+  } else if (netState.isClient && netState.roomCode) {
+    const cliTag = canClose ? 'ONLINE (DONO)' : 'ONLINE';
+    if (hudStatus) hudStatus.textContent = `${cliTag} // ${netState.roomCode}`;
+    if (menuInfo) menuInfo.textContent = `Conectado na sala: ${netState.serverName || netState.roomCode} (${netState.roomCode})`;
+  } else {
+    if (hudStatus) hudStatus.textContent = 'OFFLINE // SOLO';
+    if (menuInfo) menuInfo.textContent = 'Modo atual: Sessão Local Pronta';
+  }
+}
 
 async function uploadHostWorldBlueprint() {
   if (!netState.isHost || !netState.roomCode || !currentWorldBlueprint) {
@@ -13419,6 +13553,9 @@ function buildWorldWelcomePayload() {
   return {
     seed: currentSeed,
     serverName: netState.serverName,
+    ownerId: netState.ownerId || '',
+    ownerName: netState.ownerName || player.nick,
+    hostOrder: getConnectedHostOrder(),
     worldMode: currentWorldBlueprint ? currentWorldBlueprint.provider : 'procedural',
     worldId: netState.worldId,
     worldHash: currentWorldHash,
@@ -13690,24 +13827,64 @@ function handleNetworkPacket(pkt, fromConn = null) {
       peerId: netState.roomCode,
       name: netState.serverName,
       hostName: player.nick,
+      ownerId: netState.ownerId || '',
+      ownerName: netState.ownerName || player.nick,
       players: remotePlayers.size + 1,
       maxPlayers: 12,
       seed: currentSeed,
       worldMode: currentWorldBlueprint ? currentWorldBlueprint.provider : 'procedural',
       placeName: realWorldMeta.active ? realWorldMeta.placeName : '',
       areaKm2: realWorldMeta.active ? realWorldMeta.areaKm2 : 0,
-      worldHash: currentWorldHash
+      worldId: netState.worldId || '',
+      worldHash: currentWorldHash,
+      standby: false
     });
     return;
   }
 
+  if (pkt.t === 'owner_close_server' && netState.isHost) {
+    if (pkt.ownerId && netState.ownerId && pkt.ownerId === netState.ownerId) {
+      const closeRoom = netState.roomCode;
+      netState.closedByOwner = true;
+      netBroadcast({ t: 'server_closed', reason: 'O criador fechou o servidor.' });
+      postVercelServerHeartbeat('remove', { peerId: closeRoom, ownerKey: pkt.ownerKey || '' });
+      clearOwnedServerMeta(closeRoom);
+      setTimeout(() => disconnectSession({ keepServerAlive: false }), 120);
+      showToast('O CRIADOR ENCERROU O SERVIDOR.');
+    }
+    return;
+  }
+
   if (pkt.t === 'server_closed') {
-    showToast(`O HOST ENCERROU O SERVIDOR: ${pkt.reason || 'Partida finalizada.'}`);
-    disconnectSession();
+    netState.closedByOwner = true;
+    clearOwnedServerMeta(netState.roomCode);
+    showToast(`SERVIDOR ENCERRADO: ${pkt.reason || 'Partida finalizada pelo criador.'}`);
+    disconnectSession({ keepServerAlive: false });
+    return;
+  }
+
+  if (pkt.t === 'room_meta' && netState.isClient) {
+    if (pkt.serverName) netState.serverName = pkt.serverName;
+    if (pkt.ownerId) netState.ownerId = pkt.ownerId;
+    if (pkt.ownerName) netState.ownerName = pkt.ownerName;
+    if (Array.isArray(pkt.hostOrder)) netState.hostOrder = pkt.hostOrder.slice();
+    if (pkt.worldId) netState.worldId = pkt.worldId;
+    if (isCurrentRoomOwner()) saveOwnedServerMeta();
+    syncServerControlButtonsUI();
     return;
   }
 
   if ((pkt.t === 'welcome' || pkt.t === 'world_change') && netState.isClient) {
+    if (pkt.serverName) netState.serverName = pkt.serverName;
+    if (pkt.ownerId) netState.ownerId = pkt.ownerId;
+    if (pkt.ownerName) netState.ownerName = pkt.ownerName;
+    if (Array.isArray(pkt.hostOrder)) netState.hostOrder = pkt.hostOrder.slice();
+    if (pkt.worldId) netState.worldId = pkt.worldId;
+    if (isCurrentRoomOwner()) {
+      saveOwnedServerMeta();
+      showToast('RECONECTADO AO SEU SERVIDOR // OPÇÃO DE FECHAR SERVIDOR ATIVA!');
+    }
+    syncServerControlButtonsUI();
     applyWorldSyncOnClient(pkt);
     return;
   }
@@ -13909,30 +14086,142 @@ function handleNetworkPacket(pkt, fromConn = null) {
   }
 }
 
-async function postVercelServerHeartbeat(action = 'upsert') {
-  if (!netState.isHost || !netState.roomCode) return;
+async function postVercelServerHeartbeat(action = 'upsert', override = null) {
+  const peerId = (override && override.peerId) || netState.roomCode;
+  if (action !== 'remove' && (!netState.isHost || !peerId)) return;
+  if (!peerId) return;
   try {
+    const payload = action === 'remove'
+      ? {
+          action: 'remove',
+          peerId,
+          ownerKey: (override && override.ownerKey) || (isCurrentRoomOwner() ? LOCAL_OWNER_KEY : '')
+        }
+      : {
+          action: 'upsert',
+          peerId,
+          name: netState.serverName || 'Servidor Knox',
+          hostName: player.nick,
+          ownerId: netState.ownerId || LOCAL_OWNER_ID,
+          ownerKey: isCurrentRoomOwner() ? LOCAL_OWNER_KEY : '',
+          ownerName: netState.ownerName || player.nick,
+          players: remotePlayers.size + 1,
+          maxPlayers: 12,
+          seed: currentSeed,
+          worldMode: currentWorldBlueprint ? currentWorldBlueprint.provider : 'procedural',
+          placeName: realWorldMeta.active ? realWorldMeta.placeName : '',
+          areaKm2: realWorldMeta.active ? realWorldMeta.areaKm2 : 0,
+          worldId: netState.worldId || '',
+          worldHash: currentWorldHash || ''
+        };
     await fetch('/api/servers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action,
-        peerId: netState.roomCode,
-        name: netState.serverName,
-        hostName: player.nick,
-        players: remotePlayers.size + 1,
-        maxPlayers: 12,
-        seed: currentSeed,
-        worldMode: currentWorldBlueprint ? currentWorldBlueprint.provider : 'procedural',
-        placeName: realWorldMeta.active ? realWorldMeta.placeName : '',
-        areaKm2: realWorldMeta.active ? realWorldMeta.areaKm2 : 0,
-        worldId: netState.worldId || '',
-        worldHash: currentWorldHash || ''
-      })
+      body: JSON.stringify(payload)
     });
   } catch (_) {
     // Funciona offline/local mesmo sem a rota /api/servers ativa, via slots PeerJS!
   }
+}
+
+function attachHostPeerListeners(p) {
+  p.on('connection', (conn) => {
+    conn.on('open', () => {
+      // Envia pacote authoritative de boas-vindas com WorldBlueprint ID/Hash + estado vivo do mapa
+      conn.send({
+        t: 'welcome',
+        ...buildWorldWelcomePayload()
+      });
+    });
+    conn.on('data', (data) => {
+      if (data && data.t === 'join_hello') {
+        netState.clientConns.set(conn.peer, conn);
+        conn.playerId = data.playerId;
+        showToast(`${data.nick} ENTROU NO SERVIDOR!`);
+        broadcastRoomMeta();
+        postVercelServerHeartbeat('upsert');
+      }
+      handleNetworkPacket(data, conn);
+    });
+    conn.on('close', () => {
+      netState.clientConns.delete(conn.peer);
+      if (conn.playerId) {
+        removeRemotePlayer(conn.playerId);
+        netBroadcast({ t: 'leave', id: conn.playerId });
+      }
+      broadcastRoomMeta();
+      postVercelServerHeartbeat('upsert');
+    });
+  });
+}
+
+function bindAsHostForRoom(desiredId, opts = {}) {
+  const {
+    serverName = 'Servidor Knox',
+    ownerId = LOCAL_OWNER_ID,
+    ownerName = player.nick,
+    isMigration = false,
+    isResume = false,
+    maxRetries = isMigration ? 12 : 4,
+    onFail = null
+  } = opts;
+
+  let attempt = 0;
+  const tryBind = () => {
+    if (netState.closedByOwner || netState.intentionalLeave) return;
+    const p = new window.Peer(desiredId);
+    p.on('open', async (id) => {
+      if (netState.peer && netState.peer !== p) {
+        try { netState.peer.destroy(); } catch (_) {}
+      }
+      netState.peer = p;
+      netState.isHost = true;
+      netState.isClient = false;
+      netState.migrating = false;
+      netState.roomCode = id;
+      netState.serverName = serverName;
+      netState.ownerId = ownerId;
+      netState.ownerName = ownerName;
+      netState.hostConn = null;
+      netState.hostOrder = getConnectedHostOrder();
+
+      syncServerControlButtonsUI();
+      if (currentWorldBlueprint) {
+        await uploadHostWorldBlueprint();
+      }
+      if (isCurrentRoomOwner()) saveOwnedServerMeta();
+      postVercelServerHeartbeat('upsert');
+
+      if (isMigration) {
+        showToast(`SERVIDOR MANTIDO ONLINE // VOCÊ ASSUMIU A HOSPEDAGEM (${id})`);
+      } else if (isResume) {
+        showToast(`SERVIDOR RETOMADO ONLINE! CÓDIGO: ${id}`);
+      } else {
+        showToast(`SERVIDOR ONLINE CRIADO! CÓDIGO: ${id}`);
+      }
+      refreshServerListUI();
+    });
+
+    p.on('error', (err) => {
+      if (err.type === 'unavailable-id' && attempt < maxRetries) {
+        attempt++;
+        try { p.destroy(); } catch (_) {}
+        netState.migrationTimer = setTimeout(tryBind, 1100);
+      } else {
+        try { p.destroy(); } catch (_) {}
+        if (typeof onFail === 'function') {
+          onFail(err);
+        } else {
+          netState.migrating = false;
+          syncServerControlButtonsUI();
+          showToast(`ERRO DE REDE: ${err.type}`);
+        }
+      }
+    });
+
+    attachHostPeerListeners(p);
+  };
+  tryBind();
 }
 
 function createOnlineServer() {
@@ -13940,9 +14229,11 @@ function createOnlineServer() {
     showToast('BIBLIOTECA PEERJS AINDA CARREGANDO...');
     return;
   }
-  disconnectSession();
+  disconnectSession({ keepServerAlive: true });
+  netState.closedByOwner = false;
+  netState.intentionalLeave = false;
   player.nick = (document.getElementById('inp-nickname').value || 'Omni').trim();
-  netState.serverName = (document.getElementById('inp-server-name').value || 'Servidor Knox').trim();
+  const desiredName = (document.getElementById('inp-server-name').value || 'Servidor Knox').trim();
 
   // Tenta alocar um dos 6 slots públicos automáticos (para aparecer na lista de todos na hora!)
   let slotIdx = 0;
@@ -13956,20 +14247,17 @@ function createOnlineServer() {
       netState.peer = p;
       netState.isHost = true;
       netState.isClient = false;
+      netState.migrating = false;
       netState.roomCode = id;
-      document.getElementById('hud-net-status').textContent = `HOST // SALA: ${id}`;
-      const hudStop = document.getElementById('hud-stop-server-btn');
-      if (hudStop) hudStop.style.display = 'inline-block';
-      const stopBtn = document.getElementById('btn-stop-server');
-      if (stopBtn) stopBtn.style.display = 'inline-block';
-      const escStop = document.getElementById('btn-esc-stop-server');
-      if (escStop) escStop.style.display = 'block';
-      const hostBtn = document.getElementById('btn-host-server');
-      if (hostBtn) hostBtn.style.display = 'none';
-      document.getElementById('menu-net-info').textContent = `Hospedando: ${netState.serverName} | Código: ${id}`;
+      netState.serverName = desiredName;
+      netState.ownerId = LOCAL_OWNER_ID;
+      netState.ownerName = player.nick;
+      netState.hostOrder = [];
+      syncServerControlButtonsUI();
       if (currentWorldBlueprint) {
         await uploadHostWorldBlueprint();
       }
+      saveOwnedServerMeta();
       showToast(`SERVIDOR ONLINE CRIADO! CÓDIGO: ${id}`);
       postVercelServerHeartbeat('upsert');
       refreshServerListUI();
@@ -13985,135 +14273,350 @@ function createOnlineServer() {
       }
     });
 
-    p.on('connection', (conn) => {
-      conn.on('open', () => {
-        // Envia pacote authoritative de boas-vindas com WorldBlueprint ID/Hash + estado vivo do mapa
-        conn.send({
-          t: 'welcome',
-          ...buildWorldWelcomePayload()
-        });
-      });
-      conn.on('data', (data) => {
-        if (data && data.t === 'join_hello') {
-          netState.clientConns.set(conn.peer, conn);
-          conn.playerId = data.playerId;
-          showToast(`${data.nick} ENTROU NO SERVIDOR!`);
-          postVercelServerHeartbeat('upsert');
-        }
-        handleNetworkPacket(data, conn);
-      });
-      conn.on('close', () => {
-        netState.clientConns.delete(conn.peer);
-        if (conn.playerId) {
-          removeRemotePlayer(conn.playerId);
-          netBroadcast({ t: 'leave', id: conn.playerId });
-        }
-        postVercelServerHeartbeat('upsert');
-      });
-    });
+    attachHostPeerListeners(p);
   };
   tryBindSlot();
 }
 
-function joinOnlineServer(roomPeerId) {
+async function restoreWorldFromStandbyMeta(meta) {
+  if (!meta) return;
+  const mode = meta.worldMode || 'procedural';
+  if ((mode === 'osm' || mode === 'gmaps') && meta.worldId) {
+    if (!currentWorldBlueprint || currentWorldHash !== meta.worldHash) {
+      try {
+        const resp = await fetch(`/api/worlds?id=${encodeURIComponent(meta.worldId)}`, { cache: 'no-store' });
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json && json.blueprint) {
+            buildWorldFromBlueprint(json.blueprint, true);
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+  } else if (meta.seed && (meta.seed !== currentSeed || realWorldMeta.active)) {
+    generateProceduralMap(meta.seed);
+  }
+}
+
+function startHostMigrationOrReconnect(savedRoomCode, savedMeta) {
+  if (!savedRoomCode || netState.closedByOwner || netState.intentionalLeave) return;
+  if (netState.migrationTimer) { clearTimeout(netState.migrationTimer); netState.migrationTimer = null; }
+
+  // Limpa apenas a conexão antiga caída, preservando o mapa, carros, loot e estado vivo da partida!
+  if (netState.peer) { try { netState.peer.destroy(); } catch (_) {} }
+  netState.peer = null;
+  netState.hostConn = null;
+  netState.isHost = false;
+  netState.isClient = false;
+  netState.migrating = true;
+  netState.roomCode = savedRoomCode;
+  netState.serverName = savedMeta.serverName || savedRoomCode;
+  netState.ownerId = savedMeta.ownerId || '';
+  netState.ownerName = savedMeta.ownerName || '';
+  netState.worldId = savedMeta.worldId || null;
+  for (const id of Array.from(remotePlayers.keys())) removeRemotePlayer(id);
+  syncServerControlButtonsUI();
+
+  const order = Array.isArray(savedMeta.hostOrder) ? savedMeta.hostOrder : [];
+  const myRank = order.indexOf(player.id);
+  const shouldClaimFirst = (myRank <= 0);
+
+  if (shouldClaimFirst) {
+    showToast('ANFITRIÃO DESCONECTOU // MANTENDO SERVIDOR ONLINE...');
+    netState.migrationTimer = setTimeout(() => {
+      if (netState.closedByOwner || netState.intentionalLeave) return;
+      bindAsHostForRoom(savedRoomCode, {
+        serverName: savedMeta.serverName || 'Servidor Knox',
+        ownerId: savedMeta.ownerId || '',
+        ownerName: savedMeta.ownerName || '',
+        isMigration: true,
+        maxRetries: 12,
+        onFail: () => {
+          // Se outro amigo assumiu primeiro, reconecta nele como cliente!
+          joinOnlineServer(savedRoomCode, { isReconnect: true, fallbackMeta: savedMeta });
+        }
+      });
+    }, 850);
+  } else {
+    showToast('ANFITRIÃO DESCONECTOU // RECONECTANDO AO NOVO HOST DA SALA...');
+    const waitMs = Math.min(4500, 1700 + myRank * 850);
+    netState.migrationTimer = setTimeout(() => {
+      if (netState.closedByOwner || netState.intentionalLeave) return;
+      joinOnlineServer(savedRoomCode, { isReconnect: true, fallbackMeta: savedMeta });
+    }, waitMs);
+  }
+}
+
+function joinOnlineServer(roomPeerId, opts = {}) {
   const targetId = String(roomPeerId || '').trim();
   if (!targetId || typeof window.Peer === 'undefined') return;
-  disconnectSession();
+  const { resumeMeta = null, isReconnect = false, fallbackMeta = null } = opts;
+
+  if (!isReconnect) {
+    disconnectSession({ keepServerAlive: true });
+  } else {
+    if (netState.peer) { try { netState.peer.destroy(); } catch (_) {} }
+    netState.peer = null;
+    netState.hostConn = null;
+  }
+  netState.closedByOwner = false;
+  netState.intentionalLeave = false;
   player.nick = (document.getElementById('inp-nickname').value || 'Omni').trim();
+
+  let opened = false;
+  let fallbackTriggered = false;
+  let connectTimeout = null;
+  const triggerStandbyResumeOrClaim = async () => {
+    if (fallbackTriggered || opened || netState.closedByOwner || netState.intentionalLeave) return;
+    fallbackTriggered = true;
+    if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
+    const meta = resumeMeta || fallbackMeta;
+    if (meta) {
+      if (netState.peer) { try { netState.peer.destroy(); } catch (_) {} }
+      netState.peer = null;
+      netState.hostConn = null;
+      if (resumeMeta) {
+        await restoreWorldFromStandbyMeta(resumeMeta);
+      }
+      bindAsHostForRoom(targetId, {
+        serverName: meta.name || meta.serverName || 'Servidor Knox',
+        ownerId: meta.ownerId || LOCAL_OWNER_ID,
+        ownerName: meta.ownerName || meta.hostName || player.nick,
+        isMigration: !!fallbackMeta,
+        isResume: !!resumeMeta,
+        maxRetries: 8
+      });
+    } else {
+      showToast('SALA INDISPONÍVEL NO MOMENTO.');
+      disconnectSession({ keepServerAlive: true });
+    }
+  };
 
   const p = new window.Peer();
   p.on('open', () => {
     netState.peer = p;
     netState.isClient = true;
     netState.isHost = false;
+    netState.migrating = false;
     netState.roomCode = targetId;
+    if (resumeMeta) {
+      netState.serverName = resumeMeta.name || targetId;
+      netState.ownerId = resumeMeta.ownerId || '';
+      netState.ownerName = resumeMeta.ownerName || '';
+    }
+    syncServerControlButtonsUI();
 
     const conn = p.connect(targetId, { reliable: true });
     netState.hostConn = conn;
 
+    // Timeout rápido caso a sala esteja em standby (ninguém respondendo no PeerJS)
+    connectTimeout = setTimeout(() => {
+      if (!opened && (resumeMeta || fallbackMeta)) {
+        triggerStandbyResumeOrClaim();
+      }
+    }, 3200);
+
     conn.on('open', () => {
+      opened = true;
+      clearTimeout(connectTimeout);
       conn.send({ t: 'join_hello', playerId: player.id, nick: player.nick });
-      document.getElementById('hud-net-status').textContent = `ONLINE // ${targetId}`;
-      document.getElementById('menu-net-info').textContent = `Conectado na sala: ${targetId}`;
-      try { canvas.requestPointerLock(); } catch (_) {}
+      syncServerControlButtonsUI();
+      if (!isReconnect) {
+        try { canvas.requestPointerLock(); } catch (_) {}
+      } else {
+        showToast(`RECONECTADO À SALA ${targetId}!`);
+      }
     });
     conn.on('data', (data) => handleNetworkPacket(data, null));
     conn.on('close', () => {
-      showToast('DESCONECTADO DO HOST');
-      disconnectSession();
+      clearTimeout(connectTimeout);
+      if (netState.hostConn !== conn) return;
+      if (netState.closedByOwner || netState.intentionalLeave) {
+        disconnectSession({ keepServerAlive: !netState.closedByOwner });
+        return;
+      }
+      if (!opened && (resumeMeta || fallbackMeta)) {
+        triggerStandbyResumeOrClaim();
+        return;
+      }
+      // Queda inesperada do host atual -> inicia migração automática para manter o servidor online!
+      const savedMeta = {
+        serverName: netState.serverName,
+        ownerId: netState.ownerId,
+        ownerName: netState.ownerName,
+        hostOrder: Array.isArray(netState.hostOrder) ? netState.hostOrder.slice() : [],
+        worldId: netState.worldId
+      };
+      startHostMigrationOrReconnect(targetId, savedMeta);
     });
   });
-  p.on('error', (err) => showToast(`FALHA AO CONECTAR: ${err.type}`));
+  p.on('error', (err) => {
+    if (err.type === 'peer-unavailable' && (resumeMeta || fallbackMeta)) {
+      triggerStandbyResumeOrClaim();
+    } else {
+      showToast(`FALHA AO CONECTAR: ${err.type}`);
+      if (!isReconnect) disconnectSession({ keepServerAlive: true });
+    }
+  });
 }
 
-function disconnectSession() {
-  if (netState.isHost) postVercelServerHeartbeat('remove');
+function disconnectSession(opts = {}) {
+  const { keepServerAlive = true } = opts || {};
+  if (netState.migrationTimer) { clearTimeout(netState.migrationTimer); netState.migrationTimer = null; }
+  if (!keepServerAlive && netState.roomCode) {
+    postVercelServerHeartbeat('remove', {
+      peerId: netState.roomCode,
+      ownerKey: isCurrentRoomOwner() ? LOCAL_OWNER_KEY : ''
+    });
+  }
   if (netState.peer) {
     try { netState.peer.destroy(); } catch (_) {}
   }
   netState.peer = null;
   netState.isHost = false;
   netState.isClient = false;
+  netState.migrating = false;
   netState.roomCode = null;
+  netState.serverName = '';
+  netState.ownerId = null;
+  netState.ownerName = '';
+  netState.hostOrder = [];
   netState.worldId = null;
   netState.hostConn = null;
   netState.pendingWorldChunks = null;
   netState.syncingWorld = false;
   netState.clientConns.clear();
   for (const id of Array.from(remotePlayers.keys())) removeRemotePlayer(id);
-  document.getElementById('hud-net-status').textContent = 'OFFLINE // SOLO';
-  const hudStop = document.getElementById('hud-stop-server-btn');
-  if (hudStop) hudStop.style.display = 'none';
-  const stopBtn = document.getElementById('btn-stop-server');
-  if (stopBtn) stopBtn.style.display = 'none';
-  const escStop = document.getElementById('btn-esc-stop-server');
-  if (escStop) escStop.style.display = 'none';
-  const hostBtn = document.getElementById('btn-host-server');
-  if (hostBtn) hostBtn.style.display = 'inline-block';
-  document.getElementById('menu-net-info').textContent = 'Modo atual: Sessão Local Pronta';
+  syncServerControlButtonsUI();
 }
 
-function stopHostedServer() {
-  if (!netState.isHost) return;
-  netBroadcast({ t: 'server_closed', reason: 'A partida foi finalizada pelo anfitrião.' });
-  disconnectSession();
-  showToast('SERVIDOR MULTIPLAYER ENCERRADO COM SUCESSO!');
+function leaveCurrentRoom() {
+  if (!netState.isHost && !netState.isClient && !netState.migrating) return;
+  if (isCurrentRoomOwner()) saveOwnedServerMeta();
+  netState.intentionalLeave = true;
+  const wasOwner = isCurrentRoomOwner();
+  disconnectSession({ keepServerAlive: true });
+  showToast(wasOwner
+    ? 'VOCÊ SAIU DA SALA — O SERVIDOR CONTINUA ABERTO PARA VOCÊ VOLTAR!'
+    : 'VOCÊ SAIU DA SALA MULTIPLAYER.');
   refreshServerListUI();
 }
 
-/* Busca dupla de Servidores (API Vercel /api/servers + Scan Direto WebRTC nos Slots Públicos!) */
+function sendRemoteOwnerCloseToPeer(targetPeerId) {
+  if (!targetPeerId || typeof window.Peer === 'undefined') return;
+  try {
+    const killer = new window.Peer();
+    let done = false;
+    const cleanup = () => { if (!done) { done = true; try { killer.destroy(); } catch (_) {} } };
+    setTimeout(cleanup, 2600);
+    killer.on('open', () => {
+      const c = killer.connect(targetPeerId, { reliable: true });
+      c.on('open', () => {
+        c.send({ t: 'owner_close_server', ownerId: LOCAL_OWNER_ID, ownerKey: LOCAL_OWNER_KEY });
+        setTimeout(cleanup, 350);
+      });
+      c.on('error', cleanup);
+    });
+    killer.on('error', cleanup);
+  } catch (_) {}
+}
+
+function stopHostedServer(explicitRoomCode = null) {
+  const targetRoom = explicitRoomCode || netState.roomCode;
+  if (!targetRoom) return;
+
+  // Caso 1: Fechando a sala que está aberta/conectada agora
+  if (targetRoom === netState.roomCode && (netState.isHost || netState.isClient)) {
+    if (!isCurrentRoomOwner()) {
+      showToast('APENAS O CRIADOR DO SERVIDOR PODE FECHÁ-LO!');
+      return;
+    }
+    netState.closedByOwner = true;
+    if (netState.isHost) {
+      netBroadcast({ t: 'server_closed', reason: 'O criador fechou o servidor.' });
+    } else if (netState.hostConn && netState.hostConn.open) {
+      try {
+        netState.hostConn.send({ t: 'owner_close_server', ownerId: LOCAL_OWNER_ID, ownerKey: LOCAL_OWNER_KEY });
+      } catch (_) {}
+    }
+    postVercelServerHeartbeat('remove', { peerId: targetRoom, ownerKey: LOCAL_OWNER_KEY });
+    clearOwnedServerMeta(targetRoom);
+    setTimeout(() => {
+      disconnectSession({ keepServerAlive: false });
+      refreshServerListUI();
+    }, 120);
+    showToast('SERVIDOR MULTIPLAYER FECHADO PERMANENTEMENTE!');
+    return;
+  }
+
+  // Caso 2: Fechando seu próprio servidor direto pela lista de servidores (standby ou hospedado por um amigo)
+  postVercelServerHeartbeat('remove', { peerId: targetRoom, ownerKey: LOCAL_OWNER_KEY });
+  clearOwnedServerMeta(targetRoom);
+  sendRemoteOwnerCloseToPeer(targetRoom);
+  showToast(`SERVIDOR ${targetRoom} FECHADO COM SUCESSO!`);
+  setTimeout(() => refreshServerListUI(), 350);
+}
+
+/* Busca dupla de Servidores (API Vercel /api/servers + Scan Direto WebRTC + Sala Própria Salva!) */
 async function refreshServerListUI() {
   const box = document.getElementById('server-list-box');
   box.innerHTML = `<div style="font-size:10.5px;color:var(--amb);padding:8px;">Buscando servidores ativos na rede...</div>`;
   const foundMap = new Map();
+  const ownedSaved = loadOwnedServerMeta();
 
-  if (netState.isHost && netState.roomCode) {
+  // 0. Se o usuário criou um servidor recentemente, inclui como fallback EM ESPERA caso o servidor serverless tenha reiniciado
+  if (ownedSaved && ownedSaved.peerId && ownedSaved.peerId !== netState.roomCode) {
+    foundMap.set(ownedSaved.peerId, {
+      ...ownedSaved,
+      hostName: ownedSaved.ownerName || player.nick,
+      players: 0,
+      maxPlayers: 12,
+      standby: true
+    });
+  }
+
+  if ((netState.isHost || netState.isClient) && netState.roomCode) {
     foundMap.set(netState.roomCode, {
       peerId: netState.roomCode,
-      name: netState.serverName + ' (Sua Sala)',
-      hostName: player.nick,
+      name: netState.serverName || netState.roomCode,
+      hostName: netState.isHost ? player.nick : (netState.ownerName || 'Online'),
+      ownerId: netState.ownerId || '',
+      ownerName: netState.ownerName || player.nick,
       players: remotePlayers.size + 1,
       maxPlayers: 12,
       worldMode: currentWorldBlueprint ? currentWorldBlueprint.provider : 'procedural',
       placeName: realWorldMeta.active ? realWorldMeta.placeName : '',
       areaKm2: realWorldMeta.active ? realWorldMeta.areaKm2 : 0,
-      worldHash: currentWorldHash
+      worldId: netState.worldId || '',
+      worldHash: currentWorldHash,
+      standby: false
     });
   }
 
-  // 1. Consulta API Serverless (/api/servers)
+  // 1. Consulta API Serverless (/api/servers — inclui salas ativas e em espera)
   try {
     const resp = await fetch('/api/servers', { cache: 'no-store' });
     if (resp.ok) {
       const json = await resp.json();
       if (Array.isArray(json.servers)) {
-        for (const s of json.servers) foundMap.set(s.peerId, s);
+        for (const s of json.servers) {
+          const existing = foundMap.get(s.peerId);
+          if (!existing || existing.standby || !s.standby) {
+            foundMap.set(s.peerId, s);
+          }
+        }
       }
     }
   } catch (_) {}
 
-  // 2. Scan rápido P2P direto nos slots públicos (funciona até sem backend!)
+  // 2. Scan rápido P2P direto nos slots públicos + sala própria salva (detecta imediatamente se um amigo assumiu o host!)
   if (typeof window.Peer !== 'undefined') {
+    const scanIds = Array.from(new Set([
+      ...PUBLIC_SLOTS,
+      ...(ownedSaved && ownedSaved.peerId ? [ownedSaved.peerId] : []),
+      ...Array.from(foundMap.keys())
+    ]));
     await new Promise((resolve) => {
       const scanner = new window.Peer();
       let done = false;
@@ -14123,23 +14626,30 @@ async function refreshServerListUI() {
         try { scanner.destroy(); } catch (_) {}
         resolve();
       };
-      setTimeout(finish, 1400);
+      setTimeout(finish, 1550);
 
+      let pending = scanIds.length;
       scanner.on('open', () => {
-        let pending = PUBLIC_SLOTS.length;
-        for (const slotId of PUBLIC_SLOTS) {
-          if (slotId === netState.roomCode) { if (--pending === 0) finish(); continue; }
+        if (pending === 0) { finish(); return; }
+        for (const slotId of scanIds) {
+          if (slotId === netState.roomCode) { if (--pending <= 0) finish(); continue; }
           const c = scanner.connect(slotId);
           c.on('open', () => c.send({ t: 'ping_info' }));
           c.on('data', (d) => {
-            if (d && d.t === 'pong_info') foundMap.set(d.peerId, d);
+            if (d && d.t === 'pong_info') foundMap.set(d.peerId, { ...d, standby: false });
             c.close();
             if (--pending <= 0) finish();
           });
           c.on('error', () => { if (--pending <= 0) finish(); });
         }
       });
-      scanner.on('error', finish);
+      scanner.on('error', (err) => {
+        if (err && err.type === 'peer-unavailable') {
+          if (--pending <= 0) finish();
+        } else {
+          finish();
+        }
+      });
     });
   }
 
@@ -14152,23 +14662,54 @@ async function refreshServerListUI() {
   for (const srv of foundMap.values()) {
     const item = document.createElement('div');
     item.className = 'srv-item';
-    const isOwn = srv.peerId === netState.roomCode;
+    const isInside = srv.peerId === netState.roomCode && (netState.isHost || netState.isClient);
+    const isMine = !!(srv.ownerId && srv.ownerId === LOCAL_OWNER_ID);
+    const isStandby = !!srv.standby && !isInside;
     const isReal = srv.worldMode === 'osm' || srv.worldMode === 'gmaps';
     const mapBadge = isReal
-      ? `<span style="color:#9ef082;font-weight:700">[${srv.worldMode === 'osm' ? 'OSM' : 'GMAPS'} · ${srv.placeName || 'Mundo Real'} ${srv.areaKm2 ? srv.areaKm2.toFixed(1) + 'km²' : ''}]</span>`
+      ? `<span style="color:#9ef082;font-weight:700">[${srv.worldMode === 'osm' ? 'OSM' : 'GMAPS'} · ${srv.placeName || 'Mundo Real'} ${srv.areaKm2 ? Number(srv.areaKm2).toFixed(1) + 'km²' : ''}]</span>`
       : `<span style="color:var(--amb)">[PROCEDURAL]</span>`;
+    const ownerBadge = isMine
+      ? ` <span style="color:#f5d59c;font-weight:700">[★ SEU SERVIDOR]</span>`
+      : '';
+    const stateBadge = isStandby
+      ? ` <span style="color:#e6a23c;font-weight:700">[EM ESPERA]</span>`
+      : ` <span style="color:#84e078;font-weight:700">[ONLINE]</span>`;
+
     item.innerHTML = `
       <div>
-        <b style="color:var(--txt)">${srv.name}</b> ${mapBadge}
-        <div style="font-size:9.5px;color:var(--dim)">Host: ${srv.hostName} · Jogadores: ${srv.players}/${srv.maxPlayers} · ID: ${srv.peerId}${srv.worldHash ? ' · Sync #' + String(srv.worldHash).slice(0, 6) : ''}</div>
+        <b style="color:var(--txt)">${srv.name}</b> ${mapBadge}${ownerBadge}${stateBadge}
+        <div style="font-size:9.5px;color:var(--dim)">Host: ${srv.hostName}${srv.ownerName && srv.ownerName !== srv.hostName ? ' · Criador: ' + srv.ownerName : ''} · Jogadores: ${srv.players}/${srv.maxPlayers} · ID: ${srv.peerId}${srv.worldHash ? ' · Sync #' + String(srv.worldHash).slice(0, 6) : ''}</div>
       </div>
     `;
+
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '6px';
+    actions.style.flexShrink = '0';
+
     const btn = document.createElement('button');
     btn.className = 'mini-btn';
-    btn.textContent = isOwn ? 'ATIVO' : 'ENTRAR';
-    btn.disabled = isOwn;
-    if (!isOwn) btn.onclick = () => joinOnlineServer(srv.peerId);
-    item.appendChild(btn);
+    btn.textContent = isInside ? 'CONECTADO' : (isStandby ? 'RETOMAR' : 'ENTRAR');
+    btn.disabled = isInside;
+    if (!isInside) {
+      btn.onclick = () => joinOnlineServer(srv.peerId, { resumeMeta: (isMine || isStandby) ? srv : null });
+    }
+    actions.appendChild(btn);
+
+    if (isMine) {
+      const closeBtn = document.createElement('button');
+      closeBtn.className = 'mini-btn';
+      closeBtn.style.background = '#a8322a';
+      closeBtn.style.borderColor = '#e05544';
+      closeBtn.style.color = '#fff';
+      closeBtn.style.fontWeight = '700';
+      closeBtn.textContent = 'FECHAR';
+      closeBtn.onclick = () => stopHostedServer(srv.peerId);
+      actions.appendChild(closeBtn);
+    }
+
+    item.appendChild(actions);
     box.appendChild(item);
   }
 }
@@ -16298,13 +16839,18 @@ window.addEventListener('keydown', (e) => {
   }
 });
 document.getElementById('btn-host-server').onclick = () => { sfx.init(); createOnlineServer(); };
+const leaveRoomBtn = document.getElementById('btn-leave-room');
+if (leaveRoomBtn) leaveRoomBtn.onclick = () => leaveCurrentRoom();
 document.getElementById('btn-stop-server').onclick = () => stopHostedServer();
 document.getElementById('btn-esc-stop-server').onclick = () => stopHostedServer();
 document.getElementById('hud-stop-server-btn').onclick = () => stopHostedServer();
 document.getElementById('btn-refresh-servers').onclick = () => { sfx.init(); refreshServerListUI(); };
 document.getElementById('btn-join-code').onclick = () => {
   sfx.init();
-  joinOnlineServer(document.getElementById('inp-join-code').value);
+  const code = String(document.getElementById('inp-join-code').value || '').trim();
+  const owned = loadOwnedServerMeta();
+  const resumeMeta = (owned && owned.peerId === code) ? owned : null;
+  joinOnlineServer(code, { resumeMeta });
 };
 document.getElementById('btn-new-map').onclick = () => {
   if (netState.isClient) { showToast('APENAS O HOST PODE MUDAR O MAPA!'); return; }
@@ -16538,7 +17084,14 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-window.addEventListener('beforeunload', () => disconnectSession());
+window.addEventListener('beforeunload', () => {
+  // Ao fechar a aba ou recarregar por acidente, NÃO remove o servidor nem encerra para os amigos!
+  // Apenas libera o PeerJS imediatamente para o amigo assumir a hospedagem em ~1s e salva a sala para o criador voltar.
+  if (isCurrentRoomOwner()) saveOwnedServerMeta();
+  if (netState.peer) {
+    try { netState.peer.destroy(); } catch (_) {}
+  }
+});
 
 /* ============================================================================
    17. INICIALIZAÇÃO DO MUNDO & LOOP PRINCIPAL (MODELOS 100% PROCEDURAIS)
