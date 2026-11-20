@@ -2834,6 +2834,7 @@ function loadWeaponTemplate(wId) {
     })
     .catch((err) => {
       console.warn(`[Forja 3D] Falha ao carregar ${url}:`, err);
+      weaponLoadPromises.delete(wId);
       return null;
     });
 
@@ -2957,6 +2958,27 @@ function buildWeaponAssembly(type, withFirstPersonHands = false, isLoot = false)
   if (weaponTemplateCache.has(wId)) {
     hydrateWeaponAssembly(assembly, wId, weaponTemplateCache.get(wId));
   } else {
+    // Silhueta tática instantânea enquanto o modelo OBJ+PBR termina o download (substituída automaticamente ao hidratar!)
+    const fbLen = Math.max(0.18, def.targetLenM || 0.55);
+    const fbMat = weaponSpecialMats.fallbackMetal || (weaponSpecialMats.fallbackMetal = new THREE.MeshStandardMaterial({ color: 0x383c42, roughness: 0.45, metalness: 0.65 }));
+    const fbGripMat = weaponSpecialMats.fallbackGrip || (weaponSpecialMats.fallbackGrip = new THREE.MeshStandardMaterial({ color: 0x1e2024, roughness: 0.85, metalness: 0.1 }));
+    if (def.melee) {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.036, fbLen * 0.72), fbMat);
+      blade.position.set(0, 0.02, -fbLen * 0.44);
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.032, fbLen * 0.28), fbGripMat);
+      handle.position.set(0, 0, -fbLen * 0.04);
+      modelPivot.add(blade, handle);
+    } else {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.046, 0.072, fbLen * 0.52), fbMat);
+      body.position.set(0, 0.045, -fbLen * 0.16);
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.014, fbLen * 0.44, 8), fbMat);
+      barrel.rotation.x = Math.PI * 0.5;
+      barrel.position.set(0, 0.055, -fbLen * 0.52);
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.10, 0.044), fbGripMat);
+      grip.rotation.x = 0.22;
+      grip.position.set(0, -0.02, 0.0);
+      modelPivot.add(body, barrel, grip);
+    }
     if (!weaponPendingAssemblies.has(wId)) weaponPendingAssemblies.set(wId, new Set());
     weaponPendingAssemblies.get(wId).add(assembly);
     loadWeaponTemplate(wId);
@@ -3685,12 +3707,12 @@ const DRIVABLE_CAR_STYLES = [
   { label: "RANGER 4X4 '90",   color: 0x344835, maxHp: 700, maxSpeed: 25.5, accel: 16.5 }
 ];
 
-// 4 Assentos por veículo (frente em -Z): 0 = Motorista (FL), 1 = Passageiro (FR), 2 = Passageiro (TE), 3 = Passageiro (TD)
+// 4 Assentos por veículo (frente em -Z, y=0 = referência do chassi para sentar exato no estofado!): 0 = Motorista (FL), 1 = Passageiro (FR), 2 = Passageiro (TE), 3 = Passageiro (TD)
 const VEHICLE_SEAT_OFFSETS = [
-  { x: -0.45, y: 0.34, z: -0.26, side: -1, label: 'MOTORISTA' },
-  { x:  0.45, y: 0.34, z: -0.26, side:  1, label: 'PASSAGEIRO (FRENTE)' },
-  { x: -0.45, y: 0.34, z:  0.58, side: -1, label: 'PASSAGEIRO (TRÁS ESQ)' },
-  { x:  0.45, y: 0.34, z:  0.58, side:  1, label: 'PASSAGEIRO (TRÁS DIR)' }
+  { x: -0.45, y: 0.0, z: -0.22, side: -1, label: 'MOTORISTA' },
+  { x:  0.45, y: 0.0, z: -0.22, side:  1, label: 'PASSAGEIRO (FRENTE)' },
+  { x: -0.45, y: 0.0, z:  0.60, side: -1, label: 'PASSAGEIRO (TRÁS ESQ)' },
+  { x:  0.45, y: 0.0, z:  0.60, side:  1, label: 'PASSAGEIRO (TRÁS DIR)' }
 ];
 
 const _seatLocalTmp = new THREE.Vector3();
@@ -3700,7 +3722,7 @@ function getVehicleSeatWorldPose(veh, seatIdx, leanAlpha = 0, outPos = new THREE
   // Quando passageiro se inclina pela janela, desloca para fora na lateral da janela e eleva levemente o tronco
   _seatLocalTmp.set(
     s.x + s.side * lean * 0.50,
-    s.y + lean * 0.24,
+    s.y + lean * 0.12,
     s.z
   );
   veh.root.updateMatrixWorld();
@@ -3744,22 +3766,22 @@ function buildDrivableVehicle(id, x, z, rotY, styleIdx) {
   doorL.userData.surface = 'metal';
   const doorR = doorL.clone(); doorR.position.x = 0.94; doorR.userData.surface = 'metal';
 
-  // Teto + 6 pilares (A, B, C) finos formando moldura real das janelas
+  // Teto + 6 pilares (A, B, C) finos formando moldura real das janelas com folga confortável acima da cabeça sentada
   const roof = new THREE.Mesh(regD(new THREE.BoxGeometry(1.86, 0.10, 2.04)), cabMat);
-  roof.position.set(0, 1.54, 0.16); roof.castShadow = true; roof.receiveShadow = true;
+  roof.position.set(0, 1.58, 0.16); roof.castShadow = true; roof.receiveShadow = true;
   roof.userData.surface = 'metal';
 
-  const pillarAGeo = regD(new THREE.BoxGeometry(0.10, 0.72, 0.11));
-  const pillarAL = new THREE.Mesh(pillarAGeo, cabMat); pillarAL.position.set(-0.88, 1.20, -0.84); pillarAL.rotation.x = 0.28;
-  const pillarAR = new THREE.Mesh(pillarAGeo, cabMat); pillarAR.position.set( 0.88, 1.20, -0.84); pillarAR.rotation.x = 0.28;
+  const pillarAGeo = regD(new THREE.BoxGeometry(0.10, 0.76, 0.11));
+  const pillarAL = new THREE.Mesh(pillarAGeo, cabMat); pillarAL.position.set(-0.88, 1.22, -0.84); pillarAL.rotation.x = 0.28;
+  const pillarAR = new THREE.Mesh(pillarAGeo, cabMat); pillarAR.position.set( 0.88, 1.22, -0.84); pillarAR.rotation.x = 0.28;
 
-  const pillarBGeo = regD(new THREE.BoxGeometry(0.10, 0.68, 0.12));
-  const pillarBL = new THREE.Mesh(pillarBGeo, trimMat); pillarBL.position.set(-0.88, 1.21, 0.14);
-  const pillarBR = new THREE.Mesh(pillarBGeo, trimMat); pillarBR.position.set( 0.88, 1.21, 0.14);
+  const pillarBGeo = regD(new THREE.BoxGeometry(0.10, 0.72, 0.12));
+  const pillarBL = new THREE.Mesh(pillarBGeo, trimMat); pillarBL.position.set(-0.88, 1.23, 0.14);
+  const pillarBR = new THREE.Mesh(pillarBGeo, trimMat); pillarBR.position.set( 0.88, 1.23, 0.14);
 
-  const pillarCGeo = regD(new THREE.BoxGeometry(0.11, 0.72, 0.14));
-  const pillarCL = new THREE.Mesh(pillarCGeo, cabMat); pillarCL.position.set(-0.88, 1.20, 1.12); pillarCL.rotation.x = -0.24;
-  const pillarCR = new THREE.Mesh(pillarCGeo, cabMat); pillarCR.position.set( 0.88, 1.20, 1.12); pillarCR.rotation.x = -0.24;
+  const pillarCGeo = regD(new THREE.BoxGeometry(0.11, 0.76, 0.14));
+  const pillarCL = new THREE.Mesh(pillarCGeo, cabMat); pillarCL.position.set(-0.88, 1.22, 1.12); pillarCL.rotation.x = -0.24;
+  const pillarCR = new THREE.Mesh(pillarCGeo, cabMat); pillarCR.position.set( 0.88, 1.22, 1.12); pillarCR.rotation.x = -0.24;
 
   // Interior detalhado: Painel, Volante e 4 Bancos!
   const dash = new THREE.Mesh(regD(new THREE.BoxGeometry(1.74, 0.34, 0.38)), trimMat);
@@ -3781,15 +3803,15 @@ function buildDrivableVehicle(id, x, z, rotY, styleIdx) {
   }
 
   // Janelas transparentes reais (para-brisa, vidro traseiro e janelas laterais) permitindo ver motorista e passageiros!
-  const windshield = new THREE.Mesh(regD(new THREE.PlaneGeometry(1.70, 0.68)), Mats.carGlass);
-  windshield.position.set(0, 1.20, -0.85); windshield.rotation.x = 0.28; windshield.renderOrder = 3;
-  const rearGlass = new THREE.Mesh(regD(new THREE.PlaneGeometry(1.70, 0.66)), Mats.carGlass);
-  rearGlass.position.set(0, 1.20, 1.13); rearGlass.rotation.x = -0.24; rearGlass.renderOrder = 3;
-  const sideWinGeo = regD(new THREE.PlaneGeometry(1.88, 0.58));
+  const windshield = new THREE.Mesh(regD(new THREE.PlaneGeometry(1.70, 0.72)), Mats.carGlass);
+  windshield.position.set(0, 1.22, -0.85); windshield.rotation.x = 0.28; windshield.renderOrder = 3;
+  const rearGlass = new THREE.Mesh(regD(new THREE.PlaneGeometry(1.70, 0.70)), Mats.carGlass);
+  rearGlass.position.set(0, 1.22, 1.13); rearGlass.rotation.x = -0.24; rearGlass.renderOrder = 3;
+  const sideWinGeo = regD(new THREE.PlaneGeometry(1.88, 0.62));
   const winL = new THREE.Mesh(sideWinGeo, Mats.carGlass);
-  winL.position.set(-0.91, 1.20, 0.14); winL.rotation.y = Math.PI * 0.5; winL.renderOrder = 3;
+  winL.position.set(-0.91, 1.22, 0.14); winL.rotation.y = Math.PI * 0.5; winL.renderOrder = 3;
   const winR = new THREE.Mesh(sideWinGeo, Mats.carGlass);
-  winR.position.set( 0.91, 1.20, 0.14); winR.rotation.y = Math.PI * 0.5; winR.renderOrder = 3;
+  winR.position.set( 0.91, 1.22, 0.14); winR.rotation.y = Math.PI * 0.5; winR.renderOrder = 3;
 
   const bumperF = new THREE.Mesh(regD(new THREE.BoxGeometry(2.08, 0.18, 0.18)), Mats.chrome);
   bumperF.position.set(0, 0.36, -2.35);
@@ -3853,11 +3875,14 @@ function buildDrivableVehicle(id, x, z, rotY, styleIdx) {
   registerCollider(carCol);
 
   const veh = {
-    id, label: st.label, root, bodyGroup, chassis: hood, cabin: roof, bodyMat, cabMat, hlMat, tlMat, headSpot,
+    id, styleIdx: styleIdx % DRIVABLE_CAR_STYLES.length, label: st.label, root, bodyGroup, chassis: hood, cabin: roof, bodyMat, cabMat, hlMat, tlMat, headSpot,
     steerWheel, wheels, collider: carCol,
     pos: new THREE.Vector3(x, baseY, z),
     yaw: rotY, speed: 0, steer: 0,
     vx: 0, vz: 0, yawVel: 0, driftIntensity: 0, skidAcc: 0,
+    netPos: new THREE.Vector3(x, baseY, z),
+    netYaw: rotY, netVx: 0, netVz: 0, netSpeed: 0, netSteer: 0, netDrift: 0,
+    netUpdatedAt: 0,
     maxSpeed: st.maxSpeed, accel: st.accel,
     hp: st.maxHp, maxHp: st.maxHp,
     lightsOn: false,
@@ -10178,6 +10203,9 @@ function equipSlot(slotIdx) {
   const wInst = getActiveWeaponObj();
   tpWeaponMeshes[wInst.id].root.visible = true;
   fpWeaponMeshes[wInst.id].root.visible = true;
+  if (!tpWeaponMeshes[wInst.id]._hydrated || !fpWeaponMeshes[wInst.id]._hydrated) {
+    loadWeaponTemplate(wInst.id);
+  }
   rebuildAttachmentVisuals(tpWeaponMeshes[wInst.id], wInst.id, wInst.attachments);
   rebuildAttachmentVisuals(fpWeaponMeshes[wInst.id], wInst.id, wInst.attachments);
   syncPlayerFlashlight();
@@ -10601,18 +10629,18 @@ function animateCharacterRig(rig, state, dt) {
     rig.root.rotation.order = 'YXZ';
     rig.root.rotation.set(state.carPitch || 0, bodyYaw, state.carRoll || 0);
 
-    // Pélvis sentada no assento; quando inclina pela janela, eleva um pouco e inclina o tronco para fora
-    rig.pelvis.position.set(0, 0.56 + lean * 0.08, 0);
+    // Pélvis apoiada exatamente no estofado do banco (y=0.57 -> cabeça e chapéu enquadrados dentro das janelas abaixo do teto!)
+    rig.pelvis.position.set(0, 0.57 + lean * 0.13, 0.04);
     rig.pelvis.rotation.set(-0.08, 0, -side * lean * 0.24);
 
-    // Pernas dobradas na posição sentada
-    rig.leftLeg.hip.rotation.set(1.42 - lean * 0.28, 0, -0.06);
-    rig.leftLeg.knee.rotation.set(-1.38 + lean * 0.20, 0, 0);
-    rig.leftLeg.ankle.rotation.set(0.18, 0, 0);
+    // Pernas dobradas em posição sentada real (coxas horizontais sobre o banco e canelas/pés apoiados no assoalho!)
+    rig.leftLeg.hip.rotation.set(1.66 - lean * 0.18, 0, -0.07);
+    rig.leftLeg.knee.rotation.set(-1.04 + lean * 0.12, 0, 0);
+    rig.leftLeg.ankle.rotation.set(-0.24, 0, 0);
 
-    rig.rightLeg.hip.rotation.set(1.42 - lean * 0.28, 0, 0.06);
-    rig.rightLeg.knee.rotation.set(-1.38 + lean * 0.20, 0, 0);
-    rig.rightLeg.ankle.rotation.set(0.18, 0, 0);
+    rig.rightLeg.hip.rotation.set(1.66 - lean * 0.18, 0, 0.07);
+    rig.rightLeg.knee.rotation.set(-1.04 + lean * 0.12, 0, 0);
+    rig.rightLeg.ankle.rotation.set(-0.24, 0, 0);
 
     const relLook = normalizeAngle(lookYaw - bodyYaw);
     if (seatIdx === 0) {
@@ -11366,39 +11394,47 @@ function updateCameraAndWeaponViewmodel(dt) {
   const opticId = wInst.attachments.optic;
   const opticCfg = opticId ? ATTACHMENTS_DB[opticId] : null;
 
-  // Caso 1: Dentro de Veículo (Motorista OU Passageiro com Mira 100% Livre 360° e Inclinação pela Janela!)
+  // Caso 1: Dentro de Veículo (Motorista OU Passageiro com Mira 100% Livre 360°, Câmera Estável sem Tremor e Inclinação pela Janela!)
   if (player.drivingCar) {
     const v = player.drivingCar;
     const isPassLean = player.carSeat > 0 && player.carLeanAlpha > 0.22;
 
+    if (player._camCarId !== v.id || typeof player._camCarSmoothY !== 'number' || Math.abs(player._camCarSmoothY - v.pos.y) > 4.0) {
+      player._camCarId = v.id;
+      player._camCarSmoothY = v.pos.y;
+    } else {
+      player._camCarSmoothY = THREE.MathUtils.damp(player._camCarSmoothY, v.pos.y, 14, dt);
+    }
+
     if (!isPassLean) {
       if (_lastScopeShow && _scopeElRef) { _scopeElRef.style.display = 'none'; _lastScopeShow = false; }
       fpWeaponRig.visible = false;
-      gunState.adsAlpha = THREE.MathUtils.lerp(gunState.adsAlpha, 0, Math.min(1, dt * 14));
+      gunState.adsAlpha = THREE.MathUtils.lerp(gunState.adsAlpha, 0, 1 - Math.exp(-14 * dt));
 
       const spdRatio = Math.min(1, Math.hypot(v.vx || 0, v.vz || 0) / 28);
-      const targetCarFov = (player.firstPerson ? 74 : 68) + spdRatio * 11;
+      const targetCarFov = (player.firstPerson ? 74 : 68) + spdRatio * 10;
       if (Math.abs(camera.fov - targetCarFov) > 0.05) {
-        camera.fov = THREE.MathUtils.lerp(camera.fov, targetCarFov, Math.min(1, dt * 8));
+        camera.fov = THREE.MathUtils.lerp(camera.fov, targetCarFov, 1 - Math.exp(-7 * dt));
         camera.updateProjectionMatrix();
       }
 
       if (player.firstPerson) {
-        // 1ª Pessoa dentro da cabine: visão livre 360° pelos vidros transparentes!
+        // 1ª Pessoa dentro da cabine: visão livre 360° na altura exata dos olhos sentados (sem tremor!)
         omni.root.visible = false;
         getVehicleSeatWorldPose(v, player.carSeat, 0, _camCarTarget);
-        camera.position.set(_camCarTarget.x, _camCarTarget.y + 0.88, _camCarTarget.z);
+        const smoothDeltaY = (player._camCarSmoothY - v.pos.y) * 0.6;
+        camera.position.set(_camCarTarget.x, _camCarTarget.y + 1.24 + smoothDeltaY, _camCarTarget.z);
         camera.rotation.order = 'YXZ';
         camera.rotation.set(THREE.MathUtils.clamp(player.pitch, -0.78, 0.85), player.yaw, 0);
       } else {
-        // 3ª Pessoa com câmera 100% LIVRE controlada pelo mouse (sem travar no volante!)
+        // 3ª Pessoa com câmera 100% LIVRE controlada pelo mouse e travada em fase ao chassi (ZERO tremor em alta velocidade!)
         omni.root.visible = true;
         const orbPitch = THREE.MathUtils.clamp(player.pitch, -0.82, 0.52);
         const orbYaw = player.yaw;
         const camDist = 6.5;
         const cosP = Math.cos(orbPitch), sinP = Math.sin(orbPitch);
         const lookFocusX = v.pos.x;
-        const lookFocusY = v.pos.y + 1.18;
+        const lookFocusY = player._camCarSmoothY + 1.18;
         const lookFocusZ = v.pos.z;
 
         const targetCamX = lookFocusX + Math.sin(orbYaw) * cosP * camDist;
@@ -11406,8 +11442,7 @@ function updateCameraAndWeaponViewmodel(dt) {
         const targetCamZ = lookFocusZ + Math.cos(orbYaw) * cosP * camDist;
         const minGroundY = getSurfaceHeight(targetCamX, targetCamZ) + 0.55;
 
-        _camCarTarget.set(targetCamX, Math.max(minGroundY, targetCamY), targetCamZ);
-        camera.position.lerp(_camCarTarget, Math.min(1, dt * 16));
+        camera.position.set(targetCamX, Math.max(minGroundY, targetCamY), targetCamZ);
         camera.lookAt(lookFocusX, lookFocusY, lookFocusZ);
       }
 
@@ -11417,6 +11452,8 @@ function updateCameraAndWeaponViewmodel(dt) {
       return;
     }
     // Se for Passageiro inclinado pela janela (isPassLean === true), continua abaixo usando o sistema real de Mira 3P OTS / 1P ADS!
+  } else {
+    player._camCarId = null;
   }
 
   // Modo Mira 1ª Pessoa Real (quando V=1ª Pessoa OU quando aperta Z / Luneta 4x/8x!)
@@ -11447,7 +11484,7 @@ function updateCameraAndWeaponViewmodel(dt) {
   }
 
   const eyeY = player.drivingCar
-    ? (player.pos.y + 1.08)
+    ? (player.pos.y + 1.32)
     : (player.pos.y + THREE.MathUtils.lerp(1.56, 1.02, player.crouchAlpha) - player.landSquash * 0.10);
   // Consulta espacial O(1) dos meshes próximos (< 22m) para colisão de câmera e bloqueio de cano!
   const camTargets = (!useFirstPersonView && !player.drivingCar) ? getNearbyCamMeshes(player.pos.x, player.pos.z, dt) : [];
@@ -12800,8 +12837,39 @@ function updateVehicles(dt) {
       v.bodyGroup.rotation.x = THREE.MathUtils.lerp(v.bodyGroup.rotation.x, -thr * 0.024 + (handbrake ? 0.022 : 0), Math.min(1, dt * 10));
 
       updateVehicleVisualHUD(v);
+    } else if (v.driverId && v.driverId !== player.id && v.netPos) {
+      // Carro dirigido por outro jogador online: interpolação contínua a 60fps com predição de velocidade (ZERO teleporte ou tremor para passageiro!)
+      const ageSec = v.netUpdatedAt ? Math.min(0.28, Math.max(0, (performance.now() - v.netUpdatedAt) * 0.001)) : 0;
+      const predX = v.netPos.x + (v.netVx || 0) * ageSec;
+      const predZ = v.netPos.z + (v.netVz || 0) * ageSec;
+      const errDist = Math.hypot(predX - v.pos.x, predZ - v.pos.z);
+      if (errDist > 16) {
+        v.pos.x = predX;
+        v.pos.z = predZ;
+        v.yaw = v.netYaw;
+      } else {
+        const moveBlend = ageSec < 0.22 ? 1.0 : Math.max(0, 1 - (ageSec - 0.22) * 6);
+        v.pos.x += (v.vx || 0) * dt * moveBlend;
+        v.pos.z += (v.vz || 0) * dt * moveBlend;
+        const posAlpha = 1 - Math.exp(-10.5 * dt);
+        v.pos.x += (predX - v.pos.x) * posAlpha;
+        v.pos.z += (predZ - v.pos.z) * posAlpha;
+        v.yaw = lerpAngle(v.yaw, v.netYaw, 1 - Math.exp(-13.0 * dt));
+      }
+      const velAlpha = 1 - Math.exp(-12.0 * dt);
+      v.vx = THREE.MathUtils.lerp(v.vx || 0, v.netVx || 0, velAlpha);
+      v.vz = THREE.MathUtils.lerp(v.vz || 0, v.netVz || 0, velAlpha);
+      v.speed = THREE.MathUtils.lerp(v.speed || 0, v.netSpeed || 0, velAlpha);
+      v.steer = THREE.MathUtils.lerp(v.steer || 0, v.netSteer || 0, velAlpha);
+      v.driftIntensity = THREE.MathUtils.lerp(v.driftIntensity || 0, v.netDrift || 0, velAlpha);
+      if (v.steerWheel) v.steerWheel.rotation.z = v.steer * 2.4;
+      const rollRem = THREE.MathUtils.clamp(-v.steer * (v.speed / 22) * 0.08 - v.driftIntensity * 0.10, -0.16, 0.16);
+      v.bodyGroup.rotation.z = THREE.MathUtils.lerp(v.bodyGroup.rotation.z, rollRem, 1 - Math.exp(-10 * dt));
+      if (player.drivingCar === v) {
+        updateVehicleVisualHUD(v);
+      }
     } else {
-      // Carro sem motorista (desaceleração natural) ou dirigido por outro jogador online (passageiro local acompanha!)
+      // Carro sem motorista (desaceleração natural)
       if (!v.driverId && (Math.hypot(v.vx, v.vz) > 0.05 || Math.abs(v.speed) > 0.05)) {
         const decay = Math.exp(-dt * 2.8);
         v.vx *= decay;
@@ -12831,7 +12899,7 @@ function updateVehicles(dt) {
 
       const avgWheelsY = (hFL + hFR + hRL + hRR) * 0.25;
       const targetY = Math.max(hC, avgWheelsY) + 0.015;
-      v.pos.y = THREE.MathUtils.lerp(v.pos.y, targetY, Math.min(1, dt * 18));
+      v.pos.y = THREE.MathUtils.lerp(v.pos.y, targetY, 1 - Math.exp(-18 * dt));
 
       const hFront = (hFL + hFR) * 0.5;
       const hRear  = (hRL + hRR) * 0.5;
@@ -12840,9 +12908,10 @@ function updateVehicles(dt) {
       const pitchSlope = Math.atan2(hFront - hRear, wb * 2);
       const rollSlope  = Math.atan2(hRight - hLeft, trk * 2);
 
+      const tiltAlpha = 1 - Math.exp(-12 * dt);
       v.root.rotation.y = v.yaw;
-      v.root.rotation.x = THREE.MathUtils.lerp(v.root.rotation.x, THREE.MathUtils.clamp(pitchSlope, -0.42, 0.42), Math.min(1, dt * 12));
-      v.root.rotation.z = THREE.MathUtils.lerp(v.root.rotation.z, THREE.MathUtils.clamp(rollSlope, -0.32, 0.32), Math.min(1, dt * 12));
+      v.root.rotation.x = THREE.MathUtils.lerp(v.root.rotation.x, THREE.MathUtils.clamp(pitchSlope, -0.42, 0.42), tiltAlpha);
+      v.root.rotation.z = THREE.MathUtils.lerp(v.root.rotation.z, THREE.MathUtils.clamp(rollSlope, -0.32, 0.32), tiltAlpha);
     } else {
       v.pos.y = getSurfaceHeight(v.pos.x, v.pos.z);
       v.root.rotation.y = v.yaw;
@@ -12850,6 +12919,7 @@ function updateVehicles(dt) {
       v.root.rotation.z = 0;
     }
     v.root.position.copy(v.pos);
+    v.root.updateMatrixWorld();
     updateVehicleCollider(v);
 
     for (const wh of v.wheels) {
@@ -13360,6 +13430,7 @@ function buildWorldWelcomePayload() {
     deadZombies: zombies.filter(z => z.dead).map(z => z.id),
     vehicleStates: vehicles.map(v => ({
       id: v.id,
+      styleIdx: v.styleIdx || 0,
       x: +v.pos.x.toFixed(2),
       z: +v.pos.z.toFixed(2),
       yaw: +v.yaw.toFixed(3),
@@ -13430,10 +13501,15 @@ function applyWorldStateOverlay(pkt) {
   }
   if (Array.isArray(pkt.vehicleStates)) {
     for (const vs of pkt.vehicleStates) {
-      const v = vehicles.find(c => c.id === vs.id);
-      if (!v) continue;
-      v.pos.set(vs.x, getTerrainHeight(vs.x, vs.z), vs.z);
+      let v = vehicles.find(c => c.id === vs.id);
+      if (!v) {
+        v = buildDrivableVehicle(vs.id, vs.x || 0, vs.z || 0, vs.yaw || 0, vs.styleIdx || 0);
+      }
+      const vy = getSurfaceHeight(vs.x, vs.z);
+      v.pos.set(vs.x, vy, vs.z);
       v.yaw = vs.yaw;
+      if (v.netPos) v.netPos.set(vs.x, vy, vs.z);
+      v.netYaw = vs.yaw;
       v.hp = vs.hp;
       v.driverId = vs.driverId || null;
       v.seats = Array.isArray(vs.seats) ? vs.seats.slice(0, 4) : [v.driverId, null, null, null];
@@ -13553,9 +13629,12 @@ function getOrCreateRemotePlayer(id, nick = 'Sobrevivente') {
     id, nick, teamId: null, hp: 100, dead: false, deathT: 0, deathStyle: 0,
     pos: new THREE.Vector3(0, 0.12, 150),
     targetPos: new THREE.Vector3(0, 0.12, 150),
-    yaw: 0, bodyYaw: 0, pitch: 0,
+    netVel: new THREE.Vector3(),
+    smoothVx: 0, smoothVz: 0,
+    hasFirstPos: false, lastSeq: -1, lastPktAt: 0,
+    yaw: 0, targetYaw: 0, bodyYaw: 0, targetBodyYaw: 0, pitch: 0, targetPitch: 0,
     crouch: 0, sprint: false, weaponId: DEFAULT_MELEE_WEAPON,
-    meleeT: 0, walkPhase: 0, inCarId: null, carSeat: -1, carLean: 0,
+    meleeT: 0, walkPhase: 0, inCarId: null, carSeat: -1, carLean: 0, carLeanSmooth: 0,
     rig, remWeapons, hitboxes, tagEl
   };
 
@@ -13601,7 +13680,7 @@ function handleNetworkPacket(pkt, fromConn = null) {
   if (!pkt || !pkt.t) return;
 
   // Se este jogador for o HOST, retransmite eventos de mundo/combate para os outros clientes!
-  if (netState.isHost && fromConn && ['p', 'shot', 'boom', 'fx_melee', 'loot_take', 'loot_spawn', 'door', 'win', 'car_claim', 'car_dmg', 'car_boom', 'zdead', 'pvp_hit', 'team_inv', 'team_join'].includes(pkt.t)) {
+  if (netState.isHost && fromConn && ['p', 'shot', 'boom', 'fx_melee', 'loot_take', 'loot_spawn', 'door', 'win', 'car_spawn', 'car_repair', 'car_claim', 'car_dmg', 'car_boom', 'zdead', 'pvp_hit', 'team_inv', 'team_join'].includes(pkt.t)) {
     netBroadcast(pkt, fromConn);
   }
 
@@ -13689,14 +13768,29 @@ function handleNetworkPacket(pkt, fromConn = null) {
     if (pkt.id === player.id) return;
     const rp = getOrCreateRemotePlayer(pkt.id, pkt.n);
     if (!rp) return;
+    // Ignora pacotes antigos / fora de ordem (impede flick/puxão para trás no multiplayer!)
+    if (typeof pkt.seq === 'number' && rp.lastSeq >= 0 && pkt.seq <= rp.lastSeq && (rp.lastSeq - pkt.seq) < 600) {
+      return;
+    }
+    if (typeof pkt.seq === 'number') rp.lastSeq = pkt.seq;
+
     rp.nick = pkt.n || rp.nick;
     rp.teamId = pkt.tm || null;
     rp.hp = pkt.hp ?? 100;
     rp.dead = !!pkt.dd;
     rp.targetPos.set(pkt.x, pkt.y, pkt.z);
-    if (rp.pos.distanceTo(rp.targetPos) > 12) rp.pos.copy(rp.targetPos);
-    rp.yaw = pkt.yw;
-    rp.pitch = pkt.pt;
+    rp.netVel.set(pkt.vx || 0, 0, pkt.vz || 0);
+    rp.lastPktAt = performance.now();
+    rp.targetYaw = pkt.yw;
+    rp.targetBodyYaw = typeof pkt.by === 'number' ? pkt.by : pkt.yw;
+    rp.targetPitch = pkt.pt;
+    if (!rp.hasFirstPos || rp.pos.distanceTo(rp.targetPos) > 14) {
+      rp.pos.copy(rp.targetPos);
+      rp.yaw = rp.targetYaw;
+      rp.bodyYaw = rp.targetBodyYaw;
+      rp.pitch = rp.targetPitch;
+      rp.hasFirstPos = true;
+    }
     rp.crouch = pkt.cr || 0;
     rp.sprint = !!pkt.sp;
     rp.inCarId = pkt.car || null;
@@ -13708,18 +13802,33 @@ function handleNetworkPacket(pkt, fromConn = null) {
       if (rp.remWeapons[rp.weaponId]) rp.remWeapons[rp.weaponId].root.visible = true;
     }
     if (pkt.carState && rp.inCarId) {
-      const v = vehicles.find(c => c.id === rp.inCarId);
+      let v = vehicles.find(c => c.id === rp.inCarId);
+      // Rede de segurança: se um carro spawnado via DEV [F1] chegou antes do car_spawn, cria na hora para nunca sumir o motorista!
+      if (!v) {
+        v = buildDrivableVehicle(rp.inCarId, pkt.carState[0], pkt.carState[1], pkt.carState[2] || 0, pkt.carState[8] || 0);
+      }
       if (v && v.driverId !== player.id) {
         if (rp.carSeat === 0) {
           v.driverId = rp.id;
           if (Array.isArray(v.seats)) v.seats[0] = rp.id;
-          v.pos.set(pkt.carState[0], getSurfaceHeight(pkt.carState[0], pkt.carState[1]), pkt.carState[1]);
-          v.yaw = pkt.carState[2];
-          v.speed = pkt.carState[3];
-          v.vx = pkt.carState[4] ?? (-Math.sin(v.yaw) * v.speed);
-          v.vz = pkt.carState[5] ?? (-Math.cos(v.yaw) * v.speed);
-          v.steer = pkt.carState[6] ?? 0;
-          v.driftIntensity = pkt.carState[7] ?? 0;
+          const cy = getSurfaceHeight(pkt.carState[0], pkt.carState[1]);
+          if (!v.netPos) v.netPos = new THREE.Vector3(pkt.carState[0], cy, pkt.carState[1]);
+          else v.netPos.set(pkt.carState[0], cy, pkt.carState[1]);
+          v.netYaw = pkt.carState[2];
+          v.netSpeed = pkt.carState[3];
+          v.netVx = pkt.carState[4] ?? (-Math.sin(v.netYaw) * v.netSpeed);
+          v.netVz = pkt.carState[5] ?? (-Math.cos(v.netYaw) * v.netSpeed);
+          v.netSteer = pkt.carState[6] ?? 0;
+          v.netDrift = pkt.carState[7] ?? 0;
+          const firstSync = !v.netUpdatedAt;
+          v.netUpdatedAt = performance.now();
+          if (firstSync || v.pos.distanceTo(v.netPos) > 16) {
+            v.pos.copy(v.netPos);
+            v.yaw = v.netYaw;
+            v.vx = v.netVx;
+            v.vz = v.netVz;
+            v.speed = v.netSpeed;
+          }
         }
       }
     }
@@ -13748,6 +13857,20 @@ function handleNetworkPacket(pkt, fromConn = null) {
   } else if (pkt.t === 'win') {
     const w = interactiveWindows[pkt.id];
     if (w && !w.broken) shatterWindowGlass(w, w.worldCenter, false);
+  } else if (pkt.t === 'car_spawn') {
+    if (pkt.id && !vehicles.some(c => c.id === pkt.id)) {
+      buildDrivableVehicle(pkt.id, pkt.x || 0, pkt.z || 0, pkt.rotY || 0, pkt.styleIdx || 0);
+      if (devState.debug) rebuildDebug3DVisuals();
+    }
+  } else if (pkt.t === 'car_repair') {
+    const v = vehicles.find(c => c.id === pkt.carId);
+    if (v) {
+      v.hp = v.maxHp;
+      v.exploded = false;
+      v.bodyGroup.position.y = 0;
+      v.bodyGroup.rotation.z = 0;
+      if (player.drivingCar === v) updateVehicleVisualHUD(v);
+    }
   } else if (pkt.t === 'car_claim') {
     const v = vehicles.find(c => c.id === pkt.carId);
     if (v) {
@@ -14054,11 +14177,13 @@ async function refreshServerListUI() {
 function updateRemotePlayersAndNet(dt) {
   if (netState.isHost || netState.isClient) {
     netState.syncAcc += dt;
-    if (netState.syncAcc >= 0.055) { // ~18Hz
+    if (netState.syncAcc >= 0.036) { // ~28Hz para fluidez real sem flicks!
       netState.syncAcc = 0;
+      netState.seq = (netState.seq || 0) + 1;
       const wInst = getActiveWeaponObj();
       const pkt = {
         t: 'p',
+        seq: netState.seq,
         id: player.id,
         n: player.nick,
         tm: player.teamId,
@@ -14067,7 +14192,10 @@ function updateRemotePlayersAndNet(dt) {
         x: +player.pos.x.toFixed(2),
         y: +player.pos.y.toFixed(2),
         z: +player.pos.z.toFixed(2),
+        vx: +player.vel.x.toFixed(2),
+        vz: +player.vel.z.toFixed(2),
         yw: +player.yaw.toFixed(3),
+        by: +player.bodyYaw.toFixed(3),
         pt: +player.pitch.toFixed(3),
         cr: +player.crouchAlpha.toFixed(2),
         sp: player.sprinting,
@@ -14080,7 +14208,8 @@ function updateRemotePlayersAndNet(dt) {
         const v = player.drivingCar;
         pkt.carState = [
           +v.pos.x.toFixed(2), +v.pos.z.toFixed(2), +v.yaw.toFixed(3), +v.speed.toFixed(2),
-          +(v.vx || 0).toFixed(2), +(v.vz || 0).toFixed(2), +(v.steer || 0).toFixed(2), +(v.driftIntensity || 0).toFixed(2)
+          +(v.vx || 0).toFixed(2), +(v.vz || 0).toFixed(2), +(v.steer || 0).toFixed(2), +(v.driftIntensity || 0).toFixed(2),
+          v.styleIdx || 0
         ];
       }
       netBroadcast(pkt);
@@ -14096,13 +14225,22 @@ function updateRemotePlayersAndNet(dt) {
   }
 
   // Interpola e anima cada jogador remoto (a pé, sentado no carro visível pelos vidros OU inclinado na janela!)
+  const nowMs = performance.now();
+  const rotAlpha = 1 - Math.exp(-15 * dt);
+  const posAlpha = 1 - Math.exp(-13.5 * dt);
+  const velAlpha = 1 - Math.exp(-11 * dt);
+
   for (const rp of remotePlayers.values()) {
+    rp.yaw = lerpAngle(rp.yaw, rp.targetYaw ?? rp.yaw, rotAlpha);
+    rp.pitch = THREE.MathUtils.lerp(rp.pitch, rp.targetPitch ?? rp.pitch, rotAlpha);
+
     if (rp.inCarId) {
       const car = vehicles.find(c => c.id === rp.inCarId);
       if (car && car.root && car.root.visible) {
         rp.rig.root.visible = true;
         const sIdx = Math.max(0, Math.min(3, rp.carSeat >= 0 ? rp.carSeat : 0));
-        getVehicleSeatWorldPose(car, sIdx, rp.carLean || 0, rp.pos);
+        rp.carLeanSmooth = THREE.MathUtils.damp(rp.carLeanSmooth || 0, rp.carLean || 0, 12, dt);
+        getVehicleSeatWorldPose(car, sIdx, rp.carLeanSmooth, rp.pos);
         animateCharacterRig(rp.rig, {
           pos: rp.pos,
           bodyYaw: car.yaw,
@@ -14110,13 +14248,13 @@ function updateRemotePlayersAndNet(dt) {
           pitch: rp.pitch,
           hSpeed: 0, localFwdVel: 0, localStrVel: 0,
           crouchAlpha: 0, landSquash: 0, onGround: true, sprinting: false,
-          inCombat: (rp.carLean || 0) > 0.15,
+          inCombat: rp.carLeanSmooth > 0.15,
           weaponId: rp.weaponId,
           reloading: false, reloadProgress: 0, recoilKick: 0,
           meleeSwingT: rp.meleeT, pumpTimer: 0, walkPhase: 0,
           inVehicle: true,
           carSeat: sIdx,
-          carLeanAlpha: rp.carLean || 0,
+          carLeanAlpha: rp.carLeanSmooth,
           carSteer: car.steer || 0,
           carPitch: car.root.rotation.x || 0,
           carRoll: car.root.rotation.z || 0
@@ -14126,7 +14264,7 @@ function updateRemotePlayersAndNet(dt) {
         const isAllyCar = !!(player.teamId && rp.teamId && player.teamId === rp.teamId);
         const distCar = rp.pos.distanceTo(player.pos);
         if (isAllyCar || distCar < 14) {
-          const headW = new THREE.Vector3(rp.pos.x, rp.pos.y + 1.45, rp.pos.z);
+          const headW = new THREE.Vector3(rp.pos.x, rp.pos.y + 1.62, rp.pos.z);
           headW.project(camera);
           if (headW.z < 1) {
             rp.tagEl.className = 'player-tag ' + (isAllyCar ? 'ally' : 'stranger');
@@ -14158,14 +14296,28 @@ function updateRemotePlayersAndNet(dt) {
     }
     rp.deathT = 0;
 
-    const prevX = rp.pos.x, prevZ = rp.pos.z;
-    rp.pos.lerp(rp.targetPos, Math.min(1, dt * 13));
-    const vx = (rp.pos.x - prevX) / Math.max(0.001, dt);
-    const vz = (rp.pos.z - prevZ) / Math.max(0.001, dt);
-    const hSpd = Math.hypot(vx, vz);
+    // Predição suave por velocidade limitada (<= 0.16s) + amortecimento exponencial independente de FPS (elimina 100% dos flicks!)
+    const ageSec = rp.lastPktAt ? Math.min(0.16, Math.max(0, (nowMs - rp.lastPktAt) * 0.001)) : 0;
+    const goalX = rp.targetPos.x + (rp.netVel ? rp.netVel.x * ageSec : 0);
+    const goalY = rp.targetPos.y;
+    const goalZ = rp.targetPos.z + (rp.netVel ? rp.netVel.z * ageSec : 0);
 
-    rp.bodyYaw = lerpAngle(rp.bodyYaw, hSpd > 0.6 ? Math.atan2(-vx, -vz) : rp.yaw, Math.min(1, dt * 12));
-    if (hSpd > 0.25) rp.walkPhase += dt * (rp.sprint ? 10.5 : 7.6);
+    rp.pos.x += (goalX - rp.pos.x) * posAlpha;
+    rp.pos.y += (goalY - rp.pos.y) * posAlpha;
+    rp.pos.z += (goalZ - rp.pos.z) * posAlpha;
+
+    const netSpd = rp.netVel ? Math.hypot(rp.netVel.x, rp.netVel.z) : 0;
+    const desiredVx = netSpd > 0.12 ? rp.netVel.x : (goalX - rp.pos.x) * 4.0;
+    const desiredVz = netSpd > 0.12 ? rp.netVel.z : (goalZ - rp.pos.z) * 4.0;
+    rp.smoothVx = THREE.MathUtils.lerp(rp.smoothVx || 0, desiredVx, velAlpha);
+    rp.smoothVz = THREE.MathUtils.lerp(rp.smoothVz || 0, desiredVz, velAlpha);
+    const hSpd = Math.hypot(rp.smoothVx, rp.smoothVz);
+
+    const desiredBodyYaw = typeof rp.targetBodyYaw === 'number'
+      ? rp.targetBodyYaw
+      : (hSpd > 0.6 ? Math.atan2(-rp.smoothVx, -rp.smoothVz) : rp.yaw);
+    rp.bodyYaw = lerpAngle(rp.bodyYaw, desiredBodyYaw, rotAlpha);
+    if (hSpd > 0.28) rp.walkPhase += dt * (rp.sprint ? 10.5 : 7.6);
     rp.meleeT = Math.max(0, rp.meleeT - dt);
 
     const bSin = Math.sin(rp.bodyYaw), bCos = Math.cos(rp.bodyYaw);
@@ -14175,8 +14327,8 @@ function updateRemotePlayersAndNet(dt) {
       lookYaw: rp.yaw,
       pitch: rp.pitch,
       hSpeed: hSpd,
-      localFwdVel: -vx * bSin - vz * bCos,
-      localStrVel:  vx * bCos - vz * bSin,
+      localFwdVel: -rp.smoothVx * bSin - rp.smoothVz * bCos,
+      localStrVel:  rp.smoothVx * bCos - rp.smoothVz * bSin,
       crouchAlpha: rp.crouch,
       landSquash: 0,
       onGround: true,
@@ -15933,11 +16085,13 @@ if (devBtnSpawnCar) {
     const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
     const sx = player.pos.x + fx * 5.8;
     const sz = player.pos.z + fz * 5.8;
-    const carId = `dev-car-${Date.now().toString(36).slice(-5)}`;
-    const veh = buildDrivableVehicle(carId, sx, sz, player.yaw + Math.PI * 0.5, styleIdx);
+    const rotY = player.yaw + Math.PI * 0.5;
+    const carId = `dev-car-${Date.now().toString(36).slice(-5)}-${Math.random().toString(36).slice(2, 5)}`;
+    const veh = buildDrivableVehicle(carId, sx, sz, rotY, styleIdx);
+    netBroadcast({ t: 'car_spawn', id: carId, x: +sx.toFixed(2), z: +sz.toFixed(2), rotY: +rotY.toFixed(3), styleIdx });
     if (devState.debug) rebuildDebug3DVisuals();
     sfx.playClick(2100, 0.16);
-    showToast(`DEV // ${veh.label} SPAWNADO À SUA FRENTE!`);
+    showToast(`DEV // ${veh.label} SPAWNADO E SINCRONIZADO PARA TODOS!`);
   };
 }
 
@@ -15961,6 +16115,7 @@ if (devBtnRepairCar) {
     target.bodyGroup.position.y = 0;
     target.bodyGroup.rotation.z = 0;
     if (target === player.drivingCar) updateVehicleVisualHUD(target);
+    netBroadcast({ t: 'car_repair', carId: target.id });
     sfx.playClick(2400, 0.16);
     showToast(`DEV // ${target.label} REPARADO (100% HP)!`);
   };
@@ -16398,22 +16553,24 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  updateRemotePlayersAndNet(dt);
-
   if (isPlaying || inventoryOpen || partyOpen || devState.panelOpen || player.dead) {
     if ((isPlaying || player.dead) && !inventoryOpen && !partyOpen && !devState.panelOpen) {
+      // Ordem exata: Veículos -> Jogador Local -> Jogadores Remotos & Rede -> Câmera (elimina 1-frame lag dentro do carro!)
       updateVehicles(dt);
       updateLocalPlayer(dt);
+      updateRemotePlayersAndNet(dt);
       updateCameraAndWeaponViewmodel(dt);
       updateWorldFXAndHUD(dt);
       updateZombies(dt);
       checkContextualInteraction(dt);
     } else {
       updateVehicles(dt);
+      updateRemotePlayersAndNet(dt);
       updateCameraAndWeaponViewmodel(dt);
       updateWorldFXAndHUD(dt);
     }
   } else {
+    updateRemotePlayersAndNet(dt);
     // Showcase do Personagem Omni no Menu Inicial (enquadrado à direita)
     menuOrbit += dt * 0.34;
     fpWeaponRig.visible = false;

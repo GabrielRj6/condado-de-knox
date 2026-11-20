@@ -1,0 +1,80 @@
+{
+  "id": "tactical_katana",
+  "code": "KAT-0",
+  "asset": "kat-0_tactical_black_game_ready.glb",
+  "objAsset": "kat-0_game_ready.obj",
+  "hudIcon": "kat-0_hud_icon.png",
+  "name": "Katana Tática KAT-0",
+  "category": "scifi_melee",
+  "categoryLabel": "Lâmina Longa",
+  "caliber": "Aço Forjado T10",
+  "description": "Lâmina levemente curvada com gume polido, tsuba octogonal de aço, cabo tsuka texturizado e pomo reforçado.",
+  "physical": {
+    "weightKg": 1.15,
+    "lengthCm": 102,
+    "recoilStrength": 0.85
+  },
+  "finish": {
+    "id": "tactical_black",
+    "name": "Tático Padrão",
+    "wearPercent": 35
+  },
+  "lod": {
+    "id": "game_ready",
+    "label": "Game-Ready",
+    "subtitle": "FPS Padrão"
+  },
+  "attachments": {
+    "suppressor": false,
+    "laser": false,
+    "tacLight": false
+  },
+  "ballistics": {
+    "rpm": 90,
+    "fireIntervalSeconds": 0.6667,
+    "magCapacity": 0,
+    "reloadSeconds": 0,
+    "fireModes": [
+      "melee"
+    ],
+    "ejectsShells": false,
+    "isShotgunShell": false,
+    "isMelee": true,
+    "isExplosive": false
+  },
+  "topology": {
+    "triangles": 244,
+    "vertices": 548,
+    "subMeshes": 11,
+    "materialsPBR": 4,
+    "estimatedVramKb": 1043
+  },
+  "sockets": {
+    "socket_muzzle": [
+      1.55,
+      0.06,
+      0
+    ],
+    "socket_grip": [
+      -0.72,
+      -0.02,
+      0
+    ],
+    "socket_ejection": [
+      -0.34,
+      0,
+      0
+    ],
+    "socket_optic": [
+      0.2,
+      0.1,
+      0
+    ]
+  },
+  "pbrChannels": [
+    "albedo_srgb",
+    "normal_opengl",
+    "roughness_linear",
+    "metalness_linear"
+  ]
+}

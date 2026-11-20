@@ -1,0 +1,85 @@
+{
+  "id": "revolver_magnum",
+  "code": "MAG-44",
+  "asset": "mag-44_tactical_black_game_ready.glb",
+  "objAsset": "mag-44_game_ready.obj",
+  "hudIcon": "mag-44_hud_icon.png",
+  "name": "Revólver Magnum .44",
+  "category": "sidearms",
+  "categoryLabel": "Revólver Pesado",
+  "caliber": ".44 Magnum",
+  "description": "Tambor rotativo de 6 câmaras com estojos de latão visíveis, cano ventilado pesado e cão exposto.",
+  "physical": {
+    "weightKg": 1.38,
+    "lengthCm": 31,
+    "recoilStrength": 1.38
+  },
+  "finish": {
+    "id": "tactical_black",
+    "name": "Tático Padrão",
+    "wearPercent": 35
+  },
+  "lod": {
+    "id": "game_ready",
+    "label": "Game-Ready",
+    "subtitle": "FPS Padrão"
+  },
+  "attachments": {
+    "suppressor": false,
+    "laser": false,
+    "tacLight": false
+  },
+  "ballistics": {
+    "rpm": 145,
+    "fireIntervalSeconds": 0.4138,
+    "magCapacity": 6,
+    "reloadSeconds": 2.35,
+    "fireModes": [
+      "single"
+    ],
+    "ejectsShells": false,
+    "isShotgunShell": false,
+    "isMelee": false,
+    "isExplosive": false
+  },
+  "topology": {
+    "triangles": 532,
+    "vertices": 961,
+    "subMeshes": 16,
+    "materialsPBR": 5,
+    "estimatedVramKb": 1313
+  },
+  "sockets": {
+    "socket_muzzle": [
+      0.98,
+      0.2,
+      0
+    ],
+    "socket_grip": [
+      -0.46,
+      -0.24,
+      0
+    ],
+    "socket_ejection": [
+      -0.04,
+      0.12,
+      0.11
+    ],
+    "socket_optic": [
+      0.18,
+      0.32,
+      0
+    ],
+    "socket_side_rail": [
+      0.46,
+      0.12,
+      0.075
+    ]
+  },
+  "pbrChannels": [
+    "albedo_srgb",
+    "normal_opengl",
+    "roughness_linear",
+    "metalness_linear"
+  ]
+}

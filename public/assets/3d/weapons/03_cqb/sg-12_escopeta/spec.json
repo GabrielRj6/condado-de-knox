@@ -1,0 +1,90 @@
+{
+  "id": "combat_shotgun",
+  "code": "SG-12",
+  "asset": "sg-12_tactical_black_game_ready.glb",
+  "objAsset": "sg-12_game_ready.obj",
+  "hudIcon": "sg-12_hud_icon.png",
+  "name": "Escopeta de Combate SG-12",
+  "category": "cqb",
+  "categoryLabel": "Ação Pump",
+  "caliber": "12 Gauge",
+  "description": "Escopeta tática com carregador tubular, telha estriada deslizante e porta-cartuchos lateral.",
+  "physical": {
+    "weightKg": 3.6,
+    "lengthCm": 98,
+    "recoilStrength": 1.45
+  },
+  "finish": {
+    "id": "tactical_black",
+    "name": "Tático Padrão",
+    "wearPercent": 35
+  },
+  "lod": {
+    "id": "game_ready",
+    "label": "Game-Ready",
+    "subtitle": "FPS Padrão"
+  },
+  "attachments": {
+    "suppressor": false,
+    "laser": false,
+    "tacLight": false
+  },
+  "ballistics": {
+    "rpm": 84,
+    "fireIntervalSeconds": 0.7143,
+    "magCapacity": 8,
+    "reloadSeconds": 2.5,
+    "fireModes": [
+      "single"
+    ],
+    "ejectsShells": true,
+    "isShotgunShell": true,
+    "isMelee": false,
+    "isExplosive": false
+  },
+  "topology": {
+    "triangles": 928,
+    "vertices": 1680,
+    "subMeshes": 36,
+    "materialsPBR": 8,
+    "estimatedVramKb": 2106
+  },
+  "sockets": {
+    "socket_muzzle": [
+      1.58,
+      0.125,
+      0
+    ],
+    "socket_grip": [
+      -0.52,
+      -0.05,
+      0
+    ],
+    "socket_ejection": [
+      0.08,
+      0.09,
+      0.08
+    ],
+    "socket_optic": [
+      -0.06,
+      0.24,
+      0
+    ],
+    "socket_side_rail": [
+      1.18,
+      0.08,
+      0.075
+    ],
+    "socket_under_rail": [
+      1.18,
+      -0.04,
+      0
+    ]
+  },
+  "pbrChannels": [
+    "albedo_srgb",
+    "normal_opengl",
+    "roughness_linear",
+    "metalness_linear"
+  ]
+}

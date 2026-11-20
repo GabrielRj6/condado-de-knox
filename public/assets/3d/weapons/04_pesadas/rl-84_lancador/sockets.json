@@ -1,0 +1,85 @@
+{
+  "weaponId": "rocket_launcher",
+  "code": "RL-84",
+  "name": "Lançador Antitanque RL-84",
+  "coordinateSystem": {
+    "handedness": "right_handed",
+    "upAxis": "+Y",
+    "forwardAxis": "+X",
+    "rightAxis": "+Z",
+    "units": "meters_normalized"
+  },
+  "embeddedInGlb": true,
+  "sockets": {
+    "socket_muzzle": {
+      "nodeName": "socket_muzzle",
+      "position": [
+        1.62,
+        0.1,
+        0
+      ],
+      "vector": {
+        "x": 1.62,
+        "y": 0.1,
+        "z": 0
+      },
+      "usage": "Ponto de disparo, clarão de boca (muzzle flash) e origem de projétil"
+    },
+    "socket_grip": {
+      "nodeName": "socket_grip",
+      "position": [
+        0.22,
+        -0.22,
+        0
+      ],
+      "vector": {
+        "x": 0.22,
+        "y": -0.22,
+        "z": 0
+      },
+      "usage": "Pivô da mão principal / empunhadura (IK right hand)"
+    },
+    "socket_ejection": {
+      "nodeName": "socket_ejection",
+      "position": [
+        -1.42,
+        0.1,
+        0
+      ],
+      "vector": {
+        "x": -1.42,
+        "y": 0.1,
+        "z": 0
+      },
+      "usage": "Janela de ejeção de cápsulas / cartuchos"
+    },
+    "socket_optic": {
+      "nodeName": "socket_optic",
+      "position": [
+        0.28,
+        0.24,
+        0.2
+      ],
+      "vector": {
+        "x": 0.28,
+        "y": 0.24,
+        "z": 0.2
+      },
+      "usage": "Linha de visada ADS / encaixe de mira óptica"
+    },
+    "socket_side_rail": {
+      "nodeName": "socket_side_rail",
+      "position": [
+        0.68,
+        0.1,
+        0.17
+      ],
+      "vector": {
+        "x": 0.68,
+        "y": 0.1,
+        "z": 0.17
+      },
+      "usage": "Trilho lateral para mira laser"
+    }
+  }
+}

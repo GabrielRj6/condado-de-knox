@@ -1,0 +1,85 @@
+{
+  "id": "sniper_rifle",
+  "code": "SR-76",
+  "asset": "sr-76_tactical_black_game_ready.glb",
+  "objAsset": "sr-76_game_ready.obj",
+  "hudIcon": "sr-76_hud_icon.png",
+  "name": "Rifle de Precisão SR-76",
+  "category": "rifles",
+  "categoryLabel": "Ação por Ferrolho",
+  "caliber": ".338 Lapua",
+  "description": "Cano pesado flutuante com freio de boca duplo, luneta telescópica com lentes tratadas e bipé articulado.",
+  "physical": {
+    "weightKg": 6.2,
+    "lengthCm": 124,
+    "recoilStrength": 1.65
+  },
+  "finish": {
+    "id": "tactical_black",
+    "name": "Tático Padrão",
+    "wearPercent": 35
+  },
+  "lod": {
+    "id": "game_ready",
+    "label": "Game-Ready",
+    "subtitle": "FPS Padrão"
+  },
+  "attachments": {
+    "suppressor": false,
+    "laser": false,
+    "tacLight": false
+  },
+  "ballistics": {
+    "rpm": 52,
+    "fireIntervalSeconds": 1.1538,
+    "magCapacity": 5,
+    "reloadSeconds": 2.6,
+    "fireModes": [
+      "single"
+    ],
+    "ejectsShells": true,
+    "isShotgunShell": false,
+    "isMelee": false,
+    "isExplosive": false
+  },
+  "topology": {
+    "triangles": 660,
+    "vertices": 1169,
+    "subMeshes": 20,
+    "materialsPBR": 6,
+    "estimatedVramKb": 1576
+  },
+  "sockets": {
+    "socket_muzzle": [
+      2.02,
+      0.115,
+      0
+    ],
+    "socket_grip": [
+      -0.4,
+      -0.24,
+      0
+    ],
+    "socket_ejection": [
+      -0.14,
+      0.12,
+      0.08
+    ],
+    "socket_optic": [
+      0.08,
+      0.31,
+      0
+    ],
+    "socket_side_rail": [
+      0.58,
+      0.06,
+      0.085
+    ]
+  },
+  "pbrChannels": [
+    "albedo_srgb",
+    "normal_opengl",
+    "roughness_linear",
+    "metalness_linear"
+  ]
+}

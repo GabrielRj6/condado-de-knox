@@ -1,0 +1,80 @@
+{
+  "id": "frag_grenade",
+  "code": "M67-G",
+  "asset": "m67-g_tactical_black_game_ready.glb",
+  "objAsset": "m67-g_game_ready.obj",
+  "hudIcon": "m67-g_hud_icon.png",
+  "name": "Granada Tática M67-G",
+  "category": "heavy",
+  "categoryLabel": "Explosivo de Mão",
+  "caliber": "Fragmentação Comp. B",
+  "description": "Corpo facetado em aço fundido, espoleta usinada, alavanca de segurança curvada e pino metálico.",
+  "physical": {
+    "weightKg": 0.4,
+    "lengthCm": 11,
+    "recoilStrength": 0.9
+  },
+  "finish": {
+    "id": "tactical_black",
+    "name": "Tático Padrão",
+    "wearPercent": 35
+  },
+  "lod": {
+    "id": "game_ready",
+    "label": "Game-Ready",
+    "subtitle": "FPS Padrão"
+  },
+  "attachments": {
+    "suppressor": false,
+    "laser": false,
+    "tacLight": false
+  },
+  "ballistics": {
+    "rpm": 60,
+    "fireIntervalSeconds": 1,
+    "magCapacity": 1,
+    "reloadSeconds": 1.15,
+    "fireModes": [
+      "single"
+    ],
+    "ejectsShells": false,
+    "isShotgunShell": false,
+    "isMelee": false,
+    "isExplosive": true
+  },
+  "topology": {
+    "triangles": 532,
+    "vertices": 574,
+    "subMeshes": 7,
+    "materialsPBR": 4,
+    "estimatedVramKb": 1045
+  },
+  "sockets": {
+    "socket_muzzle": [
+      0,
+      0.48,
+      0
+    ],
+    "socket_grip": [
+      0,
+      0,
+      0
+    ],
+    "socket_ejection": [
+      -0.26,
+      0.42,
+      0
+    ],
+    "socket_optic": [
+      0,
+      0.56,
+      0
+    ]
+  },
+  "pbrChannels": [
+    "albedo_srgb",
+    "normal_opengl",
+    "roughness_linear",
+    "metalness_linear"
+  ]
+}

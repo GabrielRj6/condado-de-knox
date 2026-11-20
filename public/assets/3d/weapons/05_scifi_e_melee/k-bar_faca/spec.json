@@ -1,0 +1,80 @@
+{
+  "id": "combat_knife",
+  "code": "K-BAR",
+  "asset": "k-bar_tactical_black_game_ready.glb",
+  "objAsset": "k-bar_game_ready.obj",
+  "hudIcon": "k-bar_hud_icon.png",
+  "name": "Faca Tática K-Bar",
+  "category": "scifi_melee",
+  "categoryLabel": "Corpo a Corpo",
+  "caliber": "Aço 1095 Carbono",
+  "description": "Lâmina clip-point com sulco de alívio, fio escovado em bisel duplo, guarda metálica e cabo emborrachado.",
+  "physical": {
+    "weightKg": 0.32,
+    "lengthCm": 30,
+    "recoilStrength": 0.65
+  },
+  "finish": {
+    "id": "tactical_black",
+    "name": "Tático Padrão",
+    "wearPercent": 35
+  },
+  "lod": {
+    "id": "game_ready",
+    "label": "Game-Ready",
+    "subtitle": "FPS Padrão"
+  },
+  "attachments": {
+    "suppressor": false,
+    "laser": false,
+    "tacLight": false
+  },
+  "ballistics": {
+    "rpm": 120,
+    "fireIntervalSeconds": 0.5,
+    "magCapacity": 0,
+    "reloadSeconds": 0,
+    "fireModes": [
+      "melee"
+    ],
+    "ejectsShells": false,
+    "isShotgunShell": false,
+    "isMelee": true,
+    "isExplosive": false
+  },
+  "topology": {
+    "triangles": 468,
+    "vertices": 453,
+    "subMeshes": 5,
+    "materialsPBR": 3,
+    "estimatedVramKb": 785
+  },
+  "sockets": {
+    "socket_muzzle": [
+      1.05,
+      0.02,
+      0
+    ],
+    "socket_grip": [
+      -0.26,
+      0,
+      0
+    ],
+    "socket_ejection": [
+      0.06,
+      0,
+      0
+    ],
+    "socket_optic": [
+      0.35,
+      0.12,
+      0
+    ]
+  },
+  "pbrChannels": [
+    "albedo_srgb",
+    "normal_opengl",
+    "roughness_linear",
+    "metalness_linear"
+  ]
+}
