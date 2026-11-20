@@ -1036,12 +1036,12 @@
                 <span>Distância de Renderização</span>
                 <span class="slider-val" id="draw-dist-val">220m</span>
               </div>
-              <input type="range" id="draw-dist-slider" min="100" max="800" step="25" value="220" style="width:100%;accent-color:var(--amb);cursor:pointer;" />
+              <input type="range" id="draw-dist-slider" min="100" max="1000" step="25" value="220" style="width:100%;accent-color:var(--amb);cursor:pointer;" />
               <div class="size-btn-row" id="draw-dist-presets" style="margin-top:0;">
                 <button class="size-chip" data-dist="150">150m</button>
-                <button class="size-chip active" data-dist="250">250m</button>
-                <button class="size-chip" data-dist="500">500m</button>
-                <button class="size-chip" data-dist="800">800m</button>
+                <button class="size-chip" data-dist="300">300m</button>
+                <button class="size-chip" data-dist="600">600m</button>
+                <button class="size-chip" data-dist="1000">1000m</button>
               </div>
             </div>
             <div class="setting-row">
@@ -1826,23 +1826,23 @@ _weaponPmrem.dispose();
   m.needsUpdate = true;
 });
 
-let currentDrawDistance = 220; // Draw Distance padrão otimizado (100m a 800m ajustável no menu)
+let currentDrawDistance = 220; // Draw Distance padrão otimizado (100m a 1000m ajustável no menu; oclusão traseira sempre ativa globalmente)
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x828880, currentDrawDistance * 0.56, currentDrawDistance * 1.14 + 28);
+scene.fog = new THREE.Fog(0x828880, currentDrawDistance * 0.56, currentDrawDistance * 1.16 + 34);
 scene.background = new THREE.Color(0x828880);
 
-const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.04, Math.max(1350, currentDrawDistance + 550));
+const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.04, Math.max(1450, currentDrawDistance + 550));
 scene.add(camera);
 
 function applyDrawDistance(dist, silent = false) {
-  const clamped = Math.max(100, Math.min(800, Math.round(dist)));
+  const clamped = Math.max(100, Math.min(1000, Math.round(dist)));
   currentDrawDistance = clamped;
-  camera.far = Math.max(1350, clamped + 550);
+  camera.far = Math.max(1450, clamped + 550);
   camera.updateProjectionMatrix();
 
-  // Adaptação suave de pixelRatio em alcances extremos (>= 500m) para manter FPS alto!
-  const targetPR = clamped >= 600 ? Math.min(window.devicePixelRatio, 1.0)
-    : clamped >= 450 ? Math.min(window.devicePixelRatio, 1.1)
+  // Adaptação suave de pixelRatio aliada à renderização direcional global (aguenta até 1000m sem derrubar FPS!)
+  const targetPR = clamped >= 850 ? Math.min(window.devicePixelRatio, 1.05)
+    : clamped >= 550 ? Math.min(window.devicePixelRatio, 1.15)
     : Math.min(window.devicePixelRatio, 1.25);
   renderer.setPixelRatio(targetPR);
 
@@ -1850,19 +1850,19 @@ function applyDrawDistance(dist, silent = false) {
     const curSky = (typeof SKY_PRESETS !== 'undefined' && SKY_PRESETS[currentSkyPresetIdx]) ? SKY_PRESETS[currentSkyPresetIdx] : null;
     const nearMult = (curSky && curSky.fogNearMult) ? curSky.fogNearMult : 0.56;
     scene.fog.near = clamped * nearMult;
-    scene.fog.far = clamped * 1.14 + 34;
+    scene.fog.far = clamped * 1.16 + 38;
   }
 
   const slider = document.getElementById('draw-dist-slider');
   if (slider) slider.value = String(clamped);
   const valEl = document.getElementById('draw-dist-val');
   if (valEl) valEl.textContent = `${clamped}m`;
-  document.querySelectorAll('#draw-dist-presets .preset-chip').forEach((btn) => {
+  document.querySelectorAll('#draw-dist-presets .size-chip, #draw-dist-presets .preset-chip').forEach((btn) => {
     btn.classList.toggle('active', parseInt(btn.dataset.dist, 10) === clamped);
   });
 
   if (typeof streamingTimer !== 'undefined') streamingTimer = 0;
-  if (!silent && typeof showToast === 'function') showToast(`RENDERIZAÇÃO: ${clamped}M`);
+  if (!silent && typeof showToast === 'function') showToast(`DISTÂNCIA DE RENDERIZAÇÃO: ${clamped}M`);
 }
 
 // Viewmodel Rig acoplado à câmera para 1ª Pessoa e Mira ADS Real (Alça/Massa & Red Dot!)
@@ -2153,6 +2153,53 @@ function buildOmniCharacter(jacketTint = null) {
 /* ============================================================================
    4.1 GERENCIADOR DEV DE ZUMBIS
    ============================================================================ */
+function hashZombieIdToSeed(id) {
+  const s = String(id || 'z');
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return (h || 1337) >>> 0;
+}
+
+function updateZombieKillHUD() {
+  let deadCount = 0;
+  for (let i = 0; i < zombies.length; i++) if (zombies[i].dead) deadCount++;
+  zombiesKilled = deadCount;
+  const el = document.getElementById('hud-kills');
+  if (el) el.textContent = `ZUMBIS: ${zombiesKilled} / ${zombies.length}`;
+}
+
+function spawnZombieFromSpec(spec) {
+  if (!spec || !spec.id) return null;
+  const existing = zombies.find(z => z.id === spec.id);
+  if (existing) {
+    if (typeof spec.hp === 'number') existing.hp = spec.hp;
+    if (spec.dead && !existing.dead) { existing.dead = true; existing.deathT = 1; }
+    return existing;
+  }
+  const seed = (Number(spec.seed) || hashZombieIdToSeed(spec.id)) >>> 0;
+  const rng = mulberry32(seed);
+  const zx = Number(spec.x) || 0;
+  const zz = Number(spec.z) || 0;
+  const zEnt = buildZombieEntity(spec.id, zx, zz, rng);
+  zEnt.isDynamic = spec.dyn !== false;
+  zEnt.spawnSeed = seed;
+  if (typeof spec.yaw === 'number') {
+    zEnt.yaw = spec.yaw;
+    zEnt.root.rotation.y = spec.yaw;
+  }
+  if (typeof spec.hp === 'number') zEnt.hp = spec.hp;
+  if (spec.dead) {
+    zEnt.dead = true;
+    zEnt.deathT = 1;
+  }
+  worldGroup.add(zEnt.root);
+  zombies.push(zEnt);
+  return zEnt;
+}
+
 function clearAllZombies(broadcast = true) {
   for (const z of zombies) {
     z.dead = true;
@@ -2160,25 +2207,29 @@ function clearAllZombies(broadcast = true) {
   }
   zombies.length = 0;
   zombiesKilled = 0;
-  document.getElementById('hud-kills').textContent = 'ZUMBIS: 0 / 0';
+  updateZombieKillHUD();
   showToast('DEV // TODOS OS ZUMBIS FORAM REMOVIDOS DO MAPA!');
-  if (broadcast) netBroadcast({ t: 'dev_clear_z' });
+  if (broadcast) netBroadcast({ t: 'dev_clear_z', by: player.nick });
 }
 
 function spawnZombiesNearPlayer(count = 5, broadcast = true) {
-  const rng = mulberry32(Date.now() + Math.random() * 1000);
+  const baseTs = Date.now();
+  const tag = String(player.id || 'p').slice(-4);
+  const spawnSpecs = [];
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
     const dist = 14 + Math.random() * 28;
-    const zx = player.pos.x + Math.sin(angle) * dist;
-    const zz = player.pos.z + Math.cos(angle) * dist;
-    const zEnt = buildZombieEntity(`z-dev-${Date.now()}-${i}`, zx, zz, rng);
-    worldGroup.add(zEnt.root);
-    zombies.push(zEnt);
+    const zx = +(player.pos.x + Math.sin(angle) * dist).toFixed(2);
+    const zz = +(player.pos.z + Math.cos(angle) * dist).toFixed(2);
+    const seed = ((baseTs + i * 7919 + Math.floor(Math.random() * 99991)) >>> 0) || 1;
+    const spec = { id: `z-dev-${tag}-${baseTs}-${i}`, x: zx, z: zz, seed, dyn: true };
+    spawnZombieFromSpec(spec);
+    spawnSpecs.push(spec);
   }
-  document.getElementById('hud-kills').textContent = `ZUMBIS: ${zombiesKilled} / ${zombies.length}`;
+  updateZombieKillHUD();
+  if (typeof streamingTimer !== 'undefined') streamingTimer = 0;
   showToast(`DEV // +${count} ZUMBIS SPAWNADOS AO REDOR!`);
-  if (broadcast) netBroadcast({ t: 'dev_spawn_z', count, px: player.pos.x, pz: player.pos.z });
+  if (broadcast) netBroadcast({ t: 'z_spawn', by: player.nick, list: spawnSpecs });
 }
 
 const devState = {
@@ -6330,6 +6381,10 @@ const _cullFrustum = new THREE.Frustum();
 const _cullProjMat = new THREE.Matrix4();
 const _cullSphere = new THREE.Sphere();
 const _optSphere = new THREE.Sphere();
+const _cullCamPos = new THREE.Vector3();
+const _cullCamFwd = new THREE.Vector3();
+let _lastCullFwdX = 0, _lastCullFwdY = 0, _lastCullFwdZ = -1;
+let _lastCullCamX = 1e9, _lastCullCamZ = 1e9;
 
 const raycastIndex = {
   ready: false,
@@ -6534,22 +6589,60 @@ function rebuildVisibleShootableCache(px, pz, maxDist) {
 }
 
 function updateSceneStreamingAndLOD(dt) {
-  streamingTimer -= dt;
-  if (streamingTimer > 0) return;
-  // Intervalo levemente adaptativo para manter CPU leve mesmo em 600m-800m
-  streamingTimer = currentDrawDistance >= 500 ? 0.11 : 0.075;
-
+  // Renderização Direcional Global: renderiza tudo dentro do campo de visão até o Draw Distance escolhido
+  // e descarta imediatamente tudo que está atrás ou fora da visão da câmera (atualiza no mesmo frame ao virar!)
   camera.updateMatrixWorld();
+  camera.getWorldPosition(_cullCamPos);
+  camera.getWorldDirection(_cullCamFwd);
+
+  const rotDot = _cullCamFwd.x * _lastCullFwdX + _cullCamFwd.y * _lastCullFwdY + _cullCamFwd.z * _lastCullFwdZ;
+  const moveDx = _cullCamPos.x - _lastCullCamX;
+  const moveDz = _cullCamPos.z - _lastCullCamZ;
+  const cameraMovedOrTurned = (rotDot < 0.9985) || (moveDx * moveDx + moveDz * moveDz > 4.0);
+
+  streamingTimer -= dt;
+  if (streamingTimer > 0 && !cameraMovedOrTurned) return;
+  streamingTimer = currentDrawDistance >= 600 ? 0.08 : 0.06;
+
+  _lastCullFwdX = _cullCamFwd.x;
+  _lastCullFwdY = _cullCamFwd.y;
+  _lastCullFwdZ = _cullCamFwd.z;
+  _lastCullCamX = _cullCamPos.x;
+  _lastCullCamZ = _cullCamPos.z;
+
   _cullProjMat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
   _cullFrustum.setFromProjectionMatrix(_cullProjMat);
+
+  const camX = _cullCamPos.x, camZ = _cullCamPos.z;
+  const hFwdLen = Math.hypot(_cullCamFwd.x, _cullCamFwd.z);
+  const lookingVertically = hFwdLen < 0.25;
+  const fwdX = lookingVertically ? 0 : (_cullCamFwd.x / hFwdLen);
+  const fwdZ = lookingVertically ? -1 : (_cullCamFwd.z / hFwdLen);
+  // Cone horizontal acompanhando exatamente o FOV real + aspecto + pequena margem anti-flicker (7°) nas bordas
+  const vFovRad = THREE.MathUtils.degToRad(camera.fov);
+  const hHalfFov = Math.atan(Math.tan(vFovRad * 0.5) * Math.max(1.0, camera.aspect)) + 0.12;
+  const coneMinCos = Math.cos(Math.min(Math.PI * 0.54, hHalfFov));
+
+  // Rejeição ultrarrápida para tudo que está ATRÁS do plano da câmera ou fora do cone lateral de visão
+  const isInCameraConeXZ = (ox, oz, rad) => {
+    if (lookingVertically) return true;
+    const dx = ox - camX, dz = oz - camZ;
+    const dot = dx * fwdX + dz * fwdZ;
+    // Se a esfera inteira está atrás do plano da câmera -> descarta instantaneamente!
+    if (dot < -(rad + 1.5)) return false;
+    const dSq = dx * dx + dz * dz;
+    const minDist = rad + 1.5;
+    if (dSq <= minDist * minDist) return true;
+    const dist = Math.sqrt(dSq);
+    return (dot / dist) >= (coneMinCos - (rad / dist));
+  };
 
   const px = player.drivingCar ? player.drivingCar.pos.x : player.pos.x;
   const pz = player.drivingCar ? player.drivingCar.pos.z : player.pos.z;
   const drawDist = currentDrawDistance;
-  const drawDistSq = drawDist * drawDist;
-  // 4-Tier LOD otimizado p/ renderização de longo alcance (até 800m) a 60 FPS:
+  // 4-Tier LOD otimizado p/ renderização de longo alcance (até 1000m) a 60 FPS:
   // Tier 0 (< 26m): interior + mobília + detalhes + sombras
-  // Tier 1 (26..36m): exterior completo + detalhes + sombras (dentro do frustum shS=38m)
+  // Tier 1 (26..36m): exterior completo + detalhes + sombras
   // Tier 2 (36..58m): exterior sem sombras/interior
   // Tier 3 (58..drawDist): proxy LOD ultraleve (2 draw calls por prédio, zero custo de interior!)
   const interiorDistSq = 26 * 26;
@@ -6557,12 +6650,12 @@ function updateSceneStreamingAndLOD(dt) {
   const detailDistSq = 40 * 40;
   const midFullDistSq = Math.min(58, drawDist * 0.45) ** 2;
 
-  // 1. Streaming, Frustum Culling & 4-Tier LOD de Construções
+  // 1. Streaming, Oclusão Direcional Global, Frustum Culling & 4-Tier LOD de Construções
   for (let i = 0; i < streamingHouses.length; i++) {
     const h = streamingHouses[i];
     const dx = h.center.x - px, dz = h.center.z - pz;
     const dSq = dx * dx + dz * dz;
-    const hRad = (h.radius || 12) * 1.25;
+    const hRad = (h.radius || 12) * 1.18;
     const maxVisD = drawDist + hRad;
 
     if (dSq > maxVisD * maxVisD) {
@@ -6571,9 +6664,14 @@ function updateSceneStreamingAndLOD(dt) {
       continue;
     }
 
-    // Frustum Culling (mantém sempre visível se estiver próximo < 26m ou sobrepondo o raio do prédio)
-    const keepNear = Math.max(26, hRad + 6);
-    if (dSq > keepNear * keepNear) {
+    // Só ignora culling se o jogador estiver literalmente dentro/encostado no prédio; tudo atrás da câmera é ocultado!
+    const insideRadius = hRad + 2.0;
+    if (dSq > insideRadius * insideRadius) {
+      if (!isInCameraConeXZ(h.center.x, h.center.z, hRad)) {
+        if (h.group.visible) h.group.visible = false;
+        if (h.lodProxy && h.lodProxy.visible) h.lodProxy.visible = false;
+        continue;
+      }
       _cullSphere.set(h.center, hRad);
       if (!_cullFrustum.intersectsSphere(_cullSphere)) {
         if (h.group.visible) h.group.visible = false;
@@ -6605,10 +6703,10 @@ function updateSceneStreamingAndLOD(dt) {
     }
   }
 
-  // 2. Streaming de Chunks de Terreno e Estradas Reais usando DISTÂNCIA À BORDA DO AABB (impede sumiço do solo sob os pés!)
-  const terrainVisEdgeDistSq = (drawDist + 180) * (drawDist + 180);
-  const roadVisEdgeDistSq = (drawDist + 140) * (drawDist + 140);
-  const neverCullEdgeDistSq = 65 * 65;
+  // 2. Streaming de Chunks de Terreno e Estradas Reais (mantém apenas o chão sob os pés; oculta tudo atrás da câmera!)
+  const terrainVisEdgeDistSq = (drawDist + 160) * (drawDist + 160);
+  const roadVisEdgeDistSq = (drawDist + 130) * (drawDist + 130);
+  const underFeetEdgeDistSq = 4.0; // 2m de margem apenas para o chunk embaixo do jogador/câmera
 
   for (let i = 0; i < streamingChunks.length; i++) {
     const ch = streamingChunks[i];
@@ -6627,24 +6725,25 @@ function updateSceneStreamingAndLOD(dt) {
     const maxEdgeSq = ch.isTerrain ? terrainVisEdgeDistSq : roadVisEdgeDistSq;
     let vis = edgeDistSq <= maxEdgeSq;
 
-    // Nunca aplica frustum culling em chunks de terreno/estrada próximos (< 65m da borda)
-    if (vis && edgeDistSq > neverCullEdgeDistSq) {
-      if (ch.box3) {
+    if (vis && edgeDistSq > underFeetEdgeDistSq) {
+      const chRad = (ch.radius || 55) * 1.1;
+      if (!isInCameraConeXZ(ch.center.x, ch.center.z, chRad)) {
+        vis = false;
+      } else if (ch.box3) {
         vis = _cullFrustum.intersectsBox(ch.box3);
       } else {
-        _cullSphere.set(ch.center, (ch.radius || 50) * 1.15);
+        _cullSphere.set(ch.center, chRad);
         vis = _cullFrustum.intersectsSphere(_cullSphere);
       }
     }
     if (ch.mesh.visible !== vis) ch.mesh.visible = vis;
   }
 
-  // 3. Streaming, Frustum Culling & Thinning Adaptativo de Árvores (suporta até 800m sem travar!)
+  // 3. Streaming, Oclusão Direcional & Thinning Adaptativo de Árvores (renderiza à frente até o Draw Distance total!)
   const treeShadowSq = 32 * 32;
-  const treeMaxDist = Math.min(drawDist * 1.04, 560);
-  const treeMaxDistSq = treeMaxDist * treeMaxDist;
-  const treeHalfThinSq = Math.min(drawDist * 0.72, 230) ** 2;
-  const treeQuarterThinSq = Math.min(drawDist * 0.88, 390) ** 2;
+  const treeMaxDistSq = (drawDist * 1.02) ** 2;
+  const treeHalfThinSq = Math.min(drawDist * 0.72, 260) ** 2;
+  const treeQuarterThinSq = Math.min(drawDist * 0.88, 450) ** 2;
   for (let i = 0; i < streamingTrees.length; i++) {
     const tr = streamingTrees[i];
     const dx = tr.pos.x - px, dz = tr.pos.z - pz;
@@ -6653,7 +6752,6 @@ function updateSceneStreamingAndLOD(dt) {
       if (tr.group.visible) tr.group.visible = false;
       continue;
     }
-    // Reduz densidade suavemente no horizonte extremo para economizar draw calls mantendo silhueta da floresta
     if (dSq > treeQuarterThinSq && (i & 3) !== 0) {
       if (tr.group.visible) tr.group.visible = false;
       continue;
@@ -6662,12 +6760,14 @@ function updateSceneStreamingAndLOD(dt) {
       if (tr.group.visible) tr.group.visible = false;
       continue;
     }
-    if (dSq > 400) {
-      _cullSphere.set(tr.pos, 5.0);
-      if (!_cullFrustum.intersectsSphere(_cullSphere)) {
-        if (tr.group.visible) tr.group.visible = false;
-        continue;
-      }
+    if (!isInCameraConeXZ(tr.pos.x, tr.pos.z, 5.2)) {
+      if (tr.group.visible) tr.group.visible = false;
+      continue;
+    }
+    _cullSphere.set(tr.pos, 5.0);
+    if (!_cullFrustum.intersectsSphere(_cullSphere)) {
+      if (tr.group.visible) tr.group.visible = false;
+      continue;
     }
     if (!tr.group.visible) tr.group.visible = true;
     const sh = dSq < treeShadowSq;
@@ -6677,29 +6777,54 @@ function updateSceneStreamingAndLOD(dt) {
     }
   }
 
-  // 4. Distance Culling de Loot no Chão (32m), Zumbis Distantes (até 260m) e Veículos Distantes
+  // 4. Oclusão Direcional Global de Loot no Chão (32m), Zumbis e Veículos (nada atrás da câmera é renderizado!)
   const lootVisSq = 32 * 32;
   for (let i = 0; i < lootItems.length; i++) {
     const it = lootItems[i];
     if (it.taken) continue;
     const dx = it.pos.x - px, dz = it.pos.z - pz;
-    const vis = (dx * dx + dz * dz) < lootVisSq;
+    const dSq = dx * dx + dz * dz;
+    let vis = dSq < lootVisSq;
+    if (vis && !isInCameraConeXZ(it.pos.x, it.pos.z, 1.8)) vis = false;
     if (it.mesh.visible !== vis) it.mesh.visible = vis;
   }
-  const zVisMax = Math.min(drawDist * 1.05, 260);
+  const zVisMax = Math.min(drawDist * 1.05, 420);
   const zVisMaxSq = zVisMax * zVisMax;
   for (let i = 0; i < zombies.length; i++) {
     const z = zombies[i];
-    const dx = z.root.position.x - px, dz = z.root.position.z - pz;
-    const vis = (dx * dx + dz * dz) < zVisMaxSq;
+    const zp = z.root.position;
+    const dx = zp.x - px, dz = zp.z - pz;
+    const dSq = dx * dx + dz * dz;
+    let vis = dSq < zVisMaxSq;
+    if (vis) {
+      if (!isInCameraConeXZ(zp.x, zp.z, 2.2)) {
+        vis = false;
+      } else {
+        _cullSphere.set(zp, 2.2);
+        if (!_cullFrustum.intersectsSphere(_cullSphere)) vis = false;
+      }
+    }
     if (z.root.visible !== vis) z.root.visible = vis;
   }
-  const vehVisMaxSq = (drawDist * 1.15) ** 2;
+  const vehVisMaxSq = (drawDist * 1.1) ** 2;
   for (let i = 0; i < vehicles.length; i++) {
     const v = vehicles[i];
     if (!v.root) continue;
+    if (v === player.drivingCar) {
+      if (!v.root.visible) v.root.visible = true;
+      continue;
+    }
     const dx = v.pos.x - px, dz = v.pos.z - pz;
-    const vis = (v === player.drivingCar) || (dx * dx + dz * dz) < vehVisMaxSq;
+    const dSq = dx * dx + dz * dz;
+    let vis = dSq < vehVisMaxSq;
+    if (vis) {
+      if (!isInCameraConeXZ(v.pos.x, v.pos.z, 4.8)) {
+        vis = false;
+      } else {
+        _cullSphere.set(v.pos, 4.8);
+        if (!_cullFrustum.intersectsSphere(_cullSphere)) vis = false;
+      }
+    }
     if (v.root.visible !== vis) v.root.visible = vis;
   }
 
@@ -10007,8 +10132,8 @@ function buildWorldFromBlueprint(bp, isRemoteSync = false) {
     { minX: -halfM,     maxX:  halfM,     minY: -60, maxY: 85, minZ:  edge, maxZ:  halfM + 4, surface: 'wood', active: true }
   ].forEach(registerCollider);
 
-  // 8. Zumbis determinísticos
-  if (bp.enableZombies !== false && gameConfig.enableZombies) {
+  // 8. Zumbis determinísticos (em multiplayer, respeita sempre a configuração da sala/blueprint do Host!)
+  if (bp.enableZombies !== false && (netState.isClient || gameConfig.enableZombies)) {
     for (const z of (bp.zombies || [])) {
       const zRng = mulberry32((z.seed || 777) * 3571);
       const zEnt = buildZombieEntity(z.id, z.x, z.z, zRng);
@@ -10095,9 +10220,45 @@ const gameConfig = {
   skyPresetIndex: -1 // -1 = automático pela seed do mapa, 0..5 = seed de céu manual
 };
 
+// Persistência automática do nome do Sobrevivente (localStorage + sessionStorage + cookie)
+const SURVIVOR_NICK_STORAGE_KEY = 'knox_survivor_nick_v1';
+function loadSavedSurvivorNick() {
+  let saved = '';
+  try { saved = localStorage.getItem(SURVIVOR_NICK_STORAGE_KEY) || ''; } catch (_) {}
+  if (!saved) {
+    try { saved = sessionStorage.getItem(SURVIVOR_NICK_STORAGE_KEY) || ''; } catch (_) {}
+  }
+  if (!saved) {
+    try {
+      const prefix = encodeURIComponent(SURVIVOR_NICK_STORAGE_KEY) + '=';
+      for (const part of String(document.cookie || '').split(';')) {
+        const t = part.trim();
+        if (t.startsWith(prefix)) { saved = decodeURIComponent(t.slice(prefix.length)); break; }
+      }
+    } catch (_) {}
+  }
+  saved = String(saved || '').trim().slice(0, 18);
+  return saved || 'Omni';
+}
+function saveSurvivorNick(rawNick) {
+  const clean = String(rawNick || '').trim().slice(0, 18) || 'Omni';
+  try { localStorage.setItem(SURVIVOR_NICK_STORAGE_KEY, clean); } catch (_) {}
+  try { sessionStorage.setItem(SURVIVOR_NICK_STORAGE_KEY, clean); } catch (_) {}
+  try {
+    const encoded = encodeURIComponent(SURVIVOR_NICK_STORAGE_KEY) + '=' + encodeURIComponent(clean);
+    const base = `${encoded}; path=/; max-age=31536000`;
+    document.cookie = location.protocol === 'https:' ? `${base}; SameSite=None; Secure` : `${base}; SameSite=Lax`;
+  } catch (_) {}
+  return clean;
+}
+
+const initialSurvivorNick = loadSavedSurvivorNick();
+const _initNickInput = document.getElementById('inp-nickname');
+if (_initNickInput) _initNickInput.value = initialSurvivorNick;
+
 const player = {
   id: 'local-' + Math.random().toString(36).slice(2, 8),
-  nick: 'Omni',
+  nick: initialSurvivorNick,
   teamId: null,
   pos: new THREE.Vector3(0, 0.12, 150),
   vel: new THREE.Vector3(),
@@ -10575,6 +10736,7 @@ function animateCharacterRig(rig, state, dt) {
       rig.rightLeg.ankle.rotation.set(0.20 * fall, 0, 0);
     }
 
+    rig.rightArm.weaponMount.rotation.x = THREE.MathUtils.lerp(rig.rightArm.weaponMount.rotation.x, -Math.PI * 0.5, Math.min(1, dt * 10));
     rig.rightArm.weaponMount.rotation.z = THREE.MathUtils.lerp(rig.rightArm.weaponMount.rotation.z, 0.4, Math.min(1, dt * 8));
     return;
   }
@@ -10609,11 +10771,11 @@ function animateCharacterRig(rig, state, dt) {
     if (wDefV.melee) {
       rig.rightArm.shoulder.rotation.set(1.18 * plant + 0.45 * (1 - plant), 0.18, -0.22 * plant);
       rig.rightArm.elbow.rotation.set(0.32 + (1 - plant) * 0.62, 0, 0);
-      rig.rightArm.weaponMount.rotation.set(0, 0, 0);
+      rig.rightArm.weaponMount.rotation.set(-Math.PI * 0.5, 0, 0);
     } else {
       rig.rightArm.shoulder.rotation.set(0.85, 0.36, -0.14);
       rig.rightArm.elbow.rotation.set(0.88, 0, 0);
-      rig.rightArm.weaponMount.rotation.set(0, 0.48, 0.34);
+      rig.rightArm.weaponMount.rotation.set(-Math.PI * 0.5, 0.48, 0.34);
     }
     return;
   }
@@ -10653,7 +10815,7 @@ function animateCharacterRig(rig, state, dt) {
       rig.leftArm.elbow.rotation.set(0.42, 0, 0);
       rig.rightArm.shoulder.rotation.set(1.08 - steerAng * 0.28, 0.22, -0.14);
       rig.rightArm.elbow.rotation.set(0.42, 0, 0);
-      rig.rightArm.weaponMount.rotation.set(0, 0.35, 0.45);
+      rig.rightArm.weaponMount.rotation.set(-Math.PI * 0.5, 0.35, 0.25);
     } else if (lean > 0.12) {
       // Passageiro inclinado pela janela: gira o tronco para a mira e aponta a arma para fora!
       const spineYaw = THREE.MathUtils.clamp(relLook * 0.78, -1.45, 1.45);
@@ -10668,13 +10830,13 @@ function animateCharacterRig(rig, state, dt) {
         rig.rightArm.elbow.rotation.set(0.32 + kick * 0.3, 0, 0);
         rig.leftArm.shoulder.rotation.set(1.38 + aimP * 0.80, -0.44, 0.14);
         rig.leftArm.elbow.rotation.set(0.46, 0, 0);
-        rig.rightArm.weaponMount.rotation.set(0, 0.08, 0.04);
+        rig.rightArm.weaponMount.rotation.set(-Math.PI * 0.5 - 0.16, -0.18, 0.04);
       } else {
         rig.rightArm.shoulder.rotation.set(1.46 + aimP * 0.88 + kick * 0.7, 0.05, -0.05);
         rig.rightArm.elbow.rotation.set(0.18 + kick * 0.3, 0, 0);
         rig.leftArm.shoulder.rotation.set(0.92, -0.28, 0.18);
         rig.leftArm.elbow.rotation.set(0.75, 0, 0);
-        rig.rightArm.weaponMount.rotation.set(0, 0, 0);
+        rig.rightArm.weaponMount.rotation.set(-Math.PI * 0.5 - 0.07, -0.04, 0);
       }
     } else {
       // Passageiro sentado dentro da cabine olhando livremente ao redor
@@ -10684,7 +10846,7 @@ function animateCharacterRig(rig, state, dt) {
       rig.rightArm.elbow.rotation.set(0.88, 0, 0);
       rig.leftArm.shoulder.rotation.set(0.64, -0.22, 0.10);
       rig.leftArm.elbow.rotation.set(0.84, 0, 0);
-      rig.rightArm.weaponMount.rotation.set(0, 0.36, 0.32);
+      rig.rightArm.weaponMount.rotation.set(-Math.PI * 0.5, 0.36, 0.24);
     }
     return;
   }
@@ -10942,6 +11104,7 @@ function animateCharacterRig(rig, state, dt) {
     THREE.MathUtils.lerp(rig.leftArm.shoulder.rotation.z, lShZ, armSm)
   );
   rig.leftArm.elbow.rotation.x = THREE.MathUtils.lerp(rig.leftArm.elbow.rotation.x, lElX, armSm);
+  rig.rightArm.weaponMount.rotation.x = THREE.MathUtils.lerp(rig.rightArm.weaponMount.rotation.x, -Math.PI * 0.5, armSm);
   rig.rightArm.weaponMount.rotation.z = THREE.MathUtils.lerp(rig.rightArm.weaponMount.rotation.z, mountRotZ, armSm);
   rig.rightArm.weaponMount.rotation.y = THREE.MathUtils.lerp(rig.rightArm.weaponMount.rotation.y, mountRotY, armSm);
 }
@@ -12278,14 +12441,30 @@ function damageZombie(z, dmg, zone, dirVec, hitPoint) {
   spawnImpactFX(hitPoint, dirVec.clone().negate(), 'flesh', true);
   if (z.hp <= 0 && !z.dead) {
     z.dead = true;
+    z.hp = 0;
     z.deathT = 0;
     z.deathStyle = zone === 'head' ? 0 : (zone === 'limb' ? 2 : ((z.variantIdx + (Math.random() > 0.5 ? 1 : 0)) % 3));
     z.knockX = dirVec.x * (zone === 'head' ? 3.2 : 2.2);
     z.knockZ = dirVec.z * (zone === 'head' ? 3.2 : 2.2);
-    zombiesKilled++;
-    document.getElementById('hud-kills').textContent = `ZUMBIS: ${zombiesKilled} / ${zombies.length}`;
+    updateZombieKillHUD();
     showHitmarker('#e03b32');
-    netBroadcast({ t: 'zdead', id: z.id });
+    netBroadcast({
+      t: 'zdead',
+      id: z.id,
+      style: z.deathStyle,
+      kx: +(z.knockX || 0).toFixed(2),
+      kz: +(z.knockZ || 0).toFixed(2)
+    });
+  } else {
+    netBroadcast({
+      t: 'z_hit',
+      id: z.id,
+      dmg: Math.round(dmg),
+      hp: Math.max(1, Math.round(z.hp)),
+      zone,
+      kx: +(z.knockX || 0).toFixed(2),
+      kz: +(z.knockZ || 0).toFixed(2)
+    });
   }
 }
 
@@ -13377,19 +13556,73 @@ const PUBLIC_SLOTS = ['knox-br-room-1', 'knox-br-room-2', 'knox-br-room-3', 'kno
 const remotePlayers = new Map(); // peerOrPlayerId -> { id, nick, teamId, hp, dead, pos, targetPos, yaw, pitch, crouch, sprint, weaponId, inCarId, rig, tagEl, hitboxes }
 let pendingTeamInvite = null;    // { fromId, fromNick, teamId }
 
-// Identidade persistente do criador da sala (mantém permissão de "Fechar Servidor" mesmo após fechar a aba e reconectar!)
+// Identidade persistente do criador da sala (tripla redundância: localStorage + sessionStorage + cookie)
 const OWNED_SERVER_STORAGE_KEY = 'knox_owned_server_v1';
-function getOrCreateStorageToken(key, prefix) {
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+function readCookieValue(key) {
   try {
-    let val = localStorage.getItem(key);
-    if (!val) {
-      val = prefix + '-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
-      localStorage.setItem(key, val);
+    const prefix = encodeURIComponent(key) + '=';
+    const parts = String(document.cookie || '').split(';');
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (trimmed.startsWith(prefix)) {
+        return decodeURIComponent(trimmed.slice(prefix.length));
+      }
     }
-    return val;
-  } catch (_) {
-    return prefix + '-' + Math.random().toString(36).slice(2, 10);
+  } catch (_) {}
+  return null;
+}
+function writeCookieValue(key, val, maxAgeSec = 604800) {
+  try {
+    const encoded = encodeURIComponent(key) + '=' + encodeURIComponent(String(val));
+    const base = `${encoded}; path=/; max-age=${maxAgeSec}`;
+    if (location.protocol === 'https:') {
+      document.cookie = `${base}; SameSite=None; Secure`;
+    } else {
+      document.cookie = `${base}; SameSite=Lax`;
+    }
+  } catch (_) {}
+}
+function readPersistentValue(key) {
+  let val = null;
+  try { val = localStorage.getItem(key); } catch (_) {}
+  if (!val) {
+    try { val = sessionStorage.getItem(key); } catch (_) {}
   }
+  if (!val) {
+    val = readCookieValue(key);
+  }
+  if (val) {
+    try { localStorage.setItem(key, val); } catch (_) {}
+    try { sessionStorage.setItem(key, val); } catch (_) {}
+  }
+  return val;
+}
+function writePersistentValue(key, val, maxAgeSec = 604800) {
+  const s = String(val);
+  try { localStorage.setItem(key, s); } catch (_) {}
+  try { sessionStorage.setItem(key, s); } catch (_) {}
+  writeCookieValue(key, s, maxAgeSec);
+}
+function removePersistentValue(key) {
+  try { localStorage.removeItem(key); } catch (_) {}
+  try { sessionStorage.removeItem(key); } catch (_) {}
+  writeCookieValue(key, '', 0);
+}
+function getOrCreateStorageToken(key, prefix) {
+  let val = readPersistentValue(key);
+  if (!val) {
+    val = prefix + '-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+    writePersistentValue(key, val, 2592000);
+  }
+  return val;
 }
 const LOCAL_OWNER_ID = getOrCreateStorageToken('knox_owner_id_v1', 'own');
 const LOCAL_OWNER_KEY = getOrCreateStorageToken('knox_owner_key_v1', 'key');
@@ -13416,38 +13649,65 @@ const netState = {
   heartbeatAcc: 0
 };
 
+function isOwnerOfRoom(roomCode, srvOwnerId = '') {
+  if (!roomCode) return false;
+  if (srvOwnerId && srvOwnerId === LOCAL_OWNER_ID) return true;
+  const saved = loadOwnedServerMeta();
+  return Boolean(saved && saved.peerId === roomCode);
+}
+
 function isCurrentRoomOwner() {
-  return Boolean(netState.roomCode && netState.ownerId && netState.ownerId === LOCAL_OWNER_ID);
+  return Boolean(netState.roomCode && isOwnerOfRoom(netState.roomCode, netState.ownerId));
+}
+
+function getOwnedServerRoomCode() {
+  if (isCurrentRoomOwner() && netState.roomCode) return netState.roomCode;
+  const saved = loadOwnedServerMeta();
+  return (saved && saved.peerId) ? saved.peerId : null;
 }
 
 function saveOwnedServerMeta(override = null) {
   try {
-    const data = override || {
-      peerId: netState.roomCode,
-      name: netState.serverName || 'Servidor Knox',
-      ownerId: LOCAL_OWNER_ID,
-      ownerName: netState.ownerName || player.nick || 'Omni',
-      seed: currentSeed,
-      worldMode: currentWorldBlueprint ? currentWorldBlueprint.provider : 'procedural',
-      placeName: realWorldMeta.active ? realWorldMeta.placeName : '',
-      areaKm2: realWorldMeta.active ? realWorldMeta.areaKm2 : 0,
-      worldId: netState.worldId || '',
-      worldHash: currentWorldHash || '',
-      updatedAt: Date.now()
-    };
+    const data = override
+      ? {
+          peerId: override.peerId,
+          name: override.name || override.serverName || 'Servidor Knox',
+          ownerId: LOCAL_OWNER_ID,
+          ownerName: override.ownerName || override.hostName || player.nick || 'Omni',
+          seed: Number(override.seed) || currentSeed,
+          worldMode: override.worldMode || 'procedural',
+          placeName: override.placeName || '',
+          areaKm2: Number(override.areaKm2) || 0,
+          worldId: override.worldId || '',
+          worldHash: override.worldHash || '',
+          updatedAt: Date.now()
+        }
+      : {
+          peerId: netState.roomCode,
+          name: netState.serverName || 'Servidor Knox',
+          ownerId: LOCAL_OWNER_ID,
+          ownerName: netState.ownerName || player.nick || 'Omni',
+          seed: currentSeed,
+          worldMode: currentWorldBlueprint ? currentWorldBlueprint.provider : 'procedural',
+          placeName: realWorldMeta.active ? realWorldMeta.placeName : '',
+          areaKm2: realWorldMeta.active ? realWorldMeta.areaKm2 : 0,
+          worldId: netState.worldId || '',
+          worldHash: currentWorldHash || '',
+          updatedAt: Date.now()
+        };
     if (!data.peerId) return;
-    localStorage.setItem(OWNED_SERVER_STORAGE_KEY, JSON.stringify(data));
+    writePersistentValue(OWNED_SERVER_STORAGE_KEY, JSON.stringify(data), 21600);
   } catch (_) {}
 }
 
 function loadOwnedServerMeta() {
   try {
-    const raw = localStorage.getItem(OWNED_SERVER_STORAGE_KEY);
+    const raw = readPersistentValue(OWNED_SERVER_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || !parsed.peerId) return null;
-    if (Date.now() - (parsed.updatedAt || 0) > 2 * 60 * 60 * 1000) {
-      localStorage.removeItem(OWNED_SERVER_STORAGE_KEY);
+    if (Date.now() - (parsed.updatedAt || 0) > 6 * 60 * 60 * 1000) {
+      removePersistentValue(OWNED_SERVER_STORAGE_KEY);
       return null;
     }
     return parsed;
@@ -13459,12 +13719,12 @@ function loadOwnedServerMeta() {
 function clearOwnedServerMeta(roomCode = null) {
   try {
     if (!roomCode) {
-      localStorage.removeItem(OWNED_SERVER_STORAGE_KEY);
+      removePersistentValue(OWNED_SERVER_STORAGE_KEY);
       return;
     }
     const cur = loadOwnedServerMeta();
     if (!cur || cur.peerId === roomCode) {
-      localStorage.removeItem(OWNED_SERVER_STORAGE_KEY);
+      removePersistentValue(OWNED_SERVER_STORAGE_KEY);
     }
   } catch (_) {}
 }
@@ -13494,13 +13754,34 @@ function broadcastRoomMeta() {
 
 function syncServerControlButtonsUI() {
   const connected = !!(netState.isHost || netState.isClient);
-  const canClose = isCurrentRoomOwner();
+  const ownedMeta = loadOwnedServerMeta();
+  const ownedRoomCode = getOwnedServerRoomCode();
+  const canCloseCurrent = isCurrentRoomOwner();
+  const hasOwnedServer = Boolean(ownedRoomCode);
+
   const hudStop = document.getElementById('hud-stop-server-btn');
-  if (hudStop) hudStop.style.display = canClose ? 'inline-block' : 'none';
+  if (hudStop) {
+    hudStop.style.display = (canCloseCurrent || hasOwnedServer) ? 'inline-block' : 'none';
+    hudStop.textContent = canCloseCurrent ? 'ENCERRAR' : 'ENCERRAR SALA';
+    hudStop.title = ownedRoomCode ? `Fechar servidor ${ownedRoomCode}` : '';
+  }
   const stopBtn = document.getElementById('btn-stop-server');
-  if (stopBtn) stopBtn.style.display = canClose ? 'inline-block' : 'none';
+  if (stopBtn) {
+    stopBtn.style.display = hasOwnedServer ? 'inline-block' : 'none';
+    stopBtn.textContent = canCloseCurrent
+      ? 'Fechar Servidor'
+      : `Fechar Servidor (${ownedRoomCode || ''})`;
+  }
   const escStop = document.getElementById('btn-esc-stop-server');
-  if (escStop) escStop.style.display = canClose ? 'block' : 'none';
+  if (escStop) {
+    escStop.style.display = hasOwnedServer ? 'block' : 'none';
+    const labelSpan = escStop.querySelector('span');
+    if (labelSpan) {
+      labelSpan.textContent = canCloseCurrent
+        ? 'Encerrar Meu Servidor Online'
+        : `Encerrar Meu Servidor (${ownedRoomCode || ''})`;
+    }
+  }
   const leaveBtn = document.getElementById('btn-leave-room');
   if (leaveBtn) leaveBtn.style.display = connected ? 'inline-block' : 'none';
   const hostBtn = document.getElementById('btn-host-server');
@@ -13512,13 +13793,17 @@ function syncServerControlButtonsUI() {
     if (hudStatus) hudStatus.textContent = `RECONECTANDO // ${netState.roomCode}`;
     if (menuInfo) menuInfo.textContent = `Mantendo sala ativa: ${netState.serverName || netState.roomCode}...`;
   } else if (netState.isHost && netState.roomCode) {
-    const hostTag = canClose ? 'HOST' : 'HOST TEMP.';
+    const hostTag = canCloseCurrent ? 'HOST' : 'HOST TEMP.';
     if (hudStatus) hudStatus.textContent = `${hostTag} // SALA: ${netState.roomCode}`;
     if (menuInfo) menuInfo.textContent = `Hospedando: ${netState.serverName} | Código: ${netState.roomCode}`;
   } else if (netState.isClient && netState.roomCode) {
-    const cliTag = canClose ? 'ONLINE (DONO)' : 'ONLINE';
+    const cliTag = canCloseCurrent ? 'ONLINE (DONO)' : 'ONLINE';
     if (hudStatus) hudStatus.textContent = `${cliTag} // ${netState.roomCode}`;
     if (menuInfo) menuInfo.textContent = `Conectado na sala: ${netState.serverName || netState.roomCode} (${netState.roomCode})`;
+  } else if (hasOwnedServer) {
+    const label = (ownedMeta && ownedMeta.name) ? ownedMeta.name : ownedRoomCode;
+    if (hudStatus) hudStatus.textContent = `OFFLINE // SALA ABERTA: ${ownedRoomCode}`;
+    if (menuInfo) menuInfo.textContent = `Seu servidor "${label}" (${ownedRoomCode}) continua aberto — retome ou feche abaixo.`;
   } else {
     if (hudStatus) hudStatus.textContent = 'OFFLINE // SOLO';
     if (menuInfo) menuInfo.textContent = 'Modo atual: Sessão Local Pronta';
@@ -13562,9 +13847,37 @@ function buildWorldWelcomePayload() {
     placeName: realWorldMeta.active ? realWorldMeta.placeName : '',
     areaKm2: realWorldMeta.active ? realWorldMeta.areaKm2 : 0,
     takenLoot: lootItems.filter(l => l.taken).map(l => l.uid),
+    extraLoot: lootItems.filter(l => !l.taken && (String(l.uid || '').startsWith('dev-') || String(l.uid || '').startsWith('drop-'))).map(l => ({
+      uid: l.uid,
+      kind: l.kind,
+      subId: l.subId,
+      name: l.name,
+      qty: l.qty,
+      x: +l.pos.x.toFixed(2),
+      y: +l.pos.y.toFixed(2),
+      z: +l.pos.z.toFixed(2),
+      extra: l.extra || null
+    })),
     doorStates: interactiveDoors.map((d, i) => d.isOpen ? i : -1).filter(i => i >= 0),
     brokenWindows: interactiveWindows.map((w, i) => w.broken ? i : -1).filter(i => i >= 0),
     deadZombies: zombies.filter(z => z.dead).map(z => z.id),
+    enableZombies: !!gameConfig.enableZombies,
+    autoSpawnZombies: !!gameConfig.autoSpawnZombies,
+    infiniteWeaponsMode: !!gameConfig.infiniteWeaponsMode,
+    timeHours: Number(timeOfDayState.hours),
+    stormMode: !!timeOfDayState.stormMode,
+    cycleMode: Number(timeOfDayState.cycleMode) || 0,
+    allZombiesCleared: zombies.length === 0,
+    extraZombies: zombies.filter(z => z.isDynamic).map(z => ({
+      id: z.id,
+      x: +z.root.position.x.toFixed(2),
+      z: +z.root.position.z.toFixed(2),
+      yaw: +z.yaw.toFixed(2),
+      hp: Math.round(z.hp),
+      dead: !!z.dead,
+      seed: z.spawnSeed || hashZombieIdToSeed(z.id),
+      dyn: true
+    })),
     vehicleStates: vehicles.map(v => ({
       id: v.id,
       styleIdx: v.styleIdx || 0,
@@ -13612,6 +13925,40 @@ async function syncHostWorldToNetwork() {
 
 function applyWorldStateOverlay(pkt) {
   if (!pkt) return;
+  if (typeof pkt.enableZombies === 'boolean') gameConfig.enableZombies = pkt.enableZombies;
+  if (typeof pkt.autoSpawnZombies === 'boolean') {
+    gameConfig.autoSpawnZombies = pkt.autoSpawnZombies;
+    const spBtn = document.getElementById('dev-btn-toggle-spawns');
+    if (spBtn) spBtn.textContent = gameConfig.autoSpawnZombies ? 'SPAWN AUTO: ON' : 'SPAWN AUTO: OFF';
+  }
+  if (typeof pkt.infiniteWeaponsMode === 'boolean') {
+    gameConfig.infiniteWeaponsMode = pkt.infiniteWeaponsMode;
+    if (typeof syncInfiniteModeButtons === 'function') syncInfiniteModeButtons();
+  }
+  if (typeof pkt.cycleMode === 'number') {
+    timeOfDayState.cycleMode = pkt.cycleMode;
+    const cycBtn = document.getElementById('dev-btn-time-cycle');
+    if (cycBtn && typeof TOD_CYCLE_LABELS !== 'undefined') {
+      cycBtn.textContent = TOD_CYCLE_LABELS[timeOfDayState.cycleMode] || 'CICLO: PAUSADO';
+      cycBtn.classList.toggle('dev-toggle-on', timeOfDayState.cycleMode > 0);
+    }
+  }
+  if (typeof pkt.timeHours === 'number' && Number.isFinite(pkt.timeHours)) {
+    const stormVal = (typeof pkt.stormMode === 'boolean') ? pkt.stormMode : timeOfDayState.stormMode;
+    setTimeOfDay(pkt.timeHours, stormVal);
+    const stBtn = document.getElementById('dev-btn-storm');
+    if (stBtn) {
+      stBtn.textContent = timeOfDayState.stormMode ? 'TEMPESTADE: ON' : 'TEMPESTADE: OFF';
+      stBtn.classList.toggle('dev-toggle-on', timeOfDayState.stormMode);
+    }
+  }
+  if (Array.isArray(pkt.extraLoot)) {
+    for (const el of pkt.extraLoot) {
+      if (el && el.uid && !lootItems.some(x => x.uid === el.uid)) {
+        spawnLootObject(el.uid, el.kind, el.subId, el.name, el.qty, el.x, el.y, el.z, el.extra);
+      }
+    }
+  }
   if (Array.isArray(pkt.takenLoot)) {
     for (const uid of pkt.takenLoot) {
       const it = lootItems.find(x => x.uid === uid);
@@ -13630,11 +13977,24 @@ function applyWorldStateOverlay(pkt) {
       if (w && !w.broken) shatterWindowGlass(w, w.worldCenter, false);
     }
   }
-  if (Array.isArray(pkt.deadZombies)) {
-    const deadSet = new Set(pkt.deadZombies);
-    for (const z of zombies) {
-      if (deadSet.has(z.id)) z.dead = true;
+  if (pkt.allZombiesCleared) {
+    clearAllZombies(false);
+  } else {
+    if (Array.isArray(pkt.extraZombies)) {
+      for (const zs of pkt.extraZombies) spawnZombieFromSpec(zs);
     }
+    if (Array.isArray(pkt.deadZombies)) {
+      const deadSet = new Set(pkt.deadZombies);
+      for (const z of zombies) {
+        if (deadSet.has(z.id)) {
+          z.dead = true;
+          z.hp = 0;
+          z.deathT = 1;
+        }
+      }
+    }
+    updateZombieKillHUD();
+    if (typeof streamingTimer !== 'undefined') streamingTimer = 0;
   }
   if (Array.isArray(pkt.vehicleStates)) {
     for (const vs of pkt.vehicleStates) {
@@ -13672,6 +14032,7 @@ function sendWorldValidatedAck(expectedHash) {
 async function applyWorldSyncOnClient(pkt) {
   if (!netState.isClient || !pkt) return;
   netState.syncingWorld = true;
+  if (typeof pkt.enableZombies === 'boolean') gameConfig.enableZombies = pkt.enableZombies;
   try {
     const mode = pkt.worldMode || 'procedural';
     if (mode === 'osm' || mode === 'gmaps') {
@@ -13817,7 +14178,7 @@ function handleNetworkPacket(pkt, fromConn = null) {
   if (!pkt || !pkt.t) return;
 
   // Se este jogador for o HOST, retransmite eventos de mundo/combate para os outros clientes!
-  if (netState.isHost && fromConn && ['p', 'shot', 'boom', 'fx_melee', 'loot_take', 'loot_spawn', 'door', 'win', 'car_spawn', 'car_repair', 'car_claim', 'car_dmg', 'car_boom', 'zdead', 'pvp_hit', 'team_inv', 'team_join'].includes(pkt.t)) {
+  if (netState.isHost && fromConn && ['p', 'shot', 'boom', 'fx_melee', 'loot_take', 'loot_spawn', 'door', 'win', 'car_spawn', 'car_repair', 'car_claim', 'car_dmg', 'car_boom', 'z_spawn', 'dev_clear_z', 'z_hit', 'zdead', 'pvp_hit', 'team_inv', 'team_join', 'env_sync', 'rules_sync'].includes(pkt.t)) {
     netBroadcast(pkt, fromConn);
   }
 
@@ -13842,12 +14203,30 @@ function handleNetworkPacket(pkt, fromConn = null) {
     return;
   }
 
+  if (pkt.t === 'owner_sync' && netState.isHost) {
+    if (!netState.ownerId && pkt.ownerId) {
+      netState.ownerId = String(pkt.ownerId).slice(0, 48);
+      if (pkt.ownerName) netState.ownerName = String(pkt.ownerName).slice(0, 24);
+      broadcastRoomMeta();
+      postVercelServerHeartbeat('upsert');
+    }
+    return;
+  }
+
   if (pkt.t === 'owner_close_server' && netState.isHost) {
-    if (pkt.ownerId && netState.ownerId && pkt.ownerId === netState.ownerId) {
+    const ownerMatches = Boolean(
+      (pkt.ownerId && netState.ownerId && pkt.ownerId === netState.ownerId) ||
+      (!netState.ownerId && pkt.ownerId && pkt.roomCode && pkt.roomCode === netState.roomCode)
+    );
+    if (ownerMatches) {
       const closeRoom = netState.roomCode;
       netState.closedByOwner = true;
       netBroadcast({ t: 'server_closed', reason: 'O criador fechou o servidor.' });
-      postVercelServerHeartbeat('remove', { peerId: closeRoom, ownerKey: pkt.ownerKey || '' });
+      postVercelServerHeartbeat('remove', {
+        peerId: closeRoom,
+        ownerKey: pkt.ownerKey || '',
+        ownerId: pkt.ownerId || ''
+      });
       clearOwnedServerMeta(closeRoom);
       setTimeout(() => disconnectSession({ keepServerAlive: false }), 120);
       showToast('O CRIADOR ENCERROU O SERVIDOR.');
@@ -13869,7 +14248,13 @@ function handleNetworkPacket(pkt, fromConn = null) {
     if (pkt.ownerName) netState.ownerName = pkt.ownerName;
     if (Array.isArray(pkt.hostOrder)) netState.hostOrder = pkt.hostOrder.slice();
     if (pkt.worldId) netState.worldId = pkt.worldId;
-    if (isCurrentRoomOwner()) saveOwnedServerMeta();
+    if (isCurrentRoomOwner()) {
+      if (!netState.ownerId) netState.ownerId = LOCAL_OWNER_ID;
+      if (!pkt.ownerId && netState.hostConn && netState.hostConn.open) {
+        try { netState.hostConn.send({ t: 'owner_sync', ownerId: LOCAL_OWNER_ID, ownerName: player.nick }); } catch (_) {}
+      }
+      saveOwnedServerMeta();
+    }
     syncServerControlButtonsUI();
     return;
   }
@@ -13881,6 +14266,10 @@ function handleNetworkPacket(pkt, fromConn = null) {
     if (Array.isArray(pkt.hostOrder)) netState.hostOrder = pkt.hostOrder.slice();
     if (pkt.worldId) netState.worldId = pkt.worldId;
     if (isCurrentRoomOwner()) {
+      if (!netState.ownerId) netState.ownerId = LOCAL_OWNER_ID;
+      if (!pkt.ownerId && netState.hostConn && netState.hostConn.open) {
+        try { netState.hostConn.send({ t: 'owner_sync', ownerId: LOCAL_OWNER_ID, ownerName: player.nick }); } catch (_) {}
+      }
       saveOwnedServerMeta();
       showToast('RECONECTADO AO SEU SERVIDOR // OPÇÃO DE FECHAR SERVIDOR ATIVA!');
     }
@@ -13970,6 +14359,8 @@ function handleNetworkPacket(pkt, fromConn = null) {
     }
     rp.crouch = pkt.cr || 0;
     rp.sprint = !!pkt.sp;
+    rp.inCombat = pkt.ic !== undefined ? !!pkt.ic : !(WEAPON_DEFS[pkt.w || rp.weaponId]?.melee);
+    rp.reloading = !!pkt.rl;
     rp.inCarId = pkt.car || null;
     rp.carSeat = typeof pkt.seat === 'number' ? pkt.seat : (rp.inCarId ? 0 : -1);
     rp.carLean = typeof pkt.lean === 'number' ? pkt.lean : 0;
@@ -14028,6 +14419,34 @@ function handleNetworkPacket(pkt, fromConn = null) {
     if (!lootItems.some(x => x.uid === pkt.uid)) {
       spawnLootObject(pkt.uid, pkt.kind, pkt.subId, pkt.name, pkt.qty, pkt.x, pkt.y, pkt.z, pkt.extra);
     }
+  } else if (pkt.t === 'env_sync') {
+    if (typeof pkt.cycleMode === 'number') {
+      timeOfDayState.cycleMode = pkt.cycleMode;
+      const cycBtn = document.getElementById('dev-btn-time-cycle');
+      if (cycBtn && typeof TOD_CYCLE_LABELS !== 'undefined') {
+        cycBtn.textContent = TOD_CYCLE_LABELS[timeOfDayState.cycleMode] || 'CICLO: PAUSADO';
+        cycBtn.classList.toggle('dev-toggle-on', timeOfDayState.cycleMode > 0);
+      }
+    }
+    const targetH = (typeof pkt.hours === 'number' && Number.isFinite(pkt.hours)) ? pkt.hours : timeOfDayState.hours;
+    const targetStorm = (typeof pkt.stormMode === 'boolean') ? pkt.stormMode : timeOfDayState.stormMode;
+    setTimeOfDay(targetH, targetStorm);
+    const stBtn = document.getElementById('dev-btn-storm');
+    if (stBtn) {
+      stBtn.textContent = timeOfDayState.stormMode ? 'TEMPESTADE: ON' : 'TEMPESTADE: OFF';
+      stBtn.classList.toggle('dev-toggle-on', timeOfDayState.stormMode);
+    }
+  } else if (pkt.t === 'rules_sync') {
+    if (typeof pkt.enableZombies === 'boolean') gameConfig.enableZombies = pkt.enableZombies;
+    if (typeof pkt.autoSpawnZombies === 'boolean') {
+      gameConfig.autoSpawnZombies = pkt.autoSpawnZombies;
+      const spBtn = document.getElementById('dev-btn-toggle-spawns');
+      if (spBtn) spBtn.textContent = gameConfig.autoSpawnZombies ? 'SPAWN AUTO: ON' : 'SPAWN AUTO: OFF';
+    }
+    if (typeof pkt.infiniteWeaponsMode === 'boolean') {
+      gameConfig.infiniteWeaponsMode = pkt.infiniteWeaponsMode;
+      if (typeof syncInfiniteModeButtons === 'function') syncInfiniteModeButtons();
+    }
   } else if (pkt.t === 'door') {
     const d = interactiveDoors[pkt.id];
     if (d && d.isOpen !== pkt.open) toggleDoor(d, false);
@@ -14067,9 +14486,86 @@ function handleNetworkPacket(pkt, fromConn = null) {
   } else if (pkt.t === 'car_boom') {
     const v = vehicles.find(c => c.id === pkt.carId);
     if (v && !v.exploded) explodeVehicle(v, null, false);
+  } else if (pkt.t === 'z_spawn') {
+    if (Array.isArray(pkt.list) && pkt.list.length > 0) {
+      let added = 0;
+      for (let i = 0; i < pkt.list.length; i++) {
+        const spec = pkt.list[i];
+        if (spec && spec.id && !zombies.some(z => z.id === spec.id)) {
+          spawnZombieFromSpec(spec);
+          added++;
+        }
+      }
+      if (added > 0) {
+        updateZombieKillHUD();
+        if (typeof streamingTimer !== 'undefined') streamingTimer = 0;
+        showToast(`MULTIPLAYER // +${added} ZUMBIS SINCRONIZADOS${pkt.by ? ' (' + pkt.by + ')' : ''}`);
+      }
+    }
+  } else if (pkt.t === 'dev_clear_z') {
+    clearAllZombies(false);
+  } else if (pkt.t === 'z_hit') {
+    const z = zombies.find(x => x.id === pkt.id);
+    if (z && !z.dead) {
+      z.hp = typeof pkt.hp === 'number' ? Math.min(z.hp, pkt.hp) : (z.hp - (pkt.dmg || 0));
+      z.alertT = 18.0;
+      z.stagger = 0.24;
+      z.knockX = pkt.kx || 0;
+      z.knockZ = pkt.kz || 0;
+      if (pkt.zone === 'limb') z.legHit = true;
+      if (z.hp <= 0) {
+        z.dead = true;
+        z.hp = 0;
+        z.deathT = 0;
+        updateZombieKillHUD();
+        if (netState.isHost) {
+          netBroadcast({ t: 'zdead', id: z.id, style: z.deathStyle, kx: +(z.knockX || 0).toFixed(2), kz: +(z.knockZ || 0).toFixed(2) });
+        }
+      }
+    }
   } else if (pkt.t === 'zdead') {
     const z = zombies.find(x => x.id === pkt.id);
-    if (z && !z.dead) z.dead = true;
+    if (z && !z.dead) {
+      z.dead = true;
+      z.hp = 0;
+      z.deathT = 0;
+      if (typeof pkt.style === 'number') z.deathStyle = pkt.style;
+      if (typeof pkt.kx === 'number') z.knockX = pkt.kx;
+      if (typeof pkt.kz === 'number') z.knockZ = pkt.kz;
+      updateZombieKillHUD();
+    }
+  } else if (pkt.t === 'z_sync' && netState.isClient && Array.isArray(pkt.z)) {
+    const nowMs = performance.now();
+    // Índice rápido por ID para aplicar 100+ zumbis em O(N) sem travamentos
+    const zById = new Map();
+    for (let i = 0; i < zombies.length; i++) zById.set(zombies[i].id, zombies[i]);
+    let spawnedAny = false;
+    for (let i = 0; i < pkt.z.length; i++) {
+      const row = pkt.z[i];
+      if (!Array.isArray(row) || row.length < 5) continue;
+      const [id, zx, zz, zyaw, zhp, flags, seed] = row;
+      let z = zById.get(id);
+      if (!z) {
+        // Rede de segurança: se um zumbi spawnado pelo host não existia no cliente, cria na hora!
+        z = spawnZombieFromSpec({ id, x: zx, z: zz, yaw: zyaw, hp: zhp, seed: seed || hashZombieIdToSeed(id), dyn: true });
+        if (z) {
+          zById.set(id, z);
+          spawnedAny = true;
+        }
+      }
+      if (!z || z.dead) continue;
+      z.netX = zx;
+      z.netZ = zz;
+      z.netYaw = zyaw;
+      z.hp = zhp;
+      z.netChasing = !!(flags & 1);
+      if (flags & 2) z.legHit = true;
+      z.netUpdatedAt = nowMs;
+    }
+    if (spawnedAny) {
+      updateZombieKillHUD();
+      if (typeof streamingTimer !== 'undefined') streamingTimer = 0;
+    }
   } else if (pkt.t === 'pvp_hit' && pkt.targetId === player.id) {
     damageLocalPlayer(pkt.dmg, `ATACADO POR ${pkt.attackerNick || 'SOBREVIVENTE'}`);
   } else if (pkt.t === 'team_inv' && pkt.targetId === player.id) {
@@ -14091,19 +14587,21 @@ async function postVercelServerHeartbeat(action = 'upsert', override = null) {
   if (action !== 'remove' && (!netState.isHost || !peerId)) return;
   if (!peerId) return;
   try {
+    const isOwner = isOwnerOfRoom(peerId, netState.ownerId);
     const payload = action === 'remove'
       ? {
           action: 'remove',
           peerId,
-          ownerKey: (override && override.ownerKey) || (isCurrentRoomOwner() ? LOCAL_OWNER_KEY : '')
+          ownerKey: (override && override.ownerKey) || (isOwner ? LOCAL_OWNER_KEY : ''),
+          ownerId: (override && override.ownerId) || (isOwner ? LOCAL_OWNER_ID : '')
         }
       : {
           action: 'upsert',
           peerId,
           name: netState.serverName || 'Servidor Knox',
           hostName: player.nick,
-          ownerId: netState.ownerId || LOCAL_OWNER_ID,
-          ownerKey: isCurrentRoomOwner() ? LOCAL_OWNER_KEY : '',
+          ownerId: netState.ownerId || (isOwner ? LOCAL_OWNER_ID : ''),
+          ownerKey: isOwner ? LOCAL_OWNER_KEY : '',
           ownerName: netState.ownerName || player.nick,
           players: remotePlayers.size + 1,
           maxPlayers: 12,
@@ -14158,7 +14656,7 @@ function attachHostPeerListeners(p) {
 function bindAsHostForRoom(desiredId, opts = {}) {
   const {
     serverName = 'Servidor Knox',
-    ownerId = LOCAL_OWNER_ID,
+    ownerId = '',
     ownerName = player.nick,
     isMigration = false,
     isResume = false,
@@ -14180,11 +14678,12 @@ function bindAsHostForRoom(desiredId, opts = {}) {
       netState.migrating = false;
       netState.roomCode = id;
       netState.serverName = serverName;
-      netState.ownerId = ownerId;
+      netState.ownerId = ownerId || (isOwnerOfRoom(id, ownerId) ? LOCAL_OWNER_ID : '');
       netState.ownerName = ownerName;
       netState.hostConn = null;
       netState.hostOrder = getConnectedHostOrder();
 
+      if (isCurrentRoomOwner()) saveOwnedServerMeta();
       syncServerControlButtonsUI();
       if (currentWorldBlueprint) {
         await uploadHostWorldBlueprint();
@@ -14232,7 +14731,7 @@ function createOnlineServer() {
   disconnectSession({ keepServerAlive: true });
   netState.closedByOwner = false;
   netState.intentionalLeave = false;
-  player.nick = (document.getElementById('inp-nickname').value || 'Omni').trim();
+  player.nick = saveSurvivorNick(document.getElementById('inp-nickname').value);
   const desiredName = (document.getElementById('inp-server-name').value || 'Servidor Knox').trim();
 
   // Tenta alocar um dos 6 slots públicos automáticos (para aparecer na lista de todos na hora!)
@@ -14253,6 +14752,7 @@ function createOnlineServer() {
       netState.ownerId = LOCAL_OWNER_ID;
       netState.ownerName = player.nick;
       netState.hostOrder = [];
+      saveOwnedServerMeta();
       syncServerControlButtonsUI();
       if (currentWorldBlueprint) {
         await uploadHostWorldBlueprint();
@@ -14352,6 +14852,8 @@ function joinOnlineServer(roomPeerId, opts = {}) {
   const targetId = String(roomPeerId || '').trim();
   if (!targetId || typeof window.Peer === 'undefined') return;
   const { resumeMeta = null, isReconnect = false, fallbackMeta = null } = opts;
+  const ownedSaved = loadOwnedServerMeta();
+  const effectiveResumeMeta = resumeMeta || ((ownedSaved && ownedSaved.peerId === targetId) ? ownedSaved : null);
 
   if (!isReconnect) {
     disconnectSession({ keepServerAlive: true });
@@ -14362,7 +14864,7 @@ function joinOnlineServer(roomPeerId, opts = {}) {
   }
   netState.closedByOwner = false;
   netState.intentionalLeave = false;
-  player.nick = (document.getElementById('inp-nickname').value || 'Omni').trim();
+  player.nick = saveSurvivorNick(document.getElementById('inp-nickname').value);
 
   let opened = false;
   let fallbackTriggered = false;
@@ -14371,20 +14873,21 @@ function joinOnlineServer(roomPeerId, opts = {}) {
     if (fallbackTriggered || opened || netState.closedByOwner || netState.intentionalLeave) return;
     fallbackTriggered = true;
     if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
-    const meta = resumeMeta || fallbackMeta;
+    const meta = effectiveResumeMeta || fallbackMeta;
     if (meta) {
       if (netState.peer) { try { netState.peer.destroy(); } catch (_) {} }
       netState.peer = null;
       netState.hostConn = null;
-      if (resumeMeta) {
-        await restoreWorldFromStandbyMeta(resumeMeta);
+      if (effectiveResumeMeta) {
+        await restoreWorldFromStandbyMeta(effectiveResumeMeta);
       }
+      const resolvedOwnerId = meta.ownerId || (isOwnerOfRoom(targetId, meta.ownerId) ? LOCAL_OWNER_ID : '');
       bindAsHostForRoom(targetId, {
         serverName: meta.name || meta.serverName || 'Servidor Knox',
-        ownerId: meta.ownerId || LOCAL_OWNER_ID,
+        ownerId: resolvedOwnerId,
         ownerName: meta.ownerName || meta.hostName || player.nick,
         isMigration: !!fallbackMeta,
-        isResume: !!resumeMeta,
+        isResume: !!effectiveResumeMeta,
         maxRetries: 8
       });
     } else {
@@ -14400,10 +14903,12 @@ function joinOnlineServer(roomPeerId, opts = {}) {
     netState.isHost = false;
     netState.migrating = false;
     netState.roomCode = targetId;
-    if (resumeMeta) {
-      netState.serverName = resumeMeta.name || targetId;
-      netState.ownerId = resumeMeta.ownerId || '';
-      netState.ownerName = resumeMeta.ownerName || '';
+    if (effectiveResumeMeta) {
+      netState.serverName = effectiveResumeMeta.name || targetId;
+      netState.ownerId = effectiveResumeMeta.ownerId || (isOwnerOfRoom(targetId) ? LOCAL_OWNER_ID : '');
+      netState.ownerName = effectiveResumeMeta.ownerName || '';
+    } else if (isOwnerOfRoom(targetId)) {
+      netState.ownerId = LOCAL_OWNER_ID;
     }
     syncServerControlButtonsUI();
 
@@ -14412,7 +14917,7 @@ function joinOnlineServer(roomPeerId, opts = {}) {
 
     // Timeout rápido caso a sala esteja em standby (ninguém respondendo no PeerJS)
     connectTimeout = setTimeout(() => {
-      if (!opened && (resumeMeta || fallbackMeta)) {
+      if (!opened && (effectiveResumeMeta || fallbackMeta)) {
         triggerStandbyResumeOrClaim();
       }
     }, 3200);
@@ -14421,6 +14926,9 @@ function joinOnlineServer(roomPeerId, opts = {}) {
       opened = true;
       clearTimeout(connectTimeout);
       conn.send({ t: 'join_hello', playerId: player.id, nick: player.nick });
+      if (isCurrentRoomOwner()) {
+        conn.send({ t: 'owner_sync', ownerId: LOCAL_OWNER_ID, ownerName: player.nick });
+      }
       syncServerControlButtonsUI();
       if (!isReconnect) {
         try { canvas.requestPointerLock(); } catch (_) {}
@@ -14436,7 +14944,7 @@ function joinOnlineServer(roomPeerId, opts = {}) {
         disconnectSession({ keepServerAlive: !netState.closedByOwner });
         return;
       }
-      if (!opened && (resumeMeta || fallbackMeta)) {
+      if (!opened && (effectiveResumeMeta || fallbackMeta)) {
         triggerStandbyResumeOrClaim();
         return;
       }
@@ -14452,7 +14960,7 @@ function joinOnlineServer(roomPeerId, opts = {}) {
     });
   });
   p.on('error', (err) => {
-    if (err.type === 'peer-unavailable' && (resumeMeta || fallbackMeta)) {
+    if (err.type === 'peer-unavailable' && (effectiveResumeMeta || fallbackMeta)) {
       triggerStandbyResumeOrClaim();
     } else {
       showToast(`FALHA AO CONECTAR: ${err.type}`);
@@ -14467,7 +14975,8 @@ function disconnectSession(opts = {}) {
   if (!keepServerAlive && netState.roomCode) {
     postVercelServerHeartbeat('remove', {
       peerId: netState.roomCode,
-      ownerKey: isCurrentRoomOwner() ? LOCAL_OWNER_KEY : ''
+      ownerKey: isCurrentRoomOwner() ? LOCAL_OWNER_KEY : '',
+      ownerId: isCurrentRoomOwner() ? LOCAL_OWNER_ID : ''
     });
   }
   if (netState.peer) {
@@ -14493,12 +15002,12 @@ function disconnectSession(opts = {}) {
 
 function leaveCurrentRoom() {
   if (!netState.isHost && !netState.isClient && !netState.migrating) return;
-  if (isCurrentRoomOwner()) saveOwnedServerMeta();
-  netState.intentionalLeave = true;
   const wasOwner = isCurrentRoomOwner();
+  if (wasOwner) saveOwnedServerMeta();
+  netState.intentionalLeave = true;
   disconnectSession({ keepServerAlive: true });
   showToast(wasOwner
-    ? 'VOCÊ SAIU DA SALA — O SERVIDOR CONTINUA ABERTO PARA VOCÊ VOLTAR!'
+    ? 'VOCÊ SAIU DA SALA — O SERVIDOR CONTINUA ABERTO (VOCÊ PODE RETOMAR OU FECHAR QUANDO QUISER)!'
     : 'VOCÊ SAIU DA SALA MULTIPLAYER.');
   refreshServerListUI();
 }
@@ -14509,12 +15018,17 @@ function sendRemoteOwnerCloseToPeer(targetPeerId) {
     const killer = new window.Peer();
     let done = false;
     const cleanup = () => { if (!done) { done = true; try { killer.destroy(); } catch (_) {} } };
-    setTimeout(cleanup, 2600);
+    setTimeout(cleanup, 6000);
     killer.on('open', () => {
       const c = killer.connect(targetPeerId, { reliable: true });
       c.on('open', () => {
-        c.send({ t: 'owner_close_server', ownerId: LOCAL_OWNER_ID, ownerKey: LOCAL_OWNER_KEY });
-        setTimeout(cleanup, 350);
+        c.send({
+          t: 'owner_close_server',
+          roomCode: targetPeerId,
+          ownerId: LOCAL_OWNER_ID,
+          ownerKey: LOCAL_OWNER_KEY
+        });
+        setTimeout(cleanup, 450);
       });
       c.on('error', cleanup);
     });
@@ -14523,8 +15037,11 @@ function sendRemoteOwnerCloseToPeer(targetPeerId) {
 }
 
 function stopHostedServer(explicitRoomCode = null) {
-  const targetRoom = explicitRoomCode || netState.roomCode;
-  if (!targetRoom) return;
+  const targetRoom = explicitRoomCode || getOwnedServerRoomCode() || netState.roomCode;
+  if (!targetRoom) {
+    showToast('NENHUM SERVIDOR SEU ESTÁ ABERTO NO MOMENTO.');
+    return;
+  }
 
   // Caso 1: Fechando a sala que está aberta/conectada agora
   if (targetRoom === netState.roomCode && (netState.isHost || netState.isClient)) {
@@ -14537,25 +15054,42 @@ function stopHostedServer(explicitRoomCode = null) {
       netBroadcast({ t: 'server_closed', reason: 'O criador fechou o servidor.' });
     } else if (netState.hostConn && netState.hostConn.open) {
       try {
-        netState.hostConn.send({ t: 'owner_close_server', ownerId: LOCAL_OWNER_ID, ownerKey: LOCAL_OWNER_KEY });
+        netState.hostConn.send({
+          t: 'owner_close_server',
+          roomCode: targetRoom,
+          ownerId: LOCAL_OWNER_ID,
+          ownerKey: LOCAL_OWNER_KEY
+        });
       } catch (_) {}
+    } else {
+      sendRemoteOwnerCloseToPeer(targetRoom);
     }
-    postVercelServerHeartbeat('remove', { peerId: targetRoom, ownerKey: LOCAL_OWNER_KEY });
+    postVercelServerHeartbeat('remove', {
+      peerId: targetRoom,
+      ownerKey: LOCAL_OWNER_KEY,
+      ownerId: LOCAL_OWNER_ID
+    });
     clearOwnedServerMeta(targetRoom);
     setTimeout(() => {
       disconnectSession({ keepServerAlive: false });
       refreshServerListUI();
-    }, 120);
+    }, 180);
     showToast('SERVIDOR MULTIPLAYER FECHADO PERMANENTEMENTE!');
     return;
   }
 
-  // Caso 2: Fechando seu próprio servidor direto pela lista de servidores (standby ou hospedado por um amigo)
-  postVercelServerHeartbeat('remove', { peerId: targetRoom, ownerKey: LOCAL_OWNER_KEY });
+  // Caso 2: Fechando seu próprio servidor remotamente (fora da sala, após recarregar/sair, em standby ou hospedado por um amigo)
+  postVercelServerHeartbeat('remove', {
+    peerId: targetRoom,
+    ownerKey: LOCAL_OWNER_KEY,
+    ownerId: LOCAL_OWNER_ID
+  });
   clearOwnedServerMeta(targetRoom);
+  syncServerControlButtonsUI();
   sendRemoteOwnerCloseToPeer(targetRoom);
   showToast(`SERVIDOR ${targetRoom} FECHADO COM SUCESSO!`);
-  setTimeout(() => refreshServerListUI(), 350);
+  setTimeout(() => refreshServerListUI(), 450);
+  setTimeout(() => refreshServerListUI(), 1800);
 }
 
 /* Busca dupla de Servidores (API Vercel /api/servers + Scan Direto WebRTC + Sala Própria Salva!) */
@@ -14563,12 +15097,26 @@ async function refreshServerListUI() {
   const box = document.getElementById('server-list-box');
   box.innerHTML = `<div style="font-size:10.5px;color:var(--amb);padding:8px;">Buscando servidores ativos na rede...</div>`;
   const foundMap = new Map();
-  const ownedSaved = loadOwnedServerMeta();
+  let ownedSaved = loadOwnedServerMeta();
+
+  const preserveOwnerOnEntry = (entry) => {
+    if (!entry || !entry.peerId) return entry;
+    const isLocallyOwned = Boolean(ownedSaved && ownedSaved.peerId === entry.peerId);
+    if (isLocallyOwned && (!entry.ownerId || entry.ownerId !== LOCAL_OWNER_ID)) {
+      return {
+        ...entry,
+        ownerId: LOCAL_OWNER_ID,
+        ownerName: entry.ownerName || (ownedSaved && ownedSaved.ownerName) || player.nick
+      };
+    }
+    return entry;
+  };
 
   // 0. Se o usuário criou um servidor recentemente, inclui como fallback EM ESPERA caso o servidor serverless tenha reiniciado
   if (ownedSaved && ownedSaved.peerId && ownedSaved.peerId !== netState.roomCode) {
     foundMap.set(ownedSaved.peerId, {
       ...ownedSaved,
+      ownerId: LOCAL_OWNER_ID,
       hostName: ownedSaved.ownerName || player.nick,
       players: 0,
       maxPlayers: 12,
@@ -14577,11 +15125,11 @@ async function refreshServerListUI() {
   }
 
   if ((netState.isHost || netState.isClient) && netState.roomCode) {
-    foundMap.set(netState.roomCode, {
+    foundMap.set(netState.roomCode, preserveOwnerOnEntry({
       peerId: netState.roomCode,
       name: netState.serverName || netState.roomCode,
       hostName: netState.isHost ? player.nick : (netState.ownerName || 'Online'),
-      ownerId: netState.ownerId || '',
+      ownerId: netState.ownerId || (isCurrentRoomOwner() ? LOCAL_OWNER_ID : ''),
       ownerName: netState.ownerName || player.nick,
       players: remotePlayers.size + 1,
       maxPlayers: 12,
@@ -14591,7 +15139,7 @@ async function refreshServerListUI() {
       worldId: netState.worldId || '',
       worldHash: currentWorldHash,
       standby: false
-    });
+    }));
   }
 
   // 1. Consulta API Serverless (/api/servers — inclui salas ativas e em espera)
@@ -14600,10 +15148,15 @@ async function refreshServerListUI() {
     if (resp.ok) {
       const json = await resp.json();
       if (Array.isArray(json.servers)) {
-        for (const s of json.servers) {
+        for (const rawSrv of json.servers) {
+          const s = preserveOwnerOnEntry(rawSrv);
           const existing = foundMap.get(s.peerId);
           if (!existing || existing.standby || !s.standby) {
             foundMap.set(s.peerId, s);
+          }
+          if (s.ownerId && s.ownerId === LOCAL_OWNER_ID && (!ownedSaved || ownedSaved.peerId !== s.peerId)) {
+            saveOwnedServerMeta(s);
+            ownedSaved = loadOwnedServerMeta();
           }
         }
       }
@@ -14636,7 +15189,21 @@ async function refreshServerListUI() {
           const c = scanner.connect(slotId);
           c.on('open', () => c.send({ t: 'ping_info' }));
           c.on('data', (d) => {
-            if (d && d.t === 'pong_info') foundMap.set(d.peerId, { ...d, standby: false });
+            if (d && d.t === 'pong_info') {
+              const prevEntry = foundMap.get(d.peerId);
+              const merged = preserveOwnerOnEntry({
+                ...(prevEntry || {}),
+                ...d,
+                ownerId: d.ownerId || (prevEntry && prevEntry.ownerId) || '',
+                ownerName: d.ownerName || (prevEntry && prevEntry.ownerName) || d.hostName || '',
+                standby: false
+              });
+              foundMap.set(d.peerId, merged);
+              if (merged.ownerId && merged.ownerId === LOCAL_OWNER_ID && (!ownedSaved || ownedSaved.peerId !== merged.peerId)) {
+                saveOwnedServerMeta(merged);
+                ownedSaved = loadOwnedServerMeta();
+              }
+            }
             c.close();
             if (--pending <= 0) finish();
           });
@@ -14653,6 +15220,8 @@ async function refreshServerListUI() {
     });
   }
 
+  syncServerControlButtonsUI();
+
   box.innerHTML = '';
   if (foundMap.size === 0) {
     box.innerHTML = `<div style="font-size:10.5px;color:var(--dim);padding:8px;">Nenhum servidor aberto no momento. Crie uma sala acima!</div>`;
@@ -14663,11 +15232,17 @@ async function refreshServerListUI() {
     const item = document.createElement('div');
     item.className = 'srv-item';
     const isInside = srv.peerId === netState.roomCode && (netState.isHost || netState.isClient);
-    const isMine = !!(srv.ownerId && srv.ownerId === LOCAL_OWNER_ID);
+    const isMine = isOwnerOfRoom(srv.peerId, srv.ownerId);
     const isStandby = !!srv.standby && !isInside;
     const isReal = srv.worldMode === 'osm' || srv.worldMode === 'gmaps';
+    const safeName = escapeHtml(srv.name || srv.peerId);
+    const safeHostName = escapeHtml(srv.hostName || 'Sobrevivente');
+    const safeOwnerName = escapeHtml(srv.ownerName || '');
+    const safePeerId = escapeHtml(srv.peerId);
+    const safePlace = escapeHtml(srv.placeName || 'Mundo Real');
+    const safeHash = srv.worldHash ? escapeHtml(String(srv.worldHash).slice(0, 6)) : '';
     const mapBadge = isReal
-      ? `<span style="color:#9ef082;font-weight:700">[${srv.worldMode === 'osm' ? 'OSM' : 'GMAPS'} · ${srv.placeName || 'Mundo Real'} ${srv.areaKm2 ? Number(srv.areaKm2).toFixed(1) + 'km²' : ''}]</span>`
+      ? `<span style="color:#9ef082;font-weight:700">[${srv.worldMode === 'osm' ? 'OSM' : 'GMAPS'} · ${safePlace} ${srv.areaKm2 ? Number(srv.areaKm2).toFixed(1) + 'km²' : ''}]</span>`
       : `<span style="color:var(--amb)">[PROCEDURAL]</span>`;
     const ownerBadge = isMine
       ? ` <span style="color:#f5d59c;font-weight:700">[★ SEU SERVIDOR]</span>`
@@ -14678,8 +15253,8 @@ async function refreshServerListUI() {
 
     item.innerHTML = `
       <div>
-        <b style="color:var(--txt)">${srv.name}</b> ${mapBadge}${ownerBadge}${stateBadge}
-        <div style="font-size:9.5px;color:var(--dim)">Host: ${srv.hostName}${srv.ownerName && srv.ownerName !== srv.hostName ? ' · Criador: ' + srv.ownerName : ''} · Jogadores: ${srv.players}/${srv.maxPlayers} · ID: ${srv.peerId}${srv.worldHash ? ' · Sync #' + String(srv.worldHash).slice(0, 6) : ''}</div>
+        <b style="color:var(--txt)">${safeName}</b> ${mapBadge}${ownerBadge}${stateBadge}
+        <div style="font-size:9.5px;color:var(--dim)">Host: ${safeHostName}${safeOwnerName && safeOwnerName !== safeHostName ? ' · Criador: ' + safeOwnerName : ''} · Jogadores: ${Number(srv.players) || 0}/${Number(srv.maxPlayers) || 12} · ID: ${safePeerId}${safeHash ? ' · Sync #' + safeHash : ''}</div>
       </div>
     `;
 
@@ -14740,6 +15315,8 @@ function updateRemotePlayersAndNet(dt) {
         pt: +player.pitch.toFixed(3),
         cr: +player.crouchAlpha.toFixed(2),
         sp: player.sprinting,
+        ic: (mouseDownRight || player.adsFirstPersonToggle || gunState.recoilKick > 0.02 || gunState.fireCd > 0) ? 1 : 0,
+        rl: gunState.reloading ? 1 : 0,
         w: wInst.id,
         car: player.drivingCar ? player.drivingCar.id : null,
         seat: player.drivingCar ? player.carSeat : -1,
@@ -14757,6 +15334,48 @@ function updateRemotePlayersAndNet(dt) {
     }
 
     if (netState.isHost) {
+      // Sincronização autoritativa de zumbis do HOST -> CLIENTES (~6.7 Hz, apenas zumbis vivos perto de qualquer jogador!)
+      netState.zSyncAcc = (netState.zSyncAcc || 0) + dt;
+      if (netState.zSyncAcc >= 0.15 && netState.clientConns.size > 0 && zombies.length > 0) {
+        netState.zSyncAcc = 0;
+        const playerPts = [{ x: player.pos.x, z: player.pos.z }];
+        for (const rp of remotePlayers.values()) {
+          if (!rp.dead) playerPts.push({ x: rp.pos.x, z: rp.pos.z });
+        }
+        const batch = [];
+        const maxPerTick = 110;
+        const totalZ = zombies.length;
+        let cursor = (netState.zSyncCursor || 0) % totalZ;
+        let scanned = 0;
+        while (scanned < totalZ && batch.length < maxPerTick) {
+          const z = zombies[cursor];
+          cursor = (cursor + 1) % totalZ;
+          scanned++;
+          if (!z || z.dead) continue;
+          const zp = z.root.position;
+          let nearAny = false;
+          for (let pi = 0; pi < playerPts.length; pi++) {
+            const dx = zp.x - playerPts[pi].x, dz = zp.z - playerPts[pi].z;
+            if (dx * dx + dz * dz <= 140 * 140) { nearAny = true; break; }
+          }
+          if (!nearAny && !z.isDynamic) continue;
+          const flags = (z.alertT > 0 ? 1 : 0) | (z.legHit ? 2 : 0);
+          batch.push([
+            z.id,
+            +zp.x.toFixed(2),
+            +zp.z.toFixed(2),
+            +z.yaw.toFixed(2),
+            Math.max(1, Math.round(z.hp)),
+            flags,
+            z.spawnSeed || 0
+          ]);
+        }
+        netState.zSyncCursor = cursor;
+        if (batch.length > 0) {
+          netBroadcast({ t: 'z_sync', z: batch });
+        }
+      }
+
       netState.heartbeatAcc += dt;
       if (netState.heartbeatAcc >= 12.0) {
         netState.heartbeatAcc = 0;
@@ -14874,9 +15493,9 @@ function updateRemotePlayersAndNet(dt) {
       landSquash: 0,
       onGround: true,
       sprinting: rp.sprint,
-      inCombat: !(WEAPON_DEFS[rp.weaponId]?.melee),
+      inCombat: rp.inCombat !== undefined ? rp.inCombat : !(WEAPON_DEFS[rp.weaponId]?.melee),
       weaponId: rp.weaponId,
-      reloading: false,
+      reloading: !!rp.reloading,
       reloadProgress: 0,
       recoilKick: 0,
       meleeSwingT: rp.meleeT,
@@ -14987,6 +15606,21 @@ function alertZombiesBySound(origin, radius) {
 function updateZombies(dt) {
   const px = player.pos.x, pz = player.pos.z;
   const detectRange = player.crouching ? 13.0 : (player.flashlightOn ? 28.0 : 22.0);
+  const nowMs = performance.now();
+  const isClientNet = !!netState.isClient;
+
+  // Lista de sobreviventes vivos para a IA do Host perseguir tanto o Host quanto os Amigos conectados!
+  const aliveTargets = [];
+  if (!player.dead) {
+    aliveTargets.push({ x: px, y: player.pos.y, z: pz, isLocal: true, range: detectRange, inCar: !!player.drivingCar });
+  }
+  if (!isClientNet && remotePlayers.size > 0) {
+    for (const rp of remotePlayers.values()) {
+      if (!rp.dead) {
+        aliveTargets.push({ x: rp.pos.x, y: rp.pos.y, z: rp.pos.z, isLocal: false, range: 22.0, inCar: !!rp.inCarId });
+      }
+    }
+  }
 
   for (let i = 0; i < zombies.length; i++) {
     const z = zombies[i];
@@ -15068,29 +15702,38 @@ function updateZombies(dt) {
       continue;
     }
 
-    const dx = px - zp.x, dz = pz - zp.z, dist = Math.hypot(dx, dz);
-    if (dist > 150) continue;
+    const localDx = px - zp.x, localDz = pz - zp.z;
+    const localDist = Math.hypot(localDx, localDz);
 
-    if (!player.dead && dist < detectRange) z.alertT = Math.max(z.alertT, 8.5);
-    z.alertT = Math.max(0, z.alertT - dt);
     z.atkCd = Math.max(0, z.atkCd - dt);
     z.atkAnimT = Math.max(0, (z.atkAnimT || 0) - dt);
 
     let moveSpd = 0;
     let isChasing = false;
-    if (z.stagger > 0) {
-      z.stagger = Math.max(0, z.stagger - dt);
-      zp.x += z.knockX * dt;
-      zp.z += z.knockZ * dt;
-    } else if (z.alertT > 0 && !player.dead) {
-      isChasing = true;
-      z.yaw = lerpAngle(z.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 6.5));
-      if (dist > 1.05) {
-        const archMult = z.archetype === 2 ? 1.62 : (z.archetype === 0 ? 1.18 : 1.42);
-        moveSpd = z.speed * (z.legHit ? 0.45 : archMult);
-        zp.x += -Math.sin(z.yaw) * moveSpd * dt;
-        zp.z += -Math.cos(z.yaw) * moveSpd * dt;
-      } else if (z.atkCd <= 0 && !player.drivingCar && Math.abs(player.pos.y - zp.y) < 1.35) {
+
+    // Modo CLIENTE sincronizado com o HOST: interpolação suave da posição autoritativa do Host!
+    if (isClientNet && z.netUpdatedAt && (nowMs - z.netUpdatedAt) < 2800) {
+      if (z.stagger > 0) z.stagger = Math.max(0, z.stagger - dt);
+      const prevX = zp.x, prevZ = zp.z;
+      const errDist = Math.hypot(z.netX - zp.x, z.netZ - zp.z);
+      if (errDist > 12) {
+        zp.x = z.netX;
+        zp.z = z.netZ;
+        z.yaw = z.netYaw;
+      } else {
+        const smNet = 1 - Math.exp(-10.5 * dt);
+        zp.x += (z.netX - zp.x) * smNet;
+        zp.z += (z.netZ - zp.z) * smNet;
+        z.yaw = lerpAngle(z.yaw, z.netYaw, smNet);
+      }
+      moveSpd = dt > 1e-4 ? Math.min(5.5, Math.hypot(zp.x - prevX, zp.z - prevZ) / dt) : 0;
+      isChasing = !!z.netChasing;
+
+      const zTargetY = getSurfaceHeight(zp.x, zp.z);
+      zp.y = Math.abs(zp.y - zTargetY) > 1.8 ? zTargetY : THREE.MathUtils.lerp(zp.y, zTargetY, Math.min(1, dt * 18));
+
+      // Mordida local quando o zumbi sincronizado encosta no cliente!
+      if (!player.dead && !player.drivingCar && localDist <= 1.18 && z.atkCd <= 0 && Math.abs(player.pos.y - zp.y) < 1.35) {
         z.atkCd = 1.15;
         z.atkAnimT = 0.62;
         const hitZones = ['torso', 'torso', 'arm', 'arm', 'leg', 'leg', 'head'];
@@ -15098,20 +15741,58 @@ function updateZombies(dt) {
         damageLocalPlayer(16, 'ATAQUE DE ZUMBI', chosenZone);
       }
     } else {
-      z.wanderTimer -= dt;
-      if (z.wanderTimer <= 0) { z.wanderTimer = 3 + Math.random() * 4; z.yaw += (Math.random() - 0.5) * 2.0; }
-      moveSpd = z.speed * (z.legHit ? 0.25 : 0.38);
-      zp.x += -Math.sin(z.yaw) * moveSpd * dt;
-      zp.z += -Math.cos(z.yaw) * moveSpd * dt;
-    }
+      // Modo HOST (ou SOLO): IA escolhe o sobrevivente vivo mais próximo (Host OU Amigo conectado!)
+      let nearest = null;
+      let nearestDist = Infinity;
+      for (let ti = 0; ti < aliveTargets.length; ti++) {
+        const tgt = aliveTargets[ti];
+        const d = Math.hypot(tgt.x - zp.x, tgt.z - zp.z);
+        if (d < nearestDist) { nearestDist = d; nearest = tgt; }
+      }
+      if (!nearest && localDist > 150) continue;
+      if (nearest && nearestDist > 155) continue;
 
-    const zTargetY = getSurfaceHeight(zp.x, zp.z);
-    zp.y = Math.abs(zp.y - zTargetY) > 1.8 ? zTargetY : THREE.MathUtils.lerp(zp.y, zTargetY, Math.min(1, dt * 18));
-    resolveCircleWorldCollisions(zp, 0.35, zp.y, zp.y + 1.8, 0.48);
+      if (nearest && nearestDist < nearest.range) z.alertT = Math.max(z.alertT, 8.5);
+      z.alertT = Math.max(0, z.alertT - dt);
+
+      if (z.stagger > 0) {
+        z.stagger = Math.max(0, z.stagger - dt);
+        zp.x += z.knockX * dt;
+        zp.z += z.knockZ * dt;
+      } else if (z.alertT > 0 && nearest) {
+        isChasing = true;
+        const tdx = nearest.x - zp.x, tdz = nearest.z - zp.z;
+        z.yaw = lerpAngle(z.yaw, Math.atan2(-tdx, -tdz), Math.min(1, dt * 6.5));
+        if (nearestDist > 1.05) {
+          const archMult = z.archetype === 2 ? 1.62 : (z.archetype === 0 ? 1.18 : 1.42);
+          moveSpd = z.speed * (z.legHit ? 0.45 : archMult);
+          zp.x += -Math.sin(z.yaw) * moveSpd * dt;
+          zp.z += -Math.cos(z.yaw) * moveSpd * dt;
+        } else if (z.atkCd <= 0 && !nearest.inCar && Math.abs(nearest.y - zp.y) < 1.35) {
+          z.atkCd = 1.15;
+          z.atkAnimT = 0.62;
+          if (nearest.isLocal) {
+            const hitZones = ['torso', 'torso', 'arm', 'arm', 'leg', 'leg', 'head'];
+            const chosenZone = hitZones[Math.floor(Math.random() * hitZones.length)];
+            damageLocalPlayer(16, 'ATAQUE DE ZUMBI', chosenZone);
+          }
+        }
+      } else {
+        z.wanderTimer -= dt;
+        if (z.wanderTimer <= 0) { z.wanderTimer = 3 + Math.random() * 4; z.yaw += (Math.random() - 0.5) * 2.0; }
+        moveSpd = z.speed * (z.legHit ? 0.25 : 0.38);
+        zp.x += -Math.sin(z.yaw) * moveSpd * dt;
+        zp.z += -Math.cos(z.yaw) * moveSpd * dt;
+      }
+
+      const zTargetY = getSurfaceHeight(zp.x, zp.z);
+      zp.y = Math.abs(zp.y - zTargetY) > 1.8 ? zTargetY : THREE.MathUtils.lerp(zp.y, zTargetY, Math.min(1, dt * 18));
+      resolveCircleWorldCollisions(zp, 0.35, zp.y, zp.y + 1.8, 0.48);
+    }
 
     z.root.rotation.y = z.yaw;
     // Pula animação esquelética completa (15 juntas) em zumbis ocultos ou distantes (> 56m) para poupar CPU!
-    if (!z.root.visible || dist > 56) continue;
+    if (!z.root.visible || localDist > 56) continue;
 
     const cycleRate = z.legHit ? (moveSpd * 2.8 + 0.9) : (moveSpd * 3.9 + 1.1);
     z.phase += dt * cycleRate;
@@ -16490,9 +17171,34 @@ if (tabBtnSolo) tabBtnSolo.onclick = () => setActiveLobbyTab('solo');
 if (tabBtnServers) tabBtnServers.onclick = () => { setActiveLobbyTab('servers'); refreshServerListUI(); };
 if (tabBtnSettings) tabBtnSettings.onclick = () => setActiveLobbyTab('settings');
 
+const nickInputEl = document.getElementById('inp-nickname');
+if (nickInputEl) {
+  nickInputEl.value = player.nick;
+  let lastSavedNick = player.nick;
+  nickInputEl.addEventListener('input', () => {
+    const trimmed = String(nickInputEl.value || '').trim().slice(0, 18);
+    if (trimmed) {
+      player.nick = saveSurvivorNick(trimmed);
+      if (typeof updateSquadHUD === 'function') updateSquadHUD();
+    }
+  });
+  nickInputEl.addEventListener('change', () => {
+    const clean = saveSurvivorNick(nickInputEl.value);
+    nickInputEl.value = clean;
+    player.nick = clean;
+    if (typeof updateSquadHUD === 'function') updateSquadHUD();
+    if (clean !== lastSavedNick) {
+      lastSavedNick = clean;
+      showToast(`NOME DO SOBREVIVENTE SALVO: ${clean}`);
+    }
+  });
+}
+
 const startOrResumePlay = () => {
   sfx.init();
-  player.nick = (document.getElementById('inp-nickname').value || 'Omni').trim();
+  const cleanNick = saveSurvivorNick(document.getElementById('inp-nickname').value);
+  if (nickInputEl) nickInputEl.value = cleanNick;
+  player.nick = cleanNick;
   if (player.dead) respawnLocalSurvivor(true);
   inventoryOpen = false; partyOpen = false;
   invModal.classList.remove('open'); partyModal.classList.remove('open');
@@ -16577,21 +17283,47 @@ if (devBtnInfAmmo) {
   devBtnInfAmmo.onclick = () => handleToggleInfiniteMode();
 }
 
-// === CONTROLE DE HORA DO DIA & ATMOSFERA NO PAINEL DEV [F1] ===
+// === CONTROLE DE HORA DO DIA & ATMOSFERA NO PAINEL DEV [F1] (SINCRONIZADO PARA TODOS!) ===
+let _lastEnvBroadcastAt = 0;
+function broadcastEnvSync(force = false) {
+  const now = performance.now();
+  if (!force && now - _lastEnvBroadcastAt < 120) return;
+  _lastEnvBroadcastAt = now;
+  netBroadcast({
+    t: 'env_sync',
+    hours: Number(timeOfDayState.hours),
+    stormMode: !!timeOfDayState.stormMode,
+    cycleMode: Number(timeOfDayState.cycleMode) || 0
+  });
+}
+function broadcastRulesSync() {
+  netBroadcast({
+    t: 'rules_sync',
+    enableZombies: !!gameConfig.enableZombies,
+    autoSpawnZombies: !!gameConfig.autoSpawnZombies,
+    infiniteWeaponsMode: !!gameConfig.infiniteWeaponsMode
+  });
+}
+
 const devTimeSlider = document.getElementById('dev-time-slider');
 if (devTimeSlider) {
   devTimeSlider.oninput = (e) => {
     const h = parseFloat(e.target.value);
-    if (Number.isFinite(h)) setTimeOfDay(h);
+    if (Number.isFinite(h)) {
+      setTimeOfDay(h);
+      broadcastEnvSync(false);
+    }
   };
+  devTimeSlider.onchange = () => broadcastEnvSync(true);
 }
 document.querySelectorAll('.dev-time-preset').forEach((btn) => {
   btn.onclick = () => {
     const h = parseFloat(btn.dataset.hour);
     if (!Number.isFinite(h)) return;
     setTimeOfDay(h);
+    broadcastEnvSync(true);
     sfx.playClick(2050, 0.14);
-    showToast(`DEV // HORA AJUSTADA PARA ${formatClockFromHours(h)} (${getPeriodNameFromHours(h, timeOfDayState.stormMode)})`);
+    showToast(`DEV // HORA AJUSTADA PARA ${formatClockFromHours(h)} (${getPeriodNameFromHours(h, timeOfDayState.stormMode)}) PARA TODOS`);
   };
 });
 const devBtnTimeCycle = document.getElementById('dev-btn-time-cycle');
@@ -16601,8 +17333,9 @@ if (devBtnTimeCycle) {
     timeOfDayState.cycleMode = (timeOfDayState.cycleMode + 1) % TOD_CYCLE_LABELS.length;
     devBtnTimeCycle.textContent = TOD_CYCLE_LABELS[timeOfDayState.cycleMode];
     devBtnTimeCycle.classList.toggle('dev-toggle-on', timeOfDayState.cycleMode > 0);
+    broadcastEnvSync(true);
     sfx.playClick(1900, 0.14);
-    showToast(`DEV // ${TOD_CYCLE_LABELS[timeOfDayState.cycleMode]}`);
+    showToast(`DEV // ${TOD_CYCLE_LABELS[timeOfDayState.cycleMode]} (TODOS)`);
   };
 }
 const devBtnStorm = document.getElementById('dev-btn-storm');
@@ -16612,8 +17345,9 @@ if (devBtnStorm) {
     setTimeOfDay(timeOfDayState.hours, timeOfDayState.stormMode);
     devBtnStorm.textContent = timeOfDayState.stormMode ? 'TEMPESTADE: ON' : 'TEMPESTADE: OFF';
     devBtnStorm.classList.toggle('dev-toggle-on', timeOfDayState.stormMode);
+    broadcastEnvSync(true);
     sfx.playClick(1750, 0.14);
-    showToast(timeOfDayState.stormMode ? 'DEV // CÉU DE TEMPESTADE ATIVADO' : 'DEV // CÉU LIMPO RESTAURADO');
+    showToast(timeOfDayState.stormMode ? 'DEV // CÉU DE TEMPESTADE ATIVADO PARA TODOS' : 'DEV // CÉU LIMPO RESTAURADO PARA TODOS');
   };
 }
 syncDevTimeUI();
@@ -16692,19 +17426,27 @@ if (devBtnDropWeapon) {
     const def = WEAPON_DEFS[wId];
     if (!def) return;
     const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
-    const lx = player.pos.x + fx * 2.1;
-    const lz = player.pos.z + fz * 2.1;
-    const ly = getSurfaceHeight(lx, lz) + 0.04;
-    spawnLootObject(`dev-w-${Date.now().toString(36)}`, 'weapon', wId, def.name, 1, lx, ly, lz, {
+    const lx = +(player.pos.x + fx * 2.1).toFixed(2);
+    const lz = +(player.pos.z + fz * 2.1).toFixed(2);
+    const ly = +(getSurfaceHeight(lx, lz) + 0.04).toFixed(2);
+    const wUid = `dev-w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
+    const wExtra = {
       mag: def.magSize || 0,
       attachments: { optic: null, muzzle: null, side: null, under: null }
-    });
+    };
+    spawnLootObject(wUid, 'weapon', wId, def.name, 1, lx, ly, lz, wExtra);
+    netBroadcast({ t: 'loot_spawn', uid: wUid, kind: 'weapon', subId: wId, name: def.name, qty: 1, x: lx, y: ly, z: lz, extra: wExtra });
     if (!def.melee && def.ammoType) {
       const dropQty = def.magSize <= 2 ? Math.max(6, def.magSize * 6) : Math.max(30, def.magSize * 2);
-      spawnLootObject(`dev-a-${Date.now().toString(36)}`, 'ammo', def.ammoType, `MUNIÇÃO ${def.cal}`, dropQty, lx + 0.45, ly, lz + 0.2);
+      const aUid = `dev-a-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
+      const ax = +(lx + 0.45).toFixed(2);
+      const az = +(lz + 0.2).toFixed(2);
+      const aName = `MUNIÇÃO ${def.cal}`;
+      spawnLootObject(aUid, 'ammo', def.ammoType, aName, dropQty, ax, ly, az);
+      netBroadcast({ t: 'loot_spawn', uid: aUid, kind: 'ammo', subId: def.ammoType, name: aName, qty: dropQty, x: ax, y: ly, z: az });
     }
     sfx.playClick(1950, 0.14);
-    showToast(`DEV // ${def.name} SPAWNADA NO CHÃO!`);
+    showToast(`DEV // ${def.name} SPAWNADA NO CHÃO E SINCRONIZADA PARA TODOS!`);
   };
 }
 
@@ -16734,7 +17476,8 @@ if (devToggleSpawns) {
   devToggleSpawns.onclick = () => {
     gameConfig.autoSpawnZombies = !gameConfig.autoSpawnZombies;
     devToggleSpawns.textContent = gameConfig.autoSpawnZombies ? 'SPAWN AUTO: ON' : 'SPAWN AUTO: OFF';
-    showToast(gameConfig.autoSpawnZombies ? 'DEV // SPAWN AUTOMÁTICO ATIVADO' : 'DEV // SPAWN AUTOMÁTICO DESLIGADO');
+    broadcastRulesSync();
+    showToast(gameConfig.autoSpawnZombies ? 'DEV // SPAWN AUTOMÁTICO ATIVADO PARA TODOS' : 'DEV // SPAWN AUTOMÁTICO DESLIGADO PARA TODOS');
   };
 }
 
@@ -16799,9 +17542,10 @@ function syncInfiniteModeButtons() {
 function handleToggleInfiniteMode() {
   gameConfig.infiniteWeaponsMode = !gameConfig.infiniteWeaponsMode;
   syncInfiniteModeButtons();
+  broadcastRulesSync();
   showToast(gameConfig.infiniteWeaponsMode
-    ? 'MODO ARMAS INFINITAS ATIVADO // APERTE [B] NA PARTIDA (RESERVA ∞)'
-    : 'MODO ARMAS INFINITAS DESATIVADO // SOBREVIVÊNCIA DAYZ');
+    ? 'MODO ARMAS INFINITAS ATIVADO PARA TODOS // APERTE [B] NA PARTIDA (RESERVA ∞)'
+    : 'MODO ARMAS INFINITAS DESATIVADO PARA TODOS // SOBREVIVÊNCIA DAYZ');
 }
 if (toggleInfTop) toggleInfTop.onclick = handleToggleInfiniteMode;
 if (toggleInfMenu) toggleInfMenu.onclick = handleToggleInfiniteMode;
@@ -16865,7 +17609,7 @@ const drawDistSlider = document.getElementById('draw-dist-slider');
 if (drawDistSlider) {
   drawDistSlider.oninput = (e) => applyDrawDistance(parseFloat(e.target.value), false);
 }
-document.querySelectorAll('#draw-dist-presets .preset-chip').forEach((btn) => {
+document.querySelectorAll('#draw-dist-presets .size-chip, #draw-dist-presets .preset-chip').forEach((btn) => {
   btn.onclick = () => {
     const d = parseFloat(btn.dataset.dist);
     if (Number.isFinite(d)) applyDrawDistance(d, false);
@@ -17097,6 +17841,7 @@ window.addEventListener('beforeunload', () => {
    17. INICIALIZAÇÃO DO MUNDO & LOOP PRINCIPAL (MODELOS 100% PROCEDURAIS)
    ============================================================================ */
 generateProceduralMap();
+syncServerControlButtonsUI();
 setTimeout(() => refreshServerListUI(), 500);
 
 const clock = new THREE.Clock();

@@ -54,12 +54,29 @@ module.exports = function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    let body = {};
+    try {
+      body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    } catch (_) {
+      return res.status(400).json({ error: 'JSON inválido' });
+    }
+    if (!body || typeof body !== 'object') {
+      return res.status(400).json({ error: 'Corpo da requisição inválido' });
+    }
+
     if (body.action === 'remove' && body.peerId) {
-      const pid = String(body.peerId);
+      const pid = String(body.peerId).slice(0, 64);
       const existing = activeRooms.get(pid);
-      if (existing && existing.ownerKey && existing.ownerKey !== String(body.ownerKey || '')) {
-        return res.status(403).json({ error: 'Apenas o criador pode fechar este servidor' });
+      if (existing) {
+        if (existing.ownerKey) {
+          if (String(body.ownerKey || '') !== existing.ownerKey) {
+            return res.status(403).json({ error: 'Apenas o criador pode fechar este servidor' });
+          }
+        } else if (existing.ownerId) {
+          if (String(body.ownerId || '') !== existing.ownerId) {
+            return res.status(403).json({ error: 'Apenas o criador pode fechar este servidor' });
+          }
+        }
       }
       activeRooms.delete(pid);
       return res.status(200).json({ ok: true });
@@ -71,9 +88,15 @@ module.exports = function handler(req, res) {
 
     const peerId = String(body.peerId).slice(0, 64);
     const prev = activeRooms.get(peerId);
-    const ownerId = String(body.ownerId || (prev && prev.ownerId) || '').slice(0, 48);
-    const ownerKey = String(body.ownerKey || (prev && prev.ownerKey) || '').slice(0, 64);
-    const ownerName = String(body.ownerName || (prev && prev.ownerName) || body.hostName || 'Sobrevivente').slice(0, 24);
+    const incomingOwnerId = String(body.ownerId || '').slice(0, 48);
+    const incomingOwnerKey = String(body.ownerKey || '').slice(0, 64);
+    const ownerId = (prev && prev.ownerId) ? prev.ownerId : incomingOwnerId;
+    const ownerKey = (prev && prev.ownerKey)
+      ? prev.ownerKey
+      : ((!prev || !prev.ownerId || (incomingOwnerId && incomingOwnerId === prev.ownerId)) ? incomingOwnerKey : '');
+    const ownerName = (prev && prev.ownerName)
+      ? prev.ownerName
+      : String(body.ownerName || body.hostName || 'Sobrevivente').slice(0, 24);
 
     activeRooms.set(peerId, {
       peerId,
