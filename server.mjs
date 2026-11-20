@@ -253,11 +253,16 @@ async function fetchOverpassMapData(sq, centerLat, centerLng) {
   // 2. Fallback: Overpass API (corrida em paralelo nos mirrors)
   if (!elements || elements.length === 0) {
     const bbox = `${sq.south.toFixed(6)},${sq.west.toFixed(6)},${sq.north.toFixed(6)},${sq.east.toFixed(6)}`;
-    const query = `[out:json][timeout:14];
+    const query = `[out:json][timeout:16];
 (
-  way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service)$"](${bbox});
+  way["highway"~"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service)$"](${bbox});
   way["building"](${bbox});
-  node["amenity"~"^(hospital|clinic|pharmacy|police|fire_station|fuel|school|university|supermarket|bank|restaurant|cafe)$"](${bbox});
+  relation["building"](${bbox});
+  way["shop"~"^(mall|department_store|supermarket|convenience)$"](${bbox});
+  way["amenity"~"^(hospital|clinic|pharmacy|police|fire_station|fuel|school|university|bank|parking|place_of_worship|townhall|courthouse|public_building|post_office|library|community_centre|grave_yard)$"](${bbox});
+  node["amenity"~"^(hospital|clinic|pharmacy|police|fire_station|fuel|school|university|supermarket|bank|restaurant|cafe|parking|place_of_worship|townhall|courthouse|public_building|post_office|library|community_centre|grave_yard)$"](${bbox});
+  node["shop"~"^(mall|department_store|chemist|pharmacy|supermarket|convenience)$"](${bbox});
+  node["building"](${bbox});
   way["leisure"~"^(park|garden|pitch|recreation_ground|nature_reserve|playground)$"](${bbox});
   way["landuse"~"^(forest|grass|meadow|recreation_ground|village_green|orchard|cemetery)$"](${bbox});
   way["natural"~"^(wood|grassland|scrub|heath)$"](${bbox});
@@ -276,7 +281,7 @@ out skel qt;`;
       elements = await Promise.any(
         endpoints.map(async (ep) => {
           const ctrl = new AbortController();
-          const timer = setTimeout(() => ctrl.abort(), 11000);
+          const timer = setTimeout(() => ctrl.abort(), 12000);
           try {
             const resp = await fetch(ep, {
               method: 'POST',
@@ -308,9 +313,12 @@ out skel qt;`;
   }
 
   const nodeMap = new Map();
+  const wayMap = new Map();
   for (const el of elements) {
     if (el.type === 'node') {
       nodeMap.set(el.id, { lat: el.lat, lon: el.lon, tags: el.tags || null });
+    } else if (el.type === 'way') {
+      wayMap.set(el.id, el);
     }
   }
 
@@ -322,41 +330,220 @@ out skel qt;`;
   ]);
   const VALID_POI_AMENITIES = new Set([
     'hospital', 'clinic', 'pharmacy', 'police', 'fire_station',
-    'fuel', 'school', 'university', 'supermarket', 'bank', 'restaurant', 'cafe'
+    'fuel', 'school', 'university', 'supermarket', 'bank', 'restaurant', 'cafe',
+    'parking', 'place_of_worship', 'townhall', 'courthouse', 'public_building',
+    'post_office', 'library', 'community_centre', 'grave_yard'
   ]);
+  const VALID_POI_SHOPS = new Set(['mall', 'department_store', 'chemist', 'pharmacy', 'supermarket', 'convenience']);
+
+  const classifyOsmPrefab = (tags, areaApprox = 120, levels = 1) => {
+    const bTag = String(tags.building || '').toLowerCase();
+    const amTag = String(tags.amenity || '').toLowerCase();
+    const hcTag = String(tags.healthcare || '').toLowerCase();
+    const shTag = String(tags.shop || '').toLowerCase();
+    const offTag = String(tags.office || '').toLowerCase();
+    const luTag = String(tags.landuse || '').toLowerCase();
+    const leiTag = String(tags.leisure || '').toLowerCase();
+    const nm = String(tags.name || tags.brand || tags.operator || '').toLowerCase();
+
+    // 1. Cemitério / Necrópole
+    if (
+      luTag === 'cemetery' || amTag === 'grave_yard' ||
+      /\b(cemit[eé]rio|necr[oó]pole|campo santo|memorial da paz)\b/i.test(nm)
+    ) {
+      return 'cemetery';
+    }
+    // 2. Farmácia / Drogaria (SEPARADA de Hospital!)
+    if (
+      amTag === 'pharmacy' || hcTag === 'pharmacy' || shTag === 'chemist' || shTag === 'pharmacy' ||
+      /\b(farm[aá]cia|drogaria|drogasil|raia|pague menos|extrafarma|panvel|ultrafarma|drogaraia|farma)\b/i.test(nm)
+    ) {
+      return 'pharmacy';
+    }
+    // 3. Hospital / Pronto-Socorro / Clínica / UPA
+    if (
+      bTag === 'hospital' || amTag === 'hospital' || amTag === 'clinic' ||
+      hcTag === 'hospital' || hcTag === 'clinic' || hcTag === 'centre' ||
+      /\b(hospital|pronto.?socorro|upa\b|maternidade|santa casa|cl[ií]nica|centro m[eé]dico|benefic[eê]ncia|ambul[aâ]ncia)\b/i.test(nm)
+    ) {
+      return 'hospital';
+    }
+    // 4. Delegacia de Polícia / Batalhão / Segurança Pública
+    if (
+      amTag === 'police' || bTag === 'police' || amTag === 'fire_station' ||
+      /\b(delegacia|pol[ií]cia|seccional|batalh[aã]o|guarda municipal|policia militar|policia civil|prf\b|dp\b|bombeiros)\b/i.test(nm)
+    ) {
+      return 'police';
+    }
+    // 5. Shopping Center / Galeria / Grande Centro Comercial
+    if (
+      bTag === 'mall' || shTag === 'mall' || shTag === 'department_store' ||
+      (bTag === 'retail' && areaApprox > 750) ||
+      /\b(shopping|mall|boulevard|galeria|p[aá]tio|center\b|centro comercial)\b/i.test(nm)
+    ) {
+      return 'mall';
+    }
+    // 6. Supermercado / Atacarejo / Hipermercado
+    if (
+      shTag === 'supermarket' || bTag === 'supermarket' || amTag === 'supermarket' ||
+      /\b(supermercado|hipermercado|atacad[aã]o|atacarejo|carrefour|assa[ií]|mateus|l[ií]der|extra\b|p[aã]o de a[çc][uú]car|guanabara|mundial|super\s?nosso|hortifruti|mercadinho)\b/i.test(nm)
+    ) {
+      return 'supermarket';
+    }
+    // 7. Igreja / Catedral / Templo / Capela
+    if (
+      amTag === 'place_of_worship' || bTag === 'church' || bTag === 'cathedral' || bTag === 'chapel' || bTag === 'temple' ||
+      /\b(igreja|par[oó]quia|catedral|bas[ií]lica|capela|santu[aá]rio|templo|assembleia de deus|batista|presbiteriana|cat[oó]lica|evang[eé]lica|matriz\b|nossa senhora|s[aã]o\s+(jos[eé]|pedro|paulo|jo[aã]o|francisco|jorge|lucas|marcos))\b/i.test(nm)
+    ) {
+      return 'church';
+    }
+    // 8. Banco / Agência Bancária
+    if (
+      amTag === 'bank' || bTag === 'bank' ||
+      /\b(banco\b|bradesco|ita[uú]|santander|caixa econ[oô]mica|banco do brasil|sicredi|sicoob|banpar[aá]|banrisul|safra|ag[eê]ncia banc[aá]ria)\b/i.test(nm)
+    ) {
+      return 'bank';
+    }
+    // 9. Prédio Público / Prefeitura / Fórum / Tribunal / Correios / Biblioteca
+    if (
+      amTag === 'townhall' || amTag === 'courthouse' || amTag === 'public_building' ||
+      amTag === 'post_office' || amTag === 'library' || amTag === 'community_centre' ||
+      bTag === 'public' || bTag === 'civic' || bTag === 'government' || offTag === 'government' ||
+      /\b(prefeitura|c[aâ]mara|f[oó]rum|tribunal|secretaria|minist[eé]rio|correios|receita federal|inss\b|detran|defensoria|assembleia|pal[aá]cio|biblioteca|cart[oó]rio|pr[eé]dio p[uú]blico)\b/i.test(nm)
+    ) {
+      return 'public';
+    }
+    // 10. Posto de Combustível
+    if (
+      amTag === 'fuel' || bTag === 'fuel' ||
+      /\b(posto\b|auto posto|combust[ií]vel|shell|ipiranga|petrobras|ale combust|gasolina)\b/i.test(nm)
+    ) {
+      return 'gas';
+    }
+    // 11. Estacionamento / Garagem
+    if (
+      amTag === 'parking' || bTag === 'parking' ||
+      /\b(estacionamento|parking|garagem|rotativo)\b/i.test(nm)
+    ) {
+      return 'parking';
+    }
+    // 12. Parque / Praça
+    if (leiTag === 'park' || leiTag === 'garden' || leiTag === 'playground' || /\b(pra[çc]a|parque)\b/i.test(nm)) {
+      return 'park';
+    }
+    // 13. Prédios Urbanos / Corporativos / Residenciais altos
+    if (
+      bTag === 'apartments' || bTag === 'office' || bTag === 'hotel' || bTag === 'university' ||
+      bTag === 'school' || bTag === 'industrial' || amTag === 'school' || amTag === 'university' ||
+      levels >= 3 || areaApprox > 360
+    ) {
+      return 'building';
+    }
+    // 14. Comércios / Lojas / Restaurantes
+    if (
+      bTag === 'commercial' || bTag === 'retail' ||
+      shTag || amTag === 'restaurant' || amTag === 'cafe'
+    ) {
+      return 'shop';
+    }
+    return 'house';
+  };
 
   const roads = [];
   const buildings = [];
   const greenAreas = [];
-  const halfBound = sq.halfM * 1.06;
+  const halfBound = sq.halfM * 1.08;
+
+  const pushPolygonBuilding = (nodeIds, tags) => {
+    let sx = 0, sz = 0, cnt = 0;
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const nid of nodeIds) {
+      const nd = nodeMap.get(nid);
+      if (!nd) continue;
+      const p = latLngToLocalXZ(nd.lat, nd.lon, centerLat, centerLng);
+      sx += p.x; sz += p.z; cnt++;
+      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+      if (p.z < minZ) minZ = p.z; if (p.z > maxZ) maxZ = p.z;
+    }
+    if (cnt < 3) return;
+    const cx = +(sx / cnt).toFixed(2);
+    const cz = +(sz / cnt).toFixed(2);
+    if (Math.abs(cx) > sq.halfM - 12 || Math.abs(cz) > sq.halfM - 12) return;
+
+    const spanX = Math.max(4.5, maxX - minX);
+    const spanZ = Math.max(4.5, maxZ - minZ);
+    const areaApprox = spanX * spanZ;
+    if (areaApprox < 12) return; // aceita casas geminadas e comércios pequenos (>= 12 m²)
+
+    const levels = Math.min(5, Math.max(0, parseInt(tags['building:levels'] || '0', 10) || 0));
+    const prefab = classifyOsmPrefab(tags, areaApprox, levels || 1);
+
+    buildings.push({
+      x: cx,
+      z: cz,
+      w: +Math.min(34, spanX).toFixed(1),
+      d: +Math.min(34, spanZ).toFixed(1),
+      floors: levels || (
+        prefab === 'building' ? (areaApprox > 520 ? 4 : 3) :
+        (['hospital', 'mall', 'police', 'public', 'bank'].includes(prefab) ? 2 :
+        (prefab === 'house' && areaApprox > 155 ? 2 : 1))
+      ),
+      prefab,
+      name: tags.name || tags.brand || tags['addr:street'] || ''
+    });
+  };
 
   for (const el of elements) {
     const tags = el.tags || {};
 
-    // 1. Estradas, avenidas, ruas residenciais (filtra trilhas/calçadas/escadas)
+    // 1. Estradas, rodovias, avenidas, ruas e passagens (com análise real de LARGURA e SENTIDO oneway!)
     if (el.type === 'way' && tags.highway && Array.isArray(el.nodes) && el.nodes.length >= 2) {
       const hw = String(tags.highway);
       if (!DRIVABLE_HIGHWAYS.has(hw)) continue;
       if (hw === 'service' && (tags.service === 'parking_aisle' || tags.service === 'driveway')) continue;
 
-      let roadClass = 'street';
-      let width = 8.6;
-      if (hw === 'motorway' || hw === 'motorway_link' || hw === 'trunk' || hw === 'trunk_link' || hw === 'primary' || hw === 'primary_link') {
-        roadClass = 'avenue';
-        width = 11.8;
-      } else if (hw === 'secondary' || hw === 'secondary_link' || hw === 'tertiary' || hw === 'tertiary_link') {
-        roadClass = 'street';
-        width = 9.4;
-      } else if (hw === 'residential' || hw === 'unclassified' || hw === 'living_street') {
-        roadClass = 'residential';
-        width = 7.4;
-      } else {
-        roadClass = 'service';
-        width = 5.8;
+      const nmLow = String(tags.name || tags.ref || '').toLowerCase();
+      const rawOneway = String(tags.oneway || '').toLowerCase();
+      let oneway = 0; // 0 = mão dupla, 1 = mão única no sentido pts[0] -> pts[n-1]
+      let reversePts = false;
+      if (rawOneway === 'yes' || rawOneway === '1' || rawOneway === 'true') {
+        oneway = 1;
+      } else if (rawOneway === '-1' || rawOneway === 'reverse') {
+        oneway = 1;
+        reversePts = true;
+      } else if (tags.junction === 'roundabout' || ((hw === 'motorway' || hw === 'motorway_link') && rawOneway !== 'no')) {
+        oneway = 1;
       }
 
+      const parsedLanes = Math.min(6, Math.max(0, parseInt(tags.lanes || '0', 10) || 0));
+
+      let roadClass = 'street';
+      let width = 8.2;
+
+      const isHighwayName = /\b(rod\.?|rodovia|br[-\s]?\d+|sp[-\s]?\d+|pa[-\s]?\d+|mg[-\s]?\d+|rj[-\s]?\d+|estrada|via expressa|marginal|anel vi[aá]rio|freeway|highway)\b/i.test(nmLow);
+      const isAvenueName = /^(av\.?|avenida|alameda|boulevard|blvd|perimetral)\b/i.test(nmLow);
+      const isPassageName = /^(passagem|pass\.?|beco|viela|servid[aã]o|vila\s)\b/i.test(nmLow);
+
+      if (hw === 'motorway' || hw === 'motorway_link' || hw === 'trunk' || hw === 'trunk_link' || isHighwayName) {
+        roadClass = 'highway';
+        width = oneway ? 12.6 : 16.0;
+        if (parsedLanes >= 2) width = Math.max(11.6, Math.min(19.5, parsedLanes * 3.55 + 1.8));
+      } else if (hw === 'primary' || hw === 'primary_link' || hw === 'secondary' || hw === 'secondary_link' || isAvenueName) {
+        roadClass = 'avenue';
+        width = oneway ? 9.8 : 12.4;
+        if (parsedLanes >= 2) width = Math.max(9.2, Math.min(15.2, parsedLanes * 3.25 + 1.2));
+      } else if (hw === 'service' || isPassageName || (parsedLanes === 1 && (hw === 'residential' || hw === 'unclassified' || hw === 'living_street'))) {
+        roadClass = 'passage';
+        width = oneway ? 5.2 : 5.8;
+      } else {
+        roadClass = 'street';
+        width = oneway ? 6.8 : 8.2;
+        if (parsedLanes >= 2) width = Math.max(6.8, Math.min(9.8, parsedLanes * 3.1 + 0.9));
+      }
+
+      const orderedNodes = reversePts ? el.nodes.slice().reverse() : el.nodes;
       const pts = [];
-      for (const nid of el.nodes) {
+      for (const nid of orderedNodes) {
         const nd = nodeMap.get(nid);
         if (!nd) continue;
         const p = latLngToLocalXZ(nd.lat, nd.lon, centerLat, centerLng);
@@ -368,103 +555,79 @@ out skel qt;`;
       }
       if (pts.length >= 2) {
         roads.push({
-          name: tags.name || '',
+          name: tags.name || tags.ref || '',
           roadClass,
-          width,
+          width: +width.toFixed(1),
+          oneway,
+          lanes: parsedLanes || (roadClass === 'highway' ? (oneway ? 3 : 4) : (roadClass === 'avenue' ? (oneway ? 2 : 4) : (roadClass === 'passage' ? 1 : (oneway ? 1 : 2)))),
           pts
         });
       }
       continue;
     }
 
-    // 2. Construções reais (com polígono, tamanho aproximado, orientação e andares)
-    if (el.type === 'way' && tags.building && Array.isArray(el.nodes) && el.nodes.length >= 3) {
-      let sx = 0, sz = 0, cnt = 0;
-      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-      const polyPts = [];
-      for (const nid of el.nodes) {
-        const nd = nodeMap.get(nid);
-        if (!nd) continue;
-        const p = latLngToLocalXZ(nd.lat, nd.lon, centerLat, centerLng);
-        polyPts.push(p);
-        sx += p.x; sz += p.z; cnt++;
-        if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
-        if (p.z < minZ) minZ = p.z; if (p.z > maxZ) maxZ = p.z;
-      }
-      if (cnt < 3) continue;
-      const cx = +(sx / cnt).toFixed(2);
-      const cz = +(sz / cnt).toFixed(2);
-      if (Math.abs(cx) > sq.halfM - 16 || Math.abs(cz) > sq.halfM - 16) continue;
-
-      const spanX = Math.max(5, maxX - minX);
-      const spanZ = Math.max(5, maxZ - minZ);
-      const areaApprox = spanX * spanZ;
-      if (areaApprox < 22) continue; // ignora pequenos galpões/muros
-
-      const bTag = String(tags.building || '').toLowerCase();
-      const amTag = String(tags.amenity || tags.healthcare || tags.shop || '').toLowerCase();
-      const levels = Math.min(4, Math.max(1, parseInt(tags['building:levels'] || '0', 10) || 0));
-
-      let prefab = 'house';
-      if (bTag === 'hospital' || amTag.includes('hospital') || amTag.includes('clinic') || amTag.includes('pharmacy')) {
-        prefab = 'hospital';
-      } else if (amTag === 'police' || amTag === 'fire_station') {
-        prefab = 'police';
-      } else if (amTag === 'fuel') {
-        prefab = 'gas';
-      } else if (
-        bTag === 'apartments' || bTag === 'office' || bTag === 'hotel' || bTag === 'university' ||
-        bTag === 'school' || bTag === 'public' || bTag === 'civic' || bTag === 'industrial' ||
-        levels >= 3 || areaApprox > 340
-      ) {
-        prefab = 'building';
-      } else if (
-        bTag === 'commercial' || bTag === 'retail' || bTag === 'supermarket' ||
-        tags.shop || amTag === 'supermarket' || amTag === 'bank' || amTag === 'restaurant' || amTag === 'cafe'
-      ) {
-        prefab = 'shop';
-      }
-
-      buildings.push({
-        x: cx,
-        z: cz,
-        w: +Math.min(28, spanX).toFixed(1),
-        d: +Math.min(28, spanZ).toFixed(1),
-        floors: levels || (prefab === 'building' ? (areaApprox > 520 ? 3 : 2) : (areaApprox > 170 ? 2 : 1)),
-        prefab,
-        name: tags.name || tags['addr:street'] || ''
-      });
+    // 2. Construções reais e grandes estruturas (building, supermercado, igreja, banco, público, estacionamento, cemitério)
+    if (
+      el.type === 'way' &&
+      (
+        tags.building ||
+        tags.shop === 'mall' || tags.shop === 'department_store' || tags.shop === 'supermarket' ||
+        tags.amenity === 'parking' || tags.amenity === 'place_of_worship' || tags.amenity === 'bank' ||
+        tags.amenity === 'hospital' || tags.amenity === 'police' || tags.amenity === 'fuel' ||
+        tags.amenity === 'townhall' || tags.amenity === 'courthouse' || tags.amenity === 'public_building' ||
+        tags.amenity === 'post_office' || tags.amenity === 'library' || tags.amenity === 'community_centre' ||
+        tags.amenity === 'grave_yard' || tags.landuse === 'cemetery'
+      ) &&
+      Array.isArray(el.nodes) && el.nodes.length >= 3
+    ) {
+      pushPolygonBuilding(el.nodes, tags);
       continue;
     }
 
-    // 3. POIs pontuais importantes (hospitais, delegacias, postos)
-    if (el.type === 'node' && tags.amenity) {
+    // 2b. Multipolígonos OSM (shoppings, hospitais, igrejas, prédios públicos e cemitérios grandes)
+    if (el.type === 'relation' && (tags.building || tags.amenity || tags.landuse === 'cemetery') && Array.isArray(el.members)) {
+      const outerIds = [];
+      for (const mem of el.members) {
+        if (mem.type === 'way' && (!mem.role || mem.role === 'outer')) {
+          const w = wayMap.get(mem.ref);
+          if (w && Array.isArray(w.nodes)) {
+            for (const nid of w.nodes) outerIds.push(nid);
+          }
+        }
+      }
+      if (outerIds.length >= 3) {
+        pushPolygonBuilding(outerIds, tags);
+      }
+      continue;
+    }
+
+    // 3. POIs pontuais (hospitais, farmácias, shoppings, delegacias, postos, supermercados, bancos, igrejas, prédios públicos, estacionamentos)
+    if (el.type === 'node' && (tags.amenity || tags.shop || tags.healthcare || tags.building)) {
       const p = latLngToLocalXZ(el.lat, el.lon, centerLat, centerLng);
-      if (Math.abs(p.x) > sq.halfM - 18 || Math.abs(p.z) > sq.halfM - 18) continue;
-      const am = String(tags.amenity).toLowerCase();
-      if (!VALID_POI_AMENITIES.has(am)) continue;
-      let prefab = 'shop';
-      if (am === 'hospital' || am === 'clinic' || am === 'pharmacy') prefab = 'hospital';
-      else if (am === 'police' || am === 'fire_station') prefab = 'police';
-      else if (am === 'fuel') prefab = 'gas';
-      else if (am === 'school' || am === 'university' || am === 'bank') prefab = 'building';
+      if (Math.abs(p.x) > sq.halfM - 14 || Math.abs(p.z) > sq.halfM - 14) continue;
+      const am = String(tags.amenity || '').toLowerCase();
+      const sh = String(tags.shop || '').toLowerCase();
+      const hc = String(tags.healthcare || '').toLowerCase();
+      const isBldNode = Boolean(tags.building && tags.building !== 'no');
+      if (!isBldNode && !VALID_POI_AMENITIES.has(am) && !VALID_POI_SHOPS.has(sh) && !['hospital', 'clinic', 'pharmacy'].includes(hc)) continue;
+      const prefab = classifyOsmPrefab(tags, isBldNode ? 110 : 220, 1);
       buildings.push({
         x: p.x,
         z: p.z,
-        w: 16,
-        d: 14,
-        floors: prefab === 'building' ? 3 : 1,
+        w: prefab === 'mall' ? 22 : (prefab === 'hospital' || prefab === 'supermarket' || prefab === 'public' ? 17 : 13),
+        d: prefab === 'mall' ? 16 : 13,
+        floors: prefab === 'building' ? 3 : (['hospital', 'mall', 'police', 'public', 'bank'].includes(prefab) ? 2 : 1),
         prefab,
-        name: tags.name || am.toUpperCase()
+        name: tags.name || tags.brand || (am || sh || hc || '').toUpperCase()
       });
       continue;
     }
 
-    // 4. Áreas Verdes Reais (parques, bosques, praças, campos, grama)
+    // 4. Áreas Verdes Reais (parques, bosques, praças, campos, grama — cemitérios já viraram estrutura dedicada acima!)
     if (el.type === 'way' && (tags.leisure || tags.landuse || tags.natural) && Array.isArray(el.nodes) && el.nodes.length >= 3) {
       const isGreen =
         ['park', 'garden', 'pitch', 'recreation_ground', 'nature_reserve', 'playground'].includes(tags.leisure) ||
-        ['forest', 'grass', 'meadow', 'recreation_ground', 'village_green', 'orchard', 'cemetery'].includes(tags.landuse) ||
+        ['forest', 'grass', 'meadow', 'recreation_ground', 'village_green', 'orchard'].includes(tags.landuse) ||
         ['wood', 'grassland', 'scrub', 'heath'].includes(tags.natural);
       if (!isGreen) continue;
 
@@ -487,7 +650,6 @@ out skel qt;`;
       if (rx < 7 && rz < 7) continue;
 
       const isForest = tags.landuse === 'forest' || tags.natural === 'wood' || tags.leisure === 'nature_reserve';
-      // Simplifica polígono para manter payload enxuto
       const step = Math.max(1, Math.floor(poly.length / 18));
       const simp = [];
       for (let i = 0; i < poly.length; i += step) simp.push(poly[i]);
@@ -500,6 +662,19 @@ out skel qt;`;
         rz: +rz.toFixed(1),
         poly: simp
       });
+
+      // Parques e praças urbanos ganham uma praça 3D completa (fonte, bancos, pergolado, trilhas) no centro!
+      if (!isForest && ['park', 'garden', 'playground', 'recreation_ground'].includes(tags.leisure) && rx >= 9 && rz >= 9 && Math.abs(cx) <= sq.halfM - 16 && Math.abs(cz) <= sq.halfM - 16) {
+        buildings.push({
+          x: cx,
+          z: cz,
+          w: Math.min(22, +(rx * 1.4).toFixed(1)),
+          d: Math.min(20, +(rz * 1.4).toFixed(1)),
+          floors: 1,
+          prefab: 'park',
+          name: tags.name || 'Parque Municipal'
+        });
+      }
     }
   }
 
