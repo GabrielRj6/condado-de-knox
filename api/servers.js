@@ -1,11 +1,10 @@
-// Diretório leve de Servidores Ativos para Vercel Serverless (Região gru1)
-// Funciona em conjunto com a descoberta automática WebRTC/PeerJS dos slots públicos!
+// Diretório leve de Servidores Ativos (Suporta Mundos Procedurais, OpenStreetMap e Google Maps!)
 const activeRooms = globalThis.__KNOX_ACTIVE_ROOMS__ || (globalThis.__KNOX_ACTIVE_ROOMS__ = new Map());
 
 function pruneExpired() {
   const now = Date.now();
   for (const [id, room] of activeRooms.entries()) {
-    if (now - room.updatedAt > 32000) {
+    if (now - room.updatedAt > 36000) {
       activeRooms.delete(id);
     }
   }
@@ -46,6 +45,11 @@ module.exports = function handler(req, res) {
       players: Math.max(1, Number(body.players) || 1),
       maxPlayers: Math.min(24, Math.max(2, Number(body.maxPlayers) || 12)),
       seed: Number(body.seed) || 1000,
+      worldMode: String(body.worldMode || 'procedural').slice(0, 20),
+      placeName: String(body.placeName || '').slice(0, 64),
+      areaKm2: Number(body.areaKm2) || 0,
+      worldId: String(body.worldId || '').slice(0, 80),
+      worldHash: String(body.worldHash || '').slice(0, 40),
       updatedAt: Date.now()
     });
 
