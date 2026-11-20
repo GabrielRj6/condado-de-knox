@@ -21,7 +21,9 @@ const MIME = {
   '.jpeg': 'image/jpeg',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
-  '.fbx': 'application/octet-stream'
+  '.fbx': 'application/octet-stream',
+  '.obj': 'text/plain; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8'
 };
 
 const PORT = Number(process.env.PORT) || 3000;
