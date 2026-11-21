@@ -1,17 +1,22 @@
 extends Node3D
 class_name SpatialAudio3D
 
-## Motor de Audio Espacial 3D (Godot 4) com sintese PCM procedural em tempo de carregamento.
-## - Tiros direcionais (esquerda/direita/frente/tras) com filtro acustico traseiro,
-##   atenuacao ate 500m, atraso fisico da velocidade do som e estalo supersonico de bala.
-## - Motores continuos 3D (Carro, Moto Trail 450, Moto Street 600), drift, ignicao e buzinas.
-## - Vozes guturais 3D de zumbis (idle, alert, chase, attack, hurt, death) com limite de vozes.
+## Motor de Audio Espacial 3D (Godot 4):
+## - Perfis balisticos individuais e realistas para CADA categoria de arma:
+##   Pistola 9mm, Revolver .44 Magnum, SMG 9mm, Escopeta 12G (com pump), Fuzil 5.56, Rifle 7.62 AK, Sniper .50 BMG e Silenciador!
+## - Armas brancas (Faca K-BAR e Katana) usam EXCLUSIVAMENTE sons reais de lamina (Weapon Whoosh / Knife Kills) — NUNCA tiro!
+## - Som espacial 3D direcional (frente/tras/esquerda/direita), atraso fisico da velocidade do som e estalo supersonico.
+## - Sons de estudio do Sound FX Starter Pack Vol. 1 para recarga, lamina, UI, sirene, tempestade e ambientes.
 
 const SAMPLE_RATE: int = 22050
 const SPEED_OF_SOUND: float = 343.0
 
-var clip_rifle: AudioStream
 var clip_pistol: AudioStream
+var clip_revolver: AudioStream
+var clip_smg: AudioStream
+var clip_shotgun: AudioStream
+var clip_rifle_556: AudioStream
+var clip_rifle_762: AudioStream
 var clip_sniper: AudioStream
 var clip_suppressed: AudioStream
 var clip_whiz: AudioStream
@@ -30,9 +35,9 @@ var clip_zombie_attack: AudioStream
 var clip_zombie_hurt: AudioStream
 var clip_zombie_death: AudioStream
 
-# Clips extras do Sound FX Starter Pack Vol. 1
+# Clips de estudio do Sound FX Starter Pack Vol. 1
 var clip_reload: AudioStream
-var clip_melee: AudioStream
+var clip_melee_hit: AudioStream
 var clip_melee_whoosh: AudioStream
 var clip_hit: AudioStream
 var clip_loot: AudioStream
@@ -62,7 +67,7 @@ func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	_generate_all_clips()
-	for i in range(32):
+	for i in range(36):
 		var p := AudioStreamPlayer3D.new()
 		p.max_distance = 520.0
 		p.unit_size = 18.0
@@ -123,16 +128,16 @@ func play_ui_sfx(kind: String) -> void:
 			s = clip_ui_menu
 		"equip":
 			s = clip_equip
-			vol = -8.0
+			vol = -8.5
 		"loot":
 			s = clip_loot
 			vol = -4.5
 		"hit":
 			s = clip_hit
-			vol = -9.0
+			vol = -10.5
 		"crit":
 			s = clip_hit
-			vol = -4.5
+			vol = -5.5
 		"empty":
 			s = clip_empty
 			vol = -8.0
@@ -142,19 +147,22 @@ func play_ui_sfx(kind: String) -> void:
 	if s != null:
 		_ui_player.stream = s
 		_ui_player.volume_db = vol
-		_ui_player.pitch_scale = 1.18 if kind == "crit" else randf_range(0.96, 1.04)
+		_ui_player.pitch_scale = 1.22 if kind == "crit" else randf_range(0.96, 1.04)
 		_ui_player.play()
 
 
 func play_reload_3d(world_pos: Vector3) -> void:
 	if clip_reload != null:
-		_schedule_3d(clip_reload, world_pos + Vector3(0.0, 1.3, 0.0), -6.5, 11000.0, randf_range(0.95, 1.05), 22.0, 0.0)
+		_schedule_3d(clip_reload, world_pos + Vector3(0.0, 1.3, 0.0), -6.5, 11000.0, randf_range(0.95, 1.05), 24.0, 0.0)
 
 
-func play_melee_3d(world_pos: Vector3, is_hit: bool = false) -> void:
-	var c: AudioStream = clip_melee if (is_hit and clip_melee != null) else (clip_melee_whoosh if clip_melee_whoosh != null else clip_melee)
-	if c != null:
-		_schedule_3d(c, world_pos + Vector3(0.0, 1.3, 0.0), -4.5, 12000.0, randf_range(0.92, 1.08), 26.0, 0.0)
+func play_melee_3d(world_pos: Vector3, is_hit: bool = false, is_katana: bool = false) -> void:
+	var c: AudioStream = clip_melee_hit if (is_hit and clip_melee_hit != null) else clip_melee_whoosh
+	if c == null:
+		return
+	var base_pitch: float = (0.84 if is_katana else 1.12) if is_hit else (0.78 if is_katana else 1.22)
+	var vol_db: float = -3.0 if is_hit else -5.5
+	_schedule_3d(c, world_pos + Vector3(0.0, 1.3, 0.0), vol_db, 12500.0, base_pitch * randf_range(0.95, 1.05), 26.0, 0.0)
 
 
 func play_siren_3d(world_pos: Vector3) -> void:
@@ -173,12 +181,38 @@ func _next_voice() -> AudioStreamPlayer3D:
 func play_gunshot_3d(profile: String, muzzle_pos: Vector3, end_pos: Vector3, is_local: bool) -> void:
 	if _pool.is_empty():
 		return
-	var clip: AudioStream = clip_rifle
+	# Protecao extra: perfil melee NUNCA toca tiro!
+	if profile.begins_with("melee"):
+		return
+	var clip: AudioStream = clip_rifle_556
+	var base_vol: float = 0.0
 	match profile:
-		"pistol": clip = clip_pistol
-		"sniper": clip = clip_sniper
-		"suppressed": clip = clip_suppressed
-		_: clip = clip_rifle
+		"pistol":
+			clip = clip_pistol
+			base_vol = -1.5
+		"revolver":
+			clip = clip_revolver
+			base_vol = 0.8
+		"smg":
+			clip = clip_smg
+			base_vol = -2.2
+		"shotgun":
+			clip = clip_shotgun
+			base_vol = 1.4
+		"rifle_556":
+			clip = clip_rifle_556
+			base_vol = 0.2
+		"rifle_762":
+			clip = clip_rifle_762
+			base_vol = 0.7
+		"sniper":
+			clip = clip_sniper
+			base_vol = 1.8
+		"suppressed":
+			clip = clip_suppressed
+			base_vol = -6.5
+		_:
+			clip = clip_rifle_556
 
 	if is_local:
 		var v := _next_voice()
@@ -186,12 +220,12 @@ func play_gunshot_3d(profile: String, muzzle_pos: Vector3, end_pos: Vector3, is_
 			return
 		v.global_position = muzzle_pos
 		v.stream = clip
-		v.unit_size = 24.0
+		v.unit_size = 26.0
 		v.max_distance = 120.0
-		v.volume_db = -6.0 if profile == "suppressed" else 0.0
-		v.pitch_scale = randf_range(0.96, 1.04)
-		v.attenuation_filter_cutoff_hz = 16000.0
-		v.attenuation_filter_db = -2.0
+		v.volume_db = base_vol
+		v.pitch_scale = randf_range(0.97, 1.03)
+		v.attenuation_filter_cutoff_hz = 16500.0
+		v.attenuation_filter_db = -1.5
 		v.play()
 		return
 
@@ -206,21 +240,18 @@ func play_gunshot_3d(profile: String, muzzle_pos: Vector3, end_pos: Vector3, is_
 
 	var dir: Vector3 = to_src / maxf(0.001, dist)
 	var cam_fwd: Vector3 = -cam.global_transform.basis.z.normalized()
-	var front_dot: float = dir.dot(cam_fwd) # +1 frente, -1 tras
+	var front_dot: float = dir.dot(cam_fwd)
 
-	# Atraso fisico da velocidade do som (perto = instantaneo, 260m = ~0.75s)
 	var delay: float = minf(dist / SPEED_OF_SOUND, 1.4)
-	# Filtro pinna traseiro + distancia: tiros atras ficam mais graves/abafados que tiros a frente!
 	var dist_norm: float = clampf(dist / max_d, 0.0, 1.0)
 	var base_cutoff: float = lerpf(14500.0, 900.0, pow(dist_norm, 0.72))
 	var rear_mult: float = lerpf(1.0, 0.38, clampf(-front_dot, 0.0, 1.0))
 	var cutoff_hz: float = clampf(base_cutoff * rear_mult, 680.0, 16000.0)
 	var rear_db: float = lerpf(0.0, -3.2, clampf(-front_dot, 0.0, 1.0))
-	var dist_db: float = lerpf(1.0, -28.0, pow(dist_norm, 0.65))
+	var dist_db: float = lerpf(base_vol + 0.5, -28.0, pow(dist_norm, 0.65))
 
-	_schedule_3d(clip, muzzle_pos, dist_db + rear_db, cutoff_hz, randf_range(0.94, 1.05), max_d, delay)
+	_schedule_3d(clip, muzzle_pos, dist_db + rear_db, cutoff_hz, randf_range(0.95, 1.04), max_d, delay)
 
-	# Estalo supersonico direcional quando a bala passa perto da camera!
 	if profile != "suppressed" and dist > 10.0:
 		var ab: Vector3 = end_pos - muzzle_pos
 		var len2: float = ab.length_squared()
@@ -333,13 +364,20 @@ func _schedule_3d(clip: AudioStream, pos: Vector3, vol_db: float, cutoff_hz: flo
 
 
 # ==============================================================================
-# GERADORES PCM 16-BIT MONO (som imediato sem precisar baixar arquivos .wav!)
+# SINTESE BALISTICA DEDICADA POR CALIBRE + SOUND FX STARTER PACK VOL. 1
 # ==============================================================================
 func _generate_all_clips() -> void:
-	clip_pistol = _make_gunshot_wav(175.0, 0.34, 0.78)
-	clip_rifle = _make_gunshot_wav(140.0, 0.52, 0.92)
-	clip_sniper = _make_gunshot_wav(84.0, 0.85, 1.0)
-	clip_suppressed = _make_gunshot_wav(320.0, 0.14, 0.48)
+	# Cada arma de fogo tem assinatura acustica propria e fiel ao calibre real!
+	clip_pistol = _make_ballistic_shot(225.0, 0.28, 0.72, 1.00, 38.0, 0.28, 0.055, false)
+	clip_revolver = _make_ballistic_shot(132.0, 0.54, 0.98, 1.05, 19.0, 0.50, 0.0, false)
+	clip_smg = _make_ballistic_shot(260.0, 0.19, 0.62, 0.92, 46.0, 0.20, 0.032, false)
+	clip_shotgun = _make_ballistic_shot(92.0, 0.68, 1.12, 1.05, 14.0, 0.58, 0.28, true)
+	clip_rifle_556 = _make_ballistic_shot(175.0, 0.40, 0.84, 1.10, 26.0, 0.42, 0.048, false)
+	clip_rifle_762 = _make_ballistic_shot(138.0, 0.48, 0.94, 0.98, 21.0, 0.48, 0.062, false)
+	clip_sniper = _make_ballistic_shot(72.0, 0.98, 1.18, 1.15, 11.0, 0.66, 0.0, false)
+	clip_suppressed = _make_suppressed_shot()
+	clip_melee_whoosh = _make_blade_whoosh()
+	clip_melee_hit = _make_blade_whoosh()
 	clip_whiz = _make_whiz_wav()
 	clip_explosion = _make_explosion_wav()
 	clip_horn_car = _make_dual_tone_wav(392.0, 493.88, 0.42, 0.45)
@@ -358,20 +396,15 @@ func _generate_all_clips() -> void:
 
 
 func _load_custom_audio_overrides() -> void:
-	# 1. Conecta os sons reais de estudio do Sound FX Starter Pack Vol. 1!
+	# 1. Usa APENAS os clips do Sound FX Starter Pack Vol. 1 que realmente combinam com o jogo!
+	# (NAO usa Steampunk Gun nem Mini Rocket Shot para fuzis/snipers reais!)
 	var sfx: AudioStream
-	sfx = AssetBridge.load_sfx_pack_clip("Hollywood/Titan Handgun.wav")
-	if sfx != null: clip_pistol = sfx
-	sfx = AssetBridge.load_sfx_pack_clip("Steampunk/Steampunk Gun.wav")
-	if sfx != null: clip_rifle = sfx
-	sfx = AssetBridge.load_sfx_pack_clip("Hollywood/Mini Rocket Shot.wav")
-	if sfx != null: clip_sniper = sfx
 	sfx = AssetBridge.load_sfx_pack_clip("Hollywood/Mega Bomb.wav")
 	if sfx != null: clip_explosion = sfx
 	sfx = AssetBridge.load_sfx_pack_clip("Hollywood/Heavy Gun Reload.wav")
 	if sfx != null: clip_reload = sfx
 	sfx = AssetBridge.load_sfx_pack_clip("Hollywood/Knife Kills.wav")
-	if sfx != null: clip_melee = sfx
+	if sfx != null: clip_melee_hit = sfx
 	sfx = AssetBridge.load_sfx_pack_clip("Medieval/Weapon Whoosh.wav")
 	if sfx != null: clip_melee_whoosh = sfx
 	sfx = AssetBridge.load_sfx_pack_clip("Hollywood/Deathpunch.wav")
@@ -408,12 +441,20 @@ func _load_custom_audio_overrides() -> void:
 	if clip_amb_rain == null:
 		clip_amb_rain = AssetBridge.load_sfx_pack_clip("Environment/Rainy City Alley Loop.wav")
 
-	# 2. Permite sobrescrever qualquer som colocando arquivos extras em res://assets/audio/
-	var ov: AudioStream = AssetBridge.try_load_custom_audio(["gun_rifle", "rifle", "ak47", "m4"])
-	if ov != null: clip_rifle = ov
-	ov = AssetBridge.try_load_custom_audio(["gun_pistol", "pistol", "9mm"])
+	# 2. Permite sobrescrever qualquer arma com .wav/.ogg proprios em res://assets/audio/
+	var ov: AudioStream = AssetBridge.try_load_custom_audio(["gun_pistol", "pistol", "9mm"])
 	if ov != null: clip_pistol = ov
-	ov = AssetBridge.try_load_custom_audio(["gun_sniper", "sniper", "awp"])
+	ov = AssetBridge.try_load_custom_audio(["gun_revolver", "revolver", "magnum"])
+	if ov != null: clip_revolver = ov
+	ov = AssetBridge.try_load_custom_audio(["gun_smg", "smg", "mp5"])
+	if ov != null: clip_smg = ov
+	ov = AssetBridge.try_load_custom_audio(["gun_shotgun", "shotgun", "12gauge"])
+	if ov != null: clip_shotgun = ov
+	ov = AssetBridge.try_load_custom_audio(["gun_rifle_556", "m4", "m4a1", "gun_rifle"])
+	if ov != null: clip_rifle_556 = ov
+	ov = AssetBridge.try_load_custom_audio(["gun_rifle_762", "ak47", "ak74"])
+	if ov != null: clip_rifle_762 = ov
+	ov = AssetBridge.try_load_custom_audio(["gun_sniper", "sniper", "awp", "50cal"])
 	if ov != null: clip_sniper = ov
 	ov = AssetBridge.try_load_custom_audio(["gun_suppressed", "suppressed", "silencer"])
 	if ov != null: clip_suppressed = ov
@@ -446,25 +487,89 @@ func _build_wav(samples: PackedByteArray, looping: bool = false) -> AudioStreamW
 	return w
 
 
-func _make_gunshot_wav(base_hz: float, dur: float, punch: float) -> AudioStreamWAV:
+func _make_ballistic_shot(base_hz: float, dur: float, punch: float, crack_gain: float, crack_decay: float, tail_gain: float, bolt_delay: float, is_pump: bool) -> AudioStreamWAV:
 	var n: int = int(SAMPLE_RATE * dur)
 	var bytes := PackedByteArray()
 	bytes.resize(n * 2)
 	var rng := RandomNumberGenerator.new()
-	rng.seed = int(base_hz * 100.0)
+	rng.seed = int(base_hz * 137.0 + dur * 1000.0)
 	var phase: float = 0.0
-	var lp: float = 0.0
+	var lp_mid: float = 0.0
+	var lp_tail: float = 0.0
+	var prev_noise: float = 0.0
 	for i in range(n):
 		var t: float = float(i) / float(SAMPLE_RATE)
-		var f: float = lerpf(base_hz, 26.0, minf(1.0, t / 0.14))
+		var f: float = lerpf(base_hz, maxf(24.0, base_hz * 0.22), minf(1.0, t / 0.095))
 		phase += TAU * f / float(SAMPLE_RATE)
-		var thump: float = sin(phase) * exp(-t * 16.0) * punch
 		var noise: float = rng.randf_range(-1.0, 1.0)
-		var crack: float = noise * exp(-t * 28.0) * 0.9
-		lp = lerpf(lp, noise, 0.09)
-		var tail: float = lp * exp(-t * (2.6 / maxf(0.2, dur))) * 0.42
-		var s: float = clampf(thump + crack + tail, -1.0, 1.0)
+		var hp_crack: float = noise - prev_noise * 0.72
+		prev_noise = noise
+
+		# 1. Estalo supersonico inicial (primeiros 18ms)
+		var crack: float = hp_crack * exp(-t * crack_decay) * crack_gain
+		# 2. Corpo / pressao de polvora (grave + medio)
+		var body_thump: float = sin(phase) * exp(-t * 17.5) * punch
+		lp_mid = lerpf(lp_mid, noise, 0.24)
+		var blast: float = lp_mid * exp(-t * 13.0) * (0.78 * punch)
+		# 3. Cauda acustica urbana
+		lp_tail = lerpf(lp_tail, noise, 0.075)
+		var tail: float = lp_tail * exp(-t * (2.8 / maxf(0.18, dur))) * tail_gain
+		# 4. Clique metalico de ferrolho / pump-action
+		var mech: float = 0.0
+		if bolt_delay > 0.0:
+			var dt_b: float = t - bolt_delay
+			if dt_b >= 0.0 and dt_b < 0.045:
+				mech = (hp_crack * 0.45 + sin(TAU * 1450.0 * dt_b) * 0.3) * exp(-dt_b * 70.0) * (0.35 if is_pump else 0.16)
+			if is_pump:
+				var dt_p2: float = t - (bolt_delay + 0.12)
+				if dt_p2 >= 0.0 and dt_p2 < 0.055:
+					mech += (hp_crack * 0.42 + sin(TAU * 1120.0 * dt_p2) * 0.28) * exp(-dt_p2 * 60.0) * 0.34
+
+		var s: float = tanh((crack + body_thump + blast + tail + mech) * 1.15)
+		bytes.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
+	return _build_wav(bytes, false)
+
+
+func _make_suppressed_shot() -> AudioStreamWAV:
+	var dur: float = 0.15
+	var n: int = int(SAMPLE_RATE * dur)
+	var bytes := PackedByteArray()
+	bytes.resize(n * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4401
+	var lp: float = 0.0
+	var prev: float = 0.0
+	for i in range(n):
+		var t: float = float(i) / float(SAMPLE_RATE)
+		var noise: float = rng.randf_range(-1.0, 1.0)
+		lp = lerpf(lp, noise, 0.28)
+		var hp: float = noise - prev * 0.82
+		prev = noise
+		var puff: float = lp * exp(-t * 36.0) * 0.72
+		var bolt: float = (hp * 0.45 + sin(TAU * 1950.0 * t) * 0.25) * exp(-t * 95.0) * 0.42
+		var s: float = clampf(puff + bolt, -1.0, 1.0)
 		bytes.encode_s16(i * 2, int(s * 32767.0))
+	return _build_wav(bytes, false)
+
+
+func _make_blade_whoosh() -> AudioStreamWAV:
+	var dur: float = 0.22
+	var n: int = int(SAMPLE_RATE * dur)
+	var bytes := PackedByteArray()
+	bytes.resize(n * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5150
+	var lp: float = 0.0
+	var prev: float = 0.0
+	for i in range(n):
+		var t: float = float(i) / float(SAMPLE_RATE)
+		var u: float = t / dur
+		var env: float = sin(PI * u) * exp(-u * 1.6)
+		var noise: float = rng.randf_range(-1.0, 1.0)
+		lp = lerpf(lp, noise, lerpf(0.08, 0.34, env))
+		var bp: float = lp - prev * 0.65
+		prev = lp
+		bytes.encode_s16(i * 2, int(clampf(bp * env * 1.5, -1.0, 1.0) * 32767.0))
 	return _build_wav(bytes, false)
 
 
@@ -537,7 +642,7 @@ func _make_starter_wav(is_moto: bool) -> AudioStreamWAV:
 
 
 func _make_engine_loop_wav(f1: float, f2: float, rasp_amt: float, pulse_hz: float) -> AudioStreamWAV:
-	var n: int = SAMPLE_RATE # 1.0s exato -> loop continuo sem clique!
+	var n: int = SAMPLE_RATE
 	var bytes := PackedByteArray()
 	bytes.resize(n * 2)
 	var rng := RandomNumberGenerator.new()

@@ -2,11 +2,15 @@ extends CharacterBody3D
 class_name SurvivorPlayer
 
 ## Sobrevivente 3D Knox Survival (Godot 4):
-## - Movimentacao 3a Pessoa fluida com inercia suave, direcao livre (W/A/S/D gira o corpo para
-##   esquerda/direita/tras/diagonais) + Strafing tatico real ao mirar (Botao Dir.), atirar ou em 1P!
-## - Alinhamento preciso das 9 armas 3D (.obj) com empunhadura bi-manual articulada (ombros + cotovelos)
-## - Motorista/Piloto guarda a arma (maos no volante/guidao) e senta DENTRO da cabine (sem atravessar teto!)
-## - Auto-deteccao de modelo 3D externo (.glb/.tscn) + AnimationPlayer via AssetBridge (fallback Omni rig)
+## - Movimentacao 3P fluida com direcao livre + strafing tatico em ADS / tiro / 1P
+## - Maquina de estados EXCLUSIVA para animacoes Quaternius (1 animacao por vez, sem agachar parado,
+##   sem double-crouch e one-shots definitivos para golpe/morte!)
+## - Arma 3D estabilizada no espaco do corpo seguindo o peito/mao (NUNCA aponta pro ceu nem pro chao!)
+## - Mira em 1a Pessoa calibrada por arma (hip -> ADS alinhado na massa de mira + swing melee 1P)
+
+const STAND_EXCLUDE: PackedStringArray = [
+	"crouch", "sit", "swim", "climb", "roll", "crawl", "talk", "torch", "dance", "fix", "push"
+]
 
 var peer_id: int = 1
 var nick: String = "Sobrevivente"
@@ -30,9 +34,9 @@ var reload_timer: float = 0.0
 var current_vehicle: Vehicle3D = null
 var current_seat: int = -1
 
-var _yaw: float = 0.0         # Yaw da camera / mira
-var _body_yaw: float = 0.0    # Yaw real do corpo (gira livremente ao caminhar em 3P, trava na mira em ADS/tiro/1P)
-var _pitch: float = -0.1
+var _yaw: float = 0.0
+var _body_yaw: float = 0.0
+var _pitch: float = -0.06
 var _first_person: bool = false
 var _shoulder_sign: float = 1.0
 var _ads_alpha: float = 0.0
@@ -40,15 +44,18 @@ var _combat_stance_t: float = 0.0
 var _fire_cd: float = 0.0
 var _recoil_kick: float = 0.0
 var _melee_swing_t: float = 0.0
+var _melee_swing_seq: int = 0
+var _last_melee_anim_seq: int = -1
 var _muzzle_flash_t: float = 0.0
 var _trigger_held_prev: bool = false
 var _walk_phase: float = 0.0
 var _idle_phase: float = 0.0
 var _crouch_alpha: float = 0.0
+var _air_time: float = 0.0
 var _land_dip: float = 0.0
 var _was_on_floor: bool = true
 var _is_sprinting: bool = false
-var _local_move_vel: Vector2 = Vector2.ZERO # x = lateral (direita+), y = frente+
+var _local_move_vel: Vector2 = Vector2.ZERO
 var _sync_acc: float = 0.0
 var _target_pos: Vector3 = Vector3.ZERO
 var _target_yaw: float = 0.0
@@ -77,10 +84,13 @@ var _flashlight: SpotLight3D
 var _name_label: Label3D
 var _world: Node = null
 
-# Suporte automatico a modelo 3D rigado (.glb/.tscn) + AnimationPlayer (Asset Store / Mixamo)
+# Rig 3D animado Quaternius + anchors de posicao estabilizados
 var _ext_model: Node3D = null
 var _ext_anim: AnimationPlayer = null
 var _ext_cur_anim: String = ""
+var _ext_is_one_shot: bool = false
+var _chest_anchor: BoneAttachment3D = null
+var _hand_anchor: BoneAttachment3D = null
 
 
 func setup(p_peer_id: int, p_world: Node, p_nick: String, p_team: String) -> void:
@@ -108,10 +118,10 @@ func _ready() -> void:
 		_cam = Camera3D.new()
 		_cam.current = true
 		_cam.fov = 72.0
+		_cam.near = 0.02
 		_cam.far = _draw_distance
 		_cam_pivot.add_child(_cam)
 
-		# Viewmodel 1a Pessoa (arma real .obj na mao direita quando em 1P)
 		_fp_weapon_mount = Node3D.new()
 		_fp_weapon_mount.position = Vector3(0.24, -0.22, -0.44)
 		_fp_weapon_mount.visible = false
@@ -138,6 +148,10 @@ func is_first_person_mode() -> bool:
 	return _first_person
 
 
+func get_ads_alpha() -> float:
+	return _ads_alpha
+
+
 func get_posture_label() -> String:
 	if is_dead:
 		return "ABATIDO"
@@ -154,7 +168,7 @@ func get_posture_label() -> String:
 
 func is_sniper_scoped() -> bool:
 	var w: Dictionary = get_active_weapon_def()
-	return _ads_alpha > 0.72 and float(w["ads_fov"]) <= 30.0
+	return _ads_alpha > 0.68 and float(w["ads_fov"]) <= 30.0
 
 
 func set_draw_distance(meters: float) -> void:
@@ -220,7 +234,6 @@ func _build_character_rig() -> void:
 	_body_root = Node3D.new()
 	add_child(_body_root)
 
-	# 1. Carrega automaticamente o Rig 3D animado (Quaternius AnimationLibrary_Godot_Standard.glb ou custom)
 	_ext_model = AssetBridge.try_instantiate_character(false)
 	if _ext_model != null:
 		_body_root.add_child(_ext_model)
@@ -228,19 +241,29 @@ func _build_character_rig() -> void:
 		if _ext_anim == null:
 			_ext_anim = AnimationPlayer.new()
 			_ext_model.add_child(_ext_anim)
+		AssetBridge.stop_extra_animation_players(_ext_model, _ext_anim)
 		AssetBridge.merge_external_animations(_ext_anim)
 		var skel := AssetBridge.find_first_skeleton(_ext_model)
 		AssetBridge.attach_knox_headgear(skel)
+
+		# Anchors leves apenas para rastrear posicao do peito e mao direita sem herdar giro bugado de pulso!
+		_chest_anchor = AssetBridge.create_bone_anchor(skel, "KnoxChestAnchor", ["upperchest", "chest", "spine2", "spine1", "spine"], ["ik", "ctrl"])
+		_hand_anchor = AssetBridge.create_bone_anchor(skel, "KnoxRightHandAnchor", ["hand.r", "hand_r", "righthand", "r_hand", "wrist.r"], ["thumb", "index", "middle", "ring", "pinky", "finger", "ik", "ctrl"])
+
+		# Arma 3P fica em _body_root (frente = -Z garantido!) seguindo a altura/posicao dos ossos
 		_weapon_aim_pivot = Node3D.new()
+		_weapon_aim_pivot.position = Vector3(0.20, 1.18, -0.22)
+		_body_root.add_child(_weapon_aim_pivot)
 		_tp_weapon_mount = Node3D.new()
 		_weapon_aim_pivot.add_child(_tp_weapon_mount)
-		if not AssetBridge.attach_node_to_right_hand(skel, _weapon_aim_pivot):
-			_weapon_aim_pivot.position = Vector3(0.18, 1.32, -0.25)
-			_body_root.add_child(_weapon_aim_pivot)
+
+		var init_idle: String = AssetBridge.find_best_anim_name(_ext_anim, ["Idle_Loop", "Idle"], STAND_EXCLUDE)
+		if not init_idle.is_empty():
+			_ext_cur_anim = init_idle
+			_ext_anim.play(init_idle)
 	else:
 		_build_omni_rig_parts()
 
-	# Clarao de boca (muzzle flash)
 	_muzzle_light = OmniLight3D.new()
 	_muzzle_light.position = Vector3(0.16, 1.34, -0.78)
 	_muzzle_light.light_color = Color(1.0, 0.78, 0.36)
@@ -249,7 +272,6 @@ func _build_character_rig() -> void:
 	_muzzle_light.visible = false
 	_body_root.add_child(_muzzle_light)
 
-	# Lanterna tatica [F]
 	_flashlight = SpotLight3D.new()
 	_flashlight.position = Vector3(0.22, 1.46, -0.24)
 	_flashlight.spot_range = 48.0
@@ -259,7 +281,6 @@ func _build_character_rig() -> void:
 	_flashlight.visible = false
 	_body_root.add_child(_flashlight)
 
-	# Nametag 3D
 	_name_label = Label3D.new()
 	_name_label.text = nick
 	_name_label.position = Vector3(0.0, 2.12, 0.0)
@@ -270,7 +291,6 @@ func _build_character_rig() -> void:
 
 
 func _build_omni_rig_parts() -> void:
-	# Materiais 1:1 do buildOmniCharacter()
 	var skin_mat := StandardMaterial3D.new()
 	skin_mat.albedo_color = Color.html("#c89679")
 	skin_mat.roughness = 0.76
@@ -302,7 +322,6 @@ func _build_omni_rig_parts() -> void:
 	lens_mat.roughness = 0.10
 	var chrome_mat := ProceduralTextures.get_chrome_mat()
 
-	# Pelve + Cinto Social + Fivela
 	_pelvis = Node3D.new()
 	_pelvis.position = Vector3(0.0, 0.93, 0.0)
 	_body_root.add_child(_pelvis)
@@ -310,7 +329,6 @@ func _build_omni_rig_parts() -> void:
 	_mk(_pelvis, _cyl(0.166, 0.165, 0.036), belt_mat, Vector3(0.0, 0.066, 0.0), Vector3.ZERO, Vector3(1.0, 1.0, 0.69))
 	_mk(_pelvis, _box(Vector3(0.052, 0.042, 0.016)), chrome_mat, Vector3(0.0, 0.066, -0.114))
 
-	# Coluna + Jaqueta Xadrez Vinho Aberta + Camisa Cinza + Golas
 	_spine = Node3D.new()
 	_spine.position = Vector3(0.0, 0.06, 0.0)
 	_pelvis.add_child(_spine)
@@ -323,7 +341,6 @@ func _build_omni_rig_parts() -> void:
 	_mk(_spine, _box(Vector3(0.354, 0.048, 0.15)), rib_mat, Vector3(0.0, 0.024, 0.042))
 	_mk(_spine, _box(Vector3(0.195, 0.062, 0.032)), jacket_mat, Vector3(0.0, 0.468, 0.068), Vector3(-0.16, 0.0, 0.0))
 
-	# Cabeca Esculpida + Oculos Wayfarer + Chapeu Pork-Pie
 	_head_pivot = Node3D.new()
 	_head_pivot.position = Vector3(0.0, 0.465, 0.0)
 	_spine.add_child(_head_pivot)
@@ -346,7 +363,6 @@ func _build_omni_rig_parts() -> void:
 	_mk(hat, _cyl(0.109, 0.122, 0.088), hat_mat, Vector3(0.0, 0.046, 0.0), Vector3.ZERO, Vector3(0.93, 1.0, 1.06))
 	_mk(hat, _cyl(0.121, 0.123, 0.022), hat_band_mat, Vector3(0.0, 0.018, 0.0), Vector3.ZERO, Vector3(0.935, 1.0, 1.065))
 
-	# Bracos articulados com ombro + cotovelo (para empunhadura realista de fuzil/pistola/volante!)
 	var arm_l_nodes: Array[Node3D] = _build_arm(-1.0, jacket_mat, rib_mat, skin_mat)
 	_arm_l = arm_l_nodes[0]
 	_elbow_l = arm_l_nodes[1]
@@ -354,7 +370,6 @@ func _build_omni_rig_parts() -> void:
 	_arm_r = arm_r_nodes[0]
 	_elbow_r = arm_r_nodes[1]
 
-	# Pivot dedicado da arma 3D na altura do ombro/peito (garante cano SEMPRE nivelado e nas 2 maos!)
 	_weapon_aim_pivot = Node3D.new()
 	_weapon_aim_pivot.position = Vector3(0.14, 0.34, -0.22)
 	_spine.add_child(_weapon_aim_pivot)
@@ -362,7 +377,6 @@ func _build_omni_rig_parts() -> void:
 	_tp_weapon_mount = Node3D.new()
 	_weapon_aim_pivot.add_child(_tp_weapon_mount)
 
-	# Pernas articuladas (Quadril + Joelho + Sapato)
 	var leg_l_nodes: Array[Node3D] = _build_leg(-1.0, pants_mat, shoe_mat, belt_mat)
 	_leg_l_hip = leg_l_nodes[0]
 	_leg_l_knee = leg_l_nodes[1]
@@ -451,7 +465,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var mm := event as InputEventMouseMotion
-		var sens: float = 0.0024 * lerpf(1.0, 0.42, _ads_alpha)
+		var sens: float = 0.0024 * lerpf(1.0, 0.40, _ads_alpha)
 		_yaw -= mm.relative.x * sens
 		_pitch = clampf(_pitch - mm.relative.y * sens, -1.22, 1.18)
 	elif event is InputEventMouseButton and event.pressed:
@@ -523,7 +537,6 @@ func _physics_process(delta: float) -> void:
 			reloading = false
 			mags[active_weapon_idx] = int(get_active_weapon_def()["mag_size"])
 
-	# Vitais de sobrevivencia (suaves; modo Deus mantem sempre cheio)
 	if god_mode:
 		hp = 200
 		stamina = 100.0
@@ -536,7 +549,7 @@ func _physics_process(delta: float) -> void:
 
 	var blocked: bool = _world != null and _world.is_ui_blocking()
 	var aiming: bool = (not blocked) and (not is_dead) and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and (current_vehicle == null or current_seat > 0)
-	_ads_alpha = lerpf(_ads_alpha, 1.0 if aiming else 0.0, minf(1.0, delta * 12.0))
+	_ads_alpha = lerpf(_ads_alpha, 1.0 if aiming else 0.0, minf(1.0, delta * 14.0))
 
 	var move_spd: float = 0.0
 	if not blocked and not is_dead:
@@ -546,6 +559,7 @@ func _physics_process(delta: float) -> void:
 		else:
 			_is_sprinting = false
 			_local_move_vel = Vector2.ZERO
+			_air_time = 0.0
 			stamina = minf(100.0, stamina + delta * 16.0)
 			if current_seat == 0:
 				var thr: float = (1.0 if Input.is_key_pressed(KEY_W) else 0.0) - (1.0 if Input.is_key_pressed(KEY_S) else 0.0)
@@ -582,7 +596,6 @@ func _tick_trigger() -> void:
 
 
 func _tick_foot_movement(delta: float) -> float:
-	# Raiz do personagem nao trava mais na camera: o corpo gira livremente com W/A/S/D!
 	rotation = Vector3.ZERO
 	var fwd_in: float = (1.0 if Input.is_key_pressed(KEY_W) else 0.0) - (1.0 if Input.is_key_pressed(KEY_S) else 0.0)
 	var str_in: float = (1.0 if Input.is_key_pressed(KEY_D) else 0.0) - (1.0 if Input.is_key_pressed(KEY_A) else 0.0)
@@ -598,7 +611,6 @@ func _tick_foot_movement(delta: float) -> float:
 
 	_crouch_alpha = lerpf(_crouch_alpha, 1.0 if crouch else 0.0, minf(1.0, delta * 10.0))
 
-	# Direcao de movimento relativa ao yaw da camera (_yaw)
 	var cam_fwd := Vector3(-sin(_yaw), 0.0, -cos(_yaw))
 	var cam_right := Vector3(cos(_yaw), 0.0, -sin(_yaw))
 	var move_dir: Vector3 = cam_fwd * fwd_in + cam_right * str_in
@@ -614,9 +626,6 @@ func _tick_foot_movement(delta: float) -> float:
 	velocity.x = lerpf(velocity.x, target_vx, minf(1.0, delta * accel_k))
 	velocity.z = lerpf(velocity.z, target_vz, minf(1.0, delta * accel_k))
 
-	# Decisao de orientacao do corpo (_body_yaw):
-	# - Em 1P, mirando (RMB), ou logo apos atirar: corpo alinha a mira (strafing tatico lateral!)
-	# - Em 3P exploracao livre: corpo gira suavemente para a direcao real do movimento (A=esquerda, D=direita, S=tras)!
 	var lock_to_aim: bool = _first_person or _ads_alpha > 0.15 or _combat_stance_t > 0.0
 	if lock_to_aim:
 		_body_yaw = lerp_angle(_body_yaw, _yaw, minf(1.0, delta * 16.0))
@@ -626,15 +635,18 @@ func _tick_foot_movement(delta: float) -> float:
 
 	_body_root.rotation.y = _body_yaw
 
-	# Calcula velocidade local (frente/tras e esquerda/direita) em relacao ao corpo para strafing fluido
 	var body_fwd := Vector3(-sin(_body_yaw), 0.0, -cos(_body_yaw))
 	var body_right := Vector3(cos(_body_yaw), 0.0, -sin(_body_yaw))
 	var h_vel := Vector3(velocity.x, 0.0, velocity.z)
 	_local_move_vel = Vector2(h_vel.dot(body_right), h_vel.dot(body_fwd))
 
 	var on_floor_now: bool = is_on_floor()
-	if on_floor_now and not _was_on_floor:
-		_land_dip = 0.16
+	if on_floor_now:
+		if not _was_on_floor:
+			_land_dip = 0.16
+		_air_time = 0.0
+	else:
+		_air_time += delta
 	_was_on_floor = on_floor_now
 
 	if on_floor_now:
@@ -651,27 +663,29 @@ func _animate_character(delta: float, h_spd: float) -> void:
 	if _body_root == null:
 		return
 
-	# Controla visibilidade da arma 3P: MOTORISTA/PILOTO (assento 0) GUARDA A ARMA!
+	_idle_phase += delta * 2.2
+	if h_spd > 0.20 and is_on_floor() and current_vehicle == null:
+		_walk_phase += delta * clampf(h_spd * 2.15, 4.5, 14.5)
+
 	var in_driver_seat: bool = (current_vehicle != null and current_seat == 0)
 	if _weapon_aim_pivot != null:
-		_weapon_aim_pivot.visible = not in_driver_seat and not is_dead
+		_weapon_aim_pivot.visible = (not in_driver_seat) and (not is_dead)
 
-	# Se um modelo 3D externo (.glb/.tscn) com AnimationPlayer foi carregado, dirige seus clips
 	if _ext_model != null:
 		if current_vehicle != null:
 			_body_root.position.y = -0.34 if current_vehicle.is_moto else -0.64
 		else:
-			_body_root.position.y = lerpf(0.0, -0.30, _crouch_alpha)
+			# NUNCA abaixa _body_root.y ao agachar no rig Quaternius (a animacao Crouch ja dobra as pernas!)
+			_body_root.position.y = 0.0
 		_drive_external_animations(h_spd)
+		_update_ext_weapon_pose(delta, h_spd)
 		return
 
 	if _leg_l_hip == null or _leg_r_hip == null or _pelvis == null or _spine == null:
 		return
 
-	_idle_phase += delta * 2.2
 	var lerp_k: float = minf(1.0, delta * 13.0)
 
-	# 1. MORTE
 	if is_dead:
 		_body_root.position.y = lerpf(_body_root.position.y, 0.18, lerp_k)
 		_body_root.rotation.x = lerpf(_body_root.rotation.x, deg_to_rad(86.0), lerp_k)
@@ -679,13 +693,11 @@ func _animate_character(delta: float, h_spd: float) -> void:
 	else:
 		_body_root.rotation.x = lerpf(_body_root.rotation.x, 0.0, lerp_k)
 
-	# 2. DENTRO DE VEICULO (CORRECAO TOTAL: cabeca dentro do teto + maos no volante/guidao!)
 	if current_vehicle != null:
 		var steer_v: float = current_vehicle.steer_smooth
 		_pelvis.position.y = 0.93
 		_pelvis.rotation = Vector3.ZERO
 		if current_vehicle.is_moto:
-			# Postura realista montado na moto
 			_body_root.position.y = -0.36
 			_spine.rotation = Vector3(deg_to_rad(-18.0 if current_seat == 0 else -10.0), 0.0, 0.0)
 			_head_pivot.rotation = Vector3(deg_to_rad(10.0), clampf(steer_v * 0.28, -0.3, 0.3), 0.0)
@@ -701,7 +713,6 @@ func _animate_character(delta: float, h_spd: float) -> void:
 			else:
 				_pose_weapon_arms(lerp_k, true)
 		else:
-			# Sentado DENTRO do carro (assento Y=0.28 + body Y=-0.64 -> topo do chapeu em 1.44m < teto 1.53m!)
 			_body_root.position.y = -0.64
 			_spine.rotation = Vector3(deg_to_rad(6.0), 0.0, 0.0)
 			_head_pivot.rotation = Vector3(deg_to_rad(-4.0), clampf(steer_v * 0.22, -0.25, 0.25), 0.0)
@@ -710,7 +721,6 @@ func _animate_character(delta: float, h_spd: float) -> void:
 			_leg_l_knee.rotation.x = deg_to_rad(-82.0)
 			_leg_r_knee.rotation.x = deg_to_rad(-82.0)
 			if current_seat == 0:
-				# Duas maos segurando o volante (sem arma atravessando o painel!)
 				_arm_l.rotation = Vector3(deg_to_rad(54.0 + steer_v * 10.0), deg_to_rad(-12.0), deg_to_rad(14.0))
 				_elbow_l.rotation = Vector3(deg_to_rad(30.0), 0.0, 0.0)
 				_arm_r.rotation = Vector3(deg_to_rad(54.0 - steer_v * 10.0), deg_to_rad(12.0), deg_to_rad(-14.0))
@@ -719,24 +729,18 @@ func _animate_character(delta: float, h_spd: float) -> void:
 				_pose_weapon_arms(lerp_k, true)
 		return
 
-	# 3. LOCOMOCAO A PE (FLUIDA, DIRECAO LIVRE + STRAFING TATICO!)
-	var in_air: bool = not is_on_floor() and is_local_player()
+	var in_air: bool = _air_time > 0.12 and is_local_player()
 	var stride_norm: float = clampf(h_spd / 7.8, 0.0, 1.0)
 	var fwd_v: float = _local_move_vel.y
 	var side_v: float = _local_move_vel.x
 	var is_combat: bool = _ads_alpha > 0.15 or _combat_stance_t > 0.0 or _first_person
-
-	if h_spd > 0.20 and not in_air:
-		_walk_phase += delta * clampf(h_spd * 2.15, 4.5, 14.5)
 	var sw: float = sin(_walk_phase)
 	var cw: float = cos(_walk_phase)
 
-	# Altura da pelve (agachar + passo natural + aterrissagem + respiracao)
 	var bob_y: float = (absf(sw) * 0.045 * stride_norm) if (h_spd > 0.20 and not in_air) else (sin(_idle_phase) * 0.010)
 	var target_root_y: float = lerpf(0.0, -0.34, _crouch_alpha) - _land_dip + bob_y
 	_body_root.position.y = lerpf(_body_root.position.y, target_root_y, lerp_k)
 
-	# Giro sutil de quadril no strafe + contrarrotacao da coluna para manter mira reta
 	var strafe_ratio: float = clampf(side_v / 4.8, -1.0, 1.0)
 	var fwd_ratio: float = clampf(fwd_v / 6.5, -1.0, 1.0)
 	var pelvis_twist: float = -strafe_ratio * 0.30 if is_combat else (sw * 0.06 * stride_norm)
@@ -749,13 +753,11 @@ func _animate_character(delta: float, h_spd: float) -> void:
 	_spine.rotation.y = lerpf(_spine.rotation.y, -pelvis_twist * 0.85, lerp_k)
 	_spine.rotation.z = lerpf(_spine.rotation.z, lean_side, lerp_k)
 
-	# Cabeca olha levemente na direcao da camera/mira
 	var head_yaw_diff: float = wrapf(_yaw - _body_yaw, -PI, PI)
 	var target_head_y: float = clampf(head_yaw_diff * 0.55, -0.65, 0.65)
 	_head_pivot.rotation.y = lerpf(_head_pivot.rotation.y, target_head_y, lerp_k)
 	_head_pivot.rotation.x = lerpf(_head_pivot.rotation.x, clampf(_pitch * 0.50, -0.5, 0.5), lerp_k)
 
-	# Pernas: Pulo / Agachado / Corrida & Strafing Lateral real!
 	if in_air:
 		_leg_l_hip.rotation = _leg_l_hip.rotation.lerp(Vector3(deg_to_rad(32.0), 0.0, deg_to_rad(-4.0)), lerp_k)
 		_leg_r_hip.rotation = _leg_r_hip.rotation.lerp(Vector3(deg_to_rad(14.0), 0.0, deg_to_rad(4.0)), lerp_k)
@@ -781,7 +783,6 @@ func _animate_character(delta: float, h_spd: float) -> void:
 		_leg_l_knee.rotation.x = lerpf(_leg_l_knee.rotation.x, l_knee, lerp_k)
 		_leg_r_knee.rotation.x = lerpf(_leg_r_knee.rotation.x, r_knee, lerp_k)
 	else:
-		# Parado em pe ou agachado tatico
 		var l_idle_hip := Vector3(deg_to_rad(44.0) * _crouch_alpha, 0.0, deg_to_rad(-4.0))
 		var r_idle_hip := Vector3(deg_to_rad(34.0) * _crouch_alpha, 0.0, deg_to_rad(4.0))
 		_leg_l_hip.rotation = _leg_l_hip.rotation.lerp(l_idle_hip, lerp_k)
@@ -789,8 +790,63 @@ func _animate_character(delta: float, h_spd: float) -> void:
 		_leg_l_knee.rotation.x = lerpf(_leg_l_knee.rotation.x, deg_to_rad(-82.0) * _crouch_alpha, lerp_k)
 		_leg_r_knee.rotation.x = lerpf(_leg_r_knee.rotation.x, deg_to_rad(-66.0) * _crouch_alpha, lerp_k)
 
-	# 4. POSICIONAMENTO DA ARMA NAS 2 MAOS + BRACOS ARTICULADOS
 	_pose_weapon_arms(lerp_k, is_combat)
+
+
+func _update_ext_weapon_pose(delta: float, h_spd: float) -> void:
+	## Posiciona a arma 3P no espaco do corpo (_body_root, onde -Z = frente) seguindo
+	## a altura real do peito/mao do rig Quaternius — NUNCA aponta para o ceu nem para o chao!
+	if _weapon_aim_pivot == null or not _weapon_aim_pivot.visible:
+		return
+	var w: Dictionary = get_active_weapon_def()
+	var is_melee: bool = bool(w["melee"])
+	var two_hand: bool = bool(w["two_hand"])
+	var is_combat: bool = _ads_alpha > 0.15 or _combat_stance_t > 0.0
+	var lerp_k: float = minf(1.0, delta * 18.0)
+
+	# Altura base real do tronco (desce automaticamente quando o boneco agacha ou senta!)
+	var chest_local := Vector3(0.0, lerpf(1.26, 0.88, _crouch_alpha), 0.0)
+	if _chest_anchor != null and _chest_anchor.is_inside_tree():
+		chest_local = _body_root.to_local(_chest_anchor.global_position)
+
+	var aim_p: float = clampf(_pitch * 0.72, -0.62, 0.62) if is_combat else 0.0
+	var sway_y: float = sin(_walk_phase) * 0.03 * clampf(h_spd / 6.0, 0.0, 1.0)
+	var rel_rot_z: float = 0.45 if reloading else 0.0
+	var rel_drop: float = -0.08 if reloading else 0.0
+
+	var target_pos: Vector3
+	var target_rot: Vector3
+
+	if is_melee:
+		var hand_local := Vector3(0.24, chest_local.y - 0.14, -0.18)
+		if _hand_anchor != null and _hand_anchor.is_inside_tree():
+			hand_local = _body_root.to_local(_hand_anchor.global_position)
+		var slash_x: float = 0.0
+		var slash_y: float = 0.0
+		if _melee_swing_t > 0.0:
+			var u: float = 1.0 - clampf(_melee_swing_t / 0.28, 0.0, 1.0)
+			var arc: float = sin(u * PI)
+			slash_x = -arc * 1.15
+			slash_y = (u - 0.5) * 1.75
+		target_pos = hand_local + Vector3(0.0, 0.02, -0.06)
+		target_rot = Vector3(deg_to_rad(-10.0) + slash_x, deg_to_rad(-6.0) + slash_y, deg_to_rad(-10.0))
+	elif two_hand:
+		if is_combat:
+			target_pos = Vector3(0.18, chest_local.y + 0.05 + rel_drop, -0.28 + _recoil_kick * 0.06)
+			target_rot = Vector3(aim_p + _recoil_kick * 0.22, sway_y, rel_rot_z)
+		else:
+			target_pos = Vector3(0.20, chest_local.y - 0.05 + rel_drop, -0.24)
+			target_rot = Vector3(deg_to_rad(-12.0), deg_to_rad(20.0) + sway_y, rel_rot_z)
+	else:
+		if is_combat:
+			target_pos = Vector3(0.18, chest_local.y + 0.08 + rel_drop, -0.36 + _recoil_kick * 0.05)
+			target_rot = Vector3(aim_p + _recoil_kick * 0.26, sway_y, rel_rot_z)
+		else:
+			target_pos = Vector3(0.25, chest_local.y - 0.14 + rel_drop, -0.22)
+			target_rot = Vector3(deg_to_rad(-18.0), deg_to_rad(8.0) + sway_y, rel_rot_z)
+
+	_weapon_aim_pivot.position = _weapon_aim_pivot.position.lerp(target_pos, lerp_k)
+	_weapon_aim_pivot.rotation = _weapon_aim_pivot.rotation.lerp(target_rot, lerp_k)
 
 
 func _pose_weapon_arms(lerp_k: float, is_combat: bool) -> void:
@@ -800,7 +856,6 @@ func _pose_weapon_arms(lerp_k: float, is_combat: bool) -> void:
 	var aim_p: float = clampf(_pitch * 0.72, -0.68, 0.68) if is_combat else clampf(_pitch * 0.25, -0.25, 0.25)
 	var walk_sway: float = sin(_walk_phase) * 0.03 * clampf(Vector2(velocity.x, velocity.z).length() / 6.0, 0.0, 1.0)
 
-	# Calcula swing de faca/katana ou inclinacao de recarga
 	var slash_rot_x: float = 0.0
 	var slash_rot_y: float = 0.0
 	if _melee_swing_t > 0.0:
@@ -819,7 +874,6 @@ func _pose_weapon_arms(lerp_k: float, is_combat: bool) -> void:
 			target_wp_pos = Vector3(0.24, 0.22 + rel_drop_y, -0.22)
 			target_wp_rot = Vector3(deg_to_rad(-18.0) + slash_rot_x, deg_to_rad(-10.0) + slash_rot_y, deg_to_rad(-8.0))
 		elif two_hand:
-			# Fuzil / SMG / Escopeta / Sniper encostado no ombro direito e apoiado na mao esquerda!
 			var ready_pos := Vector3(0.14, 0.30 + rel_drop_y, -0.24 + _recoil_kick * 0.07)
 			var ads_pos := Vector3(0.11, 0.35 + rel_drop_y, -0.21 + _recoil_kick * 0.05)
 			var relaxed_pos := Vector3(0.15, 0.25 + rel_drop_y, -0.22)
@@ -828,7 +882,6 @@ func _pose_weapon_arms(lerp_k: float, is_combat: bool) -> void:
 			var relaxed_yaw: float = deg_to_rad(22.0) if not is_combat else 0.0
 			target_wp_rot = Vector3(relaxed_pitch + _recoil_kick * 0.22, relaxed_yaw + walk_sway, rel_rot_z)
 		else:
-			# Pistola / Revolver na linha dos olhos em combate, abaixada com naturalidade ao explorar
 			var p_combat := Vector3(0.15, 0.34 + rel_drop_y, -0.32 + _recoil_kick * 0.06)
 			var p_relax := Vector3(0.21, 0.22 + rel_drop_y, -0.24)
 			target_wp_pos = p_combat if is_combat else p_relax
@@ -837,7 +890,6 @@ func _pose_weapon_arms(lerp_k: float, is_combat: bool) -> void:
 		_weapon_aim_pivot.position = _weapon_aim_pivot.position.lerp(target_wp_pos, lerp_k)
 		_weapon_aim_pivot.rotation = _weapon_aim_pivot.rotation.lerp(target_wp_rot, lerp_k)
 
-	# Posicao dos bracos direito e esquerdo acompanhando a empunhadura da arma!
 	if is_melee:
 		_arm_r.rotation = _arm_r.rotation.lerp(Vector3(deg_to_rad(36.0) + slash_rot_x * 0.8, slash_rot_y * 0.5, deg_to_rad(-12.0)), lerp_k)
 		_elbow_r.rotation = _elbow_r.rotation.lerp(Vector3(deg_to_rad(42.0), 0.0, 0.0), lerp_k)
@@ -845,10 +897,8 @@ func _pose_weapon_arms(lerp_k: float, is_combat: bool) -> void:
 		_arm_l.rotation = _arm_l.rotation.lerp(Vector3(l_swing, 0.0, deg_to_rad(-8.0)), lerp_k)
 		_elbow_l.rotation = _elbow_l.rotation.lerp(Vector3(deg_to_rad(18.0), 0.0, 0.0), lerp_k)
 	elif two_hand:
-		# Braco direito dobra no cotovelo segurando o pistol grip
 		var r_sh := Vector3(deg_to_rad(48.0 if is_combat else 30.0) + aim_p * 0.55 + _recoil_kick * 0.25, deg_to_rad(-14.0), deg_to_rad(-10.0))
 		var r_el := Vector3(deg_to_rad(56.0 if is_combat else 46.0), 0.0, deg_to_rad(14.0))
-		# Braco esquerdo cruza a frente segurando o guarda-mao (foregrip) — ou desce ao recarregar!
 		var l_sh := Vector3(deg_to_rad(58.0 if is_combat else 40.0) + aim_p * 0.45, deg_to_rad(28.0 if is_combat else 34.0), deg_to_rad(22.0))
 		var l_el := Vector3(deg_to_rad(48.0 if not reloading else 82.0), deg_to_rad(16.0), 0.0)
 		_arm_r.rotation = _arm_r.rotation.lerp(r_sh, lerp_k)
@@ -856,7 +906,6 @@ func _pose_weapon_arms(lerp_k: float, is_combat: bool) -> void:
 		_arm_l.rotation = _arm_l.rotation.lerp(l_sh, lerp_k)
 		_elbow_l.rotation = _elbow_l.rotation.lerp(l_el, lerp_k)
 	else:
-		# Pistola: 2 maos juntas em combate, braco esquerdo livre ao caminhar!
 		var r_sh := Vector3(deg_to_rad(72.0 if is_combat else 26.0) + aim_p * 0.65 + _recoil_kick * 0.30, deg_to_rad(-8.0), deg_to_rad(-6.0))
 		var r_el := Vector3(deg_to_rad(18.0 if is_combat else 28.0), 0.0, 0.0)
 		_arm_r.rotation = _arm_r.rotation.lerp(r_sh, lerp_k)
@@ -871,54 +920,65 @@ func _pose_weapon_arms(lerp_k: float, is_combat: bool) -> void:
 
 
 func _drive_external_animations(h_spd: float) -> void:
+	## Maquina de estados EXCLUSIVA: apenas 1 animacao toca por vez, com match EXATO + exclusao de crouch!
 	if _ext_anim == null:
 		return
 	var desired: String = ""
 	var speed_scale: float = 1.0
-	var in_air: bool = (current_vehicle == null) and (not is_on_floor()) and is_local_player()
+	var is_one_shot: bool = false
+	var force_restart: bool = false
+	var in_air: bool = (current_vehicle == null) and (_air_time > 0.14) and is_local_player()
 
 	if is_dead:
-		desired = AssetBridge.find_best_anim_name(_ext_anim, ["death01", "death", "die"])
+		desired = AssetBridge.find_best_anim_name(_ext_anim, ["Death01", "Death_01", "Death", "Die"], ["loop"])
+		is_one_shot = true
 	elif current_vehicle != null:
-		desired = AssetBridge.find_best_anim_name(_ext_anim, ["sitting_idle", "sitting", "sit", "crouch_idle", "idle_loop", "idle"])
+		desired = AssetBridge.find_best_anim_name(_ext_anim, ["Sitting_Idle_Loop", "Sitting_Loop", "Sitting_Idle", "Sit_Loop", "Sit"], ["stand", "enter", "exit"])
 	elif _melee_swing_t > 0.0:
-		desired = AssetBridge.find_best_anim_name(_ext_anim, ["sword_attack", "slash", "punch", "attack"])
-		speed_scale = 1.35
-	elif reloading:
-		desired = AssetBridge.find_best_anim_name(_ext_anim, ["reload", "interact", "idle_loop", "idle"])
+		desired = AssetBridge.find_best_anim_name(_ext_anim, ["Sword_Attack", "Sword_Slash", "Punch_Jab", "Punch_Cross", "Attack"], STAND_EXCLUDE)
+		speed_scale = 1.4
+		is_one_shot = true
+		if _melee_swing_seq != _last_melee_anim_seq:
+			_last_melee_anim_seq = _melee_swing_seq
+			force_restart = true
 	elif in_air:
-		desired = AssetBridge.find_best_anim_name(_ext_anim, ["jump_loop", "jump_start", "jump"])
+		desired = AssetBridge.find_best_anim_name(_ext_anim, ["Jump_Loop", "Jump_Idle", "Jump_Start", "Jump"], STAND_EXCLUDE)
 	elif _crouch_alpha > 0.45:
-		if h_spd > 0.30:
-			desired = AssetBridge.find_best_anim_name(_ext_anim, ["crouch_fwd", "crouch_walk", "crouch"])
-			speed_scale = clampf(h_spd / 2.6, 0.75, 1.4)
+		if h_spd > 0.35:
+			desired = AssetBridge.find_best_anim_name(_ext_anim, ["Crouch_Fwd_Loop", "Crouch_Walk_Loop", "Crouch_Walk", "Crouch_Fwd"], ["idle"])
+			speed_scale = clampf(h_spd / 2.6, 0.78, 1.35)
 		else:
-			desired = AssetBridge.find_best_anim_name(_ext_anim, ["crouch_idle", "crouch", "kneel"])
-	elif h_spd > 0.30:
+			desired = AssetBridge.find_best_anim_name(_ext_anim, ["Crouch_Idle_Loop", "Crouch_Idle"], ["fwd", "walk", "run"])
+	elif h_spd > 0.35:
 		var combat: bool = _ads_alpha > 0.15 or _combat_stance_t > 0.0
-		if combat and absf(_local_move_vel.x) > absf(_local_move_vel.y) * 1.15:
-			desired = AssetBridge.find_best_anim_name(_ext_anim, ["strafe_right", "right", "walk_loop", "walk"] if _local_move_vel.x > 0.0 else ["strafe_left", "left", "walk_loop", "walk"])
-			speed_scale = clampf(h_spd / 3.8, 0.8, 1.35)
-		elif combat and _local_move_vel.y < -0.35:
-			desired = AssetBridge.find_best_anim_name(_ext_anim, ["walk_back", "run_back", "back", "walk_loop", "walk"])
+		if combat and _local_move_vel.y < -0.45:
+			desired = AssetBridge.find_best_anim_name(_ext_anim, ["Walk_Back_Loop", "Walk_Loop", "Walk_Fwd_Loop"], STAND_EXCLUDE)
 			speed_scale = -1.0 if not ("back" in desired.to_lower()) else 1.0
-		elif _is_sprinting or h_spd > 6.0:
-			desired = AssetBridge.find_best_anim_name(_ext_anim, ["sprint_loop", "sprint", "jog_fwd_loop", "run_fwd", "run"])
-			speed_scale = clampf(h_spd / 7.2, 0.9, 1.35)
+		elif _is_sprinting or h_spd > 6.2:
+			desired = AssetBridge.find_best_anim_name(_ext_anim, ["Sprint_Loop", "Sprint", "Jog_Fwd_Loop", "Run_Fwd_Loop"], STAND_EXCLUDE)
+			speed_scale = clampf(h_spd / 7.2, 0.9, 1.32)
 		elif h_spd > 3.9:
-			desired = AssetBridge.find_best_anim_name(_ext_anim, ["jog_fwd_loop", "jog", "walk_loop", "walk_fwd", "walk"])
+			desired = AssetBridge.find_best_anim_name(_ext_anim, ["Jog_Fwd_Loop", "Jog_Loop", "Walk_Loop", "Walk_Fwd_Loop"], STAND_EXCLUDE)
 			speed_scale = clampf(h_spd / 5.0, 0.85, 1.25)
 		else:
-			desired = AssetBridge.find_best_anim_name(_ext_anim, ["walk_loop", "walk_fwd", "walk"])
-			speed_scale = clampf(h_spd / 3.2, 0.75, 1.25)
+			desired = AssetBridge.find_best_anim_name(_ext_anim, ["Walk_Loop", "Walk_Fwd_Loop", "Walk"], STAND_EXCLUDE)
+			speed_scale = clampf(h_spd / 3.2, 0.78, 1.25)
 	else:
-		desired = AssetBridge.find_best_anim_name(_ext_anim, ["rifle_idle", "idle_loop", "idle"])
+		# Parado em pe: NUNCA pega Crouch_Idle_Loop!
+		var w: Dictionary = get_active_weapon_def()
+		if (_ads_alpha > 0.25 or _combat_stance_t > 0.0) and not bool(w["melee"]):
+			desired = AssetBridge.find_best_anim_name(_ext_anim, ["Pistol_Idle", "Pistol_Aim", "Rifle_Idle", "Idle_Loop", "Idle"], STAND_EXCLUDE)
+		else:
+			desired = AssetBridge.find_best_anim_name(_ext_anim, ["Idle_Loop", "Idle"], STAND_EXCLUDE)
 
 	if not desired.is_empty():
 		_ext_anim.speed_scale = speed_scale
-		if desired != _ext_cur_anim or not _ext_anim.is_playing():
+		if force_restart or desired != _ext_cur_anim or (not is_one_shot and not _ext_anim.is_playing()):
 			_ext_cur_anim = desired
-			_ext_anim.play(desired, 0.14)
+			_ext_is_one_shot = is_one_shot
+			if force_restart:
+				_ext_anim.stop(false)
+			_ext_anim.play(desired, 0.12 if not force_restart else 0.05)
 
 
 func _update_camera_and_viewmodel(delta: float, move_spd: float) -> void:
@@ -926,8 +986,9 @@ func _update_camera_and_viewmodel(delta: float, move_spd: float) -> void:
 		return
 
 	var w: Dictionary = get_active_weapon_def()
+	var is_melee: bool = bool(w["melee"])
 	var target_fov: float = lerpf(72.0, float(w["ads_fov"]), _ads_alpha)
-	_cam.fov = lerpf(_cam.fov, target_fov, minf(1.0, delta * 14.0))
+	_cam.fov = lerpf(_cam.fov, target_fov, minf(1.0, delta * 15.0))
 
 	if current_vehicle != null:
 		_cam_pivot.global_position = current_vehicle.global_position + Vector3(0.0, 1.48 if current_vehicle.is_moto else 1.82, 0.0)
@@ -938,23 +999,36 @@ func _update_camera_and_viewmodel(delta: float, move_spd: float) -> void:
 			_fp_weapon_mount.visible = false
 		return
 
-	# Pivot da camera acompanha altura (em pe / agachado) e orbita livremente em torno do jogador!
 	_cam_pivot.position = Vector3(0.0, lerpf(1.62, 1.18, _crouch_alpha), 0.0)
 	_cam_pivot.rotation = Vector3(_pitch, _yaw, 0.0)
 	var scoped: bool = is_sniper_scoped()
 	var use_fp: bool = _first_person or scoped
 
 	if use_fp:
-		_cam.position = Vector3(0.0, 0.02, -0.10)
+		_cam.position = Vector3(0.0, 0.02, -0.06)
 		_body_root.visible = false
 		if _fp_weapon_mount != null:
 			_fp_weapon_mount.visible = not scoped
-			var bob_x: float = cos(_walk_phase * 0.5) * 0.012 * clampf(move_spd / 5.0, 0.0, 1.0)
-			var bob_y: float = absf(sin(_walk_phase * 0.5)) * 0.014 * clampf(move_spd / 5.0, 0.0, 1.0)
-			var hip_pos := Vector3(0.24 + bob_x, -0.21 - bob_y, -0.44 + _recoil_kick * 0.10)
-			var ads_pos := Vector3(0.0, -0.145, -0.34 + _recoil_kick * 0.06)
-			_fp_weapon_mount.position = hip_pos.lerp(ads_pos, _ads_alpha)
-			_fp_weapon_mount.rotation.x = _recoil_kick * 0.22
+			var sway_scale: float = lerpf(1.0, 0.18, _ads_alpha)
+			var bob_x: float = cos(_walk_phase * 0.5) * 0.011 * clampf(move_spd / 5.0, 0.0, 1.0) * sway_scale
+			var bob_y: float = absf(sin(_walk_phase * 0.5)) * 0.013 * clampf(move_spd / 5.0, 0.0, 1.0) * sway_scale
+			var hip_base: Vector3 = w.get("fp_hip_pos", Vector3(0.24, -0.21, -0.44)) as Vector3
+			var ads_base: Vector3 = w.get("fp_ads_pos", Vector3(0.0, -0.13, -0.40)) as Vector3
+			var rel_drop: float = -0.11 if reloading else 0.0
+			var hip_pos := hip_base + Vector3(bob_x, -bob_y + rel_drop, _recoil_kick * 0.09)
+			var ads_pos := ads_base + Vector3(bob_x * 0.3, -bob_y * 0.3 + rel_drop, _recoil_kick * 0.05)
+
+			var target_fp_pos: Vector3 = hip_pos.lerp(ads_pos, _ads_alpha)
+			var target_fp_rot := Vector3(_recoil_kick * lerpf(0.22, 0.10, _ads_alpha), 0.0, 0.38 if reloading else 0.0)
+
+			if is_melee and _melee_swing_t > 0.0:
+				var u: float = 1.0 - clampf(_melee_swing_t / 0.28, 0.0, 1.0)
+				var arc: float = sin(u * PI)
+				target_fp_pos += Vector3(-arc * 0.22, -arc * 0.06, -arc * 0.12)
+				target_fp_rot = Vector3(-arc * 0.85, (u - 0.5) * 1.45, -arc * 0.65)
+
+			_fp_weapon_mount.position = _fp_weapon_mount.position.lerp(target_fp_pos, minf(1.0, delta * 22.0))
+			_fp_weapon_mount.rotation = _fp_weapon_mount.rotation.lerp(target_fp_rot, minf(1.0, delta * 24.0))
 	else:
 		_body_root.visible = true
 		if _fp_weapon_mount != null:
@@ -978,23 +1052,24 @@ func _fire_weapon() -> void:
 			mags[active_weapon_idx] -= 1
 	else:
 		_melee_swing_t = 0.28
-		if _world.audio_3d != null:
-			_world.audio_3d.play_melee_3d(global_position, false)
+		_melee_swing_seq += 1
 
 	_combat_stance_t = 1.65
 	_fire_cd = float(w["cooldown"])
-	var recoil: float = float(w["recoil"]) * lerpf(1.0, 0.58, _ads_alpha)
-	_pitch = clampf(_pitch + recoil, -1.22, 1.18)
-	_yaw += randf_range(-recoil * 0.35, recoil * 0.35)
-	_recoil_kick = minf(1.0, _recoil_kick + 0.55)
-	if not is_melee and _muzzle_light != null:
-		_muzzle_light.visible = true
-		_muzzle_flash_t = 0.055
+	if not is_melee:
+		var recoil: float = float(w["recoil"]) * lerpf(1.0, 0.52, _ads_alpha)
+		_pitch = clampf(_pitch + recoil, -1.22, 1.18)
+		_yaw += randf_range(-recoil * 0.30, recoil * 0.30)
+		_recoil_kick = minf(1.0, _recoil_kick + 0.55)
+		if _muzzle_light != null:
+			_muzzle_light.visible = true
+			_muzzle_flash_t = 0.055
 
 	var spread: float = lerpf(float(w["spread"]), float(w["ads_spread"]), _ads_alpha)
 	var pellets: int = int(w["pellets"])
 	var snd: String = "suppressed" if (suppressed and not is_melee) else str(w["sound"])
-	var origin: Vector3 = _cam.global_position + (-_cam.global_transform.basis.z) * 0.55
+	# Origem exata na camera (exclui o proprio jogador -> acerta alvos colados e mira 1P 100% precisa!)
+	var origin: Vector3 = _cam.global_position
 	var base_dir: Vector3 = -_cam.global_transform.basis.z.normalized()
 	var right_v: Vector3 = _cam.global_transform.basis.x
 	var up_v: Vector3 = _cam.global_transform.basis.y

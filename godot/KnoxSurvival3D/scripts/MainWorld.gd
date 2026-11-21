@@ -96,6 +96,8 @@ var _dev_time_val_lbl: Label
 
 # Mira / Scope / Hitmarker / Inputs
 var _crosshair_root: Control
+var _ch_ticks: Array[ColorRect] = []
+var _ch_dot: ColorRect
 var _scope_overlay: Control
 var _hitmarker: ColorRect
 var _hitmarker_t: float = 0.0
@@ -259,36 +261,66 @@ func _build_ui() -> void:
 	_hud_layer = CanvasLayer.new()
 	add_child(_hud_layer)
 
-	# 1. OVERLAY DE MIRA SNIPER SR-76
+	# 1. OVERLAY DE MIRA SNIPER SR-76 (luneta tatica com bordas escuras + reticulo mil-dot + ponto vermelho)
 	_scope_overlay = Control.new()
 	_scope_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_scope_overlay.visible = false
 	_scope_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud_layer.add_child(_scope_overlay)
+
+	for mask_def in [
+		[0.0, 0.0, 1.0, 0.14],
+		[0.0, 0.86, 1.0, 1.0],
+		[0.0, 0.14, 0.24, 0.86],
+		[0.76, 0.14, 1.0, 0.86]
+	]:
+		var m := ColorRect.new()
+		m.color = Color(0.0, 0.0, 0.0, 0.94)
+		m.anchor_left = mask_def[0]
+		m.anchor_top = mask_def[1]
+		m.anchor_right = mask_def[2]
+		m.anchor_bottom = mask_def[3]
+		m.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_scope_overlay.add_child(m)
+
 	var hline := ColorRect.new()
-	hline.color = Color(0.0, 0.0, 0.0, 0.85)
-	hline.anchor_left = 0.0
-	hline.anchor_right = 1.0
+	hline.color = Color(0.0, 0.0, 0.0, 0.88)
+	hline.anchor_left = 0.24
+	hline.anchor_right = 0.76
 	hline.anchor_top = 0.5
 	hline.anchor_bottom = 0.5
 	hline.offset_top = -1
 	hline.offset_bottom = 1
+	hline.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_scope_overlay.add_child(hline)
+
 	var vline := ColorRect.new()
-	vline.color = Color(0.0, 0.0, 0.0, 0.85)
+	vline.color = Color(0.0, 0.0, 0.0, 0.88)
 	vline.anchor_left = 0.5
 	vline.anchor_right = 0.5
-	vline.anchor_top = 0.0
-	vline.anchor_bottom = 1.0
+	vline.anchor_top = 0.14
+	vline.anchor_bottom = 0.86
 	vline.offset_left = -1
 	vline.offset_right = 1
+	vline.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_scope_overlay.add_child(vline)
 
-	# 2. MIRA TATICA 4 LINHAS + HITMARKER
+	var sdot := ColorRect.new()
+	sdot.color = Color(1.0, 0.18, 0.16, 0.96)
+	sdot.set_anchors_preset(Control.PRESET_CENTER)
+	sdot.offset_left = -2
+	sdot.offset_top = -2
+	sdot.offset_right = 2
+	sdot.offset_bottom = 2
+	sdot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_scope_overlay.add_child(sdot)
+
+	# 2. MIRA TATICA DINAMICA (fecha ao mirar com RMB + ponto luminoso em 1P ADS) + HITMARKER
 	_crosshair_root = Control.new()
 	_crosshair_root.set_anchors_preset(Control.PRESET_CENTER)
 	_crosshair_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud_layer.add_child(_crosshair_root)
+	_ch_ticks.clear()
 	for rect_def in [[-11, -1, -4, 1], [4, -1, 11, 1], [-1, -11, 1, -4], [-1, 4, 1, 11]]:
 		var cr := ColorRect.new()
 		cr.color = Color(0.95, 0.96, 0.90, 0.88)
@@ -298,6 +330,17 @@ func _build_ui() -> void:
 		cr.offset_bottom = rect_def[3]
 		cr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_crosshair_root.add_child(cr)
+		_ch_ticks.append(cr)
+
+	_ch_dot = ColorRect.new()
+	_ch_dot.color = Color(0.30, 1.0, 0.48, 0.92)
+	_ch_dot.offset_left = -1.5
+	_ch_dot.offset_top = -1.5
+	_ch_dot.offset_right = 1.5
+	_ch_dot.offset_bottom = 1.5
+	_ch_dot.visible = false
+	_ch_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_crosshair_root.add_child(_ch_dot)
 
 	_hitmarker = ColorRect.new()
 	_hitmarker.color = Color(1.0, 0.25, 0.20, 0.95)
@@ -1260,12 +1303,29 @@ func _process(delta: float) -> void:
 		var fl_s: String = "ON" if lp.flashlight_on else "OFF"
 		_limbs_lbl.text = "BRACO: %s  ·  PERNA: %s  ·  LUZ: %s" % [limb_s, limb_s, fl_s]
 
-	# Sniper Scope vs Crosshair
+	# Sniper Scope vs Mira Dinamica (fecha ao mirar com RMB + ponto luminoso em 1P ADS)
 	var scoped: bool = lp.is_sniper_scoped() and not is_ui_blocking()
 	if _scope_overlay != null:
 		_scope_overlay.visible = scoped
 	if _crosshair_root != null:
 		_crosshair_root.visible = (not scoped) and (not is_ui_blocking())
+		var ads_a: float = lp.get_ads_alpha()
+		var gap: float = lerpf(5.0, 2.0, ads_a)
+		var tick_len: float = lerpf(7.0, 4.0, ads_a)
+		var tick_alpha: float = lerpf(0.88, 0.28 if lp.is_first_person_mode() else 0.92, ads_a)
+		if _ch_ticks.size() == 4:
+			_ch_ticks[0].offset_left = -(gap + tick_len)
+			_ch_ticks[0].offset_right = -gap
+			_ch_ticks[1].offset_left = gap
+			_ch_ticks[1].offset_right = gap + tick_len
+			_ch_ticks[2].offset_top = -(gap + tick_len)
+			_ch_ticks[2].offset_bottom = -gap
+			_ch_ticks[3].offset_top = gap
+			_ch_ticks[3].offset_bottom = gap + tick_len
+			for tk in _ch_ticks:
+				tk.color = Color(0.95, 0.96, 0.90, tick_alpha)
+		if _ch_dot != null:
+			_ch_dot.visible = ads_a > 0.35 or lp.is_first_person_mode()
 
 	# HUD de Veiculo com Diagrama Superior (Carro/Moto)
 	if _veh_panel != null:
@@ -1751,9 +1811,15 @@ func _show_hitmarker(is_crit: bool, got_kill: bool) -> void:
 @rpc("authority", "call_local", "unreliable")
 func _rpc_play_shot(shooter_pid: int, profile: String, muzzle_pos: Vector3, end_pos: Vector3, play_audio: bool, is_flesh_hit: bool) -> void:
 	var is_local: bool = (not multiplayer.has_multiplayer_peer()) or (shooter_pid == multiplayer.get_unique_id())
-	if play_audio and audio_3d != null:
-		audio_3d.play_gunshot_3d(profile, muzzle_pos, end_pos, is_local)
-	_spawn_tracer(muzzle_pos, end_pos)
+	var is_melee: bool = profile.begins_with("melee")
+	if is_melee:
+		# Faca K-BAR e Katana: SOMENTE som de lamina/corte — NUNCA tiro e NUNCA projetil!
+		if play_audio and audio_3d != null:
+			audio_3d.play_melee_3d(muzzle_pos, is_flesh_hit, profile == "melee_katana")
+	else:
+		if play_audio and audio_3d != null:
+			audio_3d.play_gunshot_3d(profile, muzzle_pos, end_pos, is_local)
+		_spawn_tracer(muzzle_pos, end_pos)
 	if is_flesh_hit:
 		_spawn_blood_burst(end_pos)
 

@@ -3,10 +3,9 @@ class_name AssetBridge
 
 ## Ponte integrada para os Assets da Godot Asset Store sincronizados no projeto:
 ## 1. Quaternius Universal Animation Library: res://Godot/AnimationLibrary_Godot_Standard.glb
-##    (Rig 3D humanoide completo + todas as animacoes + BoneAttachment na mao direita e cabeca!)
 ## 2. Sound FX Starter Pack Vol. 1: res://Sound FX Starter Pack Vol. 1/
 ## 3. Terrain3D + Texturas PBR e Rochas 3D: res://addons/terrain_3d/ e res://demo/assets/
-## 4. Pastas extras plug-and-play: res://assets/characters/, res://assets/animations/, res://assets/audio/
+## 4. Matching rigoroso de animacoes (exact-match primeiro + filtro de exclusao -> nunca agacha parado!)
 
 const QUATERNIUS_RIG_PATH: String = "res://Godot/AnimationLibrary_Godot_Standard.glb"
 const SFX_PACK_ROOT: String = "res://Sound FX Starter Pack Vol. 1/"
@@ -36,7 +35,6 @@ static var _logged_rig_info: bool = false
 
 
 static func try_instantiate_character(is_zombie: bool = false) -> Node3D:
-	# Primeiro verifica modelos customizados em res://assets/characters/
 	var dir := DirAccess.open("res://assets/characters")
 	if dir != null:
 		dir.list_dir_begin()
@@ -55,12 +53,11 @@ static func try_instantiate_character(is_zombie: bool = false) -> Node3D:
 			fname = dir.get_next()
 		dir.list_dir_end()
 
-	# Depois carrega da lista padrao (incluindo Quaternius AnimationLibrary_Godot_Standard.glb!)
 	var candidates: PackedStringArray = ZOMBIE_MODEL_CANDIDATES if is_zombie else PLAYER_MODEL_CANDIDATES
 	for path in candidates:
 		var inst := _safe_instantiate_scene(path)
 		if inst != null:
-			# Modelos Quaternius / glTF padrao olham para +Z; gira 180 graus para encarar -Z (frente Godot)
+			# Quaternius / glTF padrao olha para +Z; gira 180 graus para encarar -Z (frente Godot)
 			if path == QUATERNIUS_RIG_PATH:
 				inst.rotation.y = PI
 				_apply_character_tint(inst, is_zombie)
@@ -91,7 +88,6 @@ static func _apply_character_tint(root: Node, is_zombie: bool) -> void:
 		mat.albedo_color = z_colors[randi() % z_colors.size()]
 		mat.roughness = 0.88
 	else:
-		# Visual tatico sobrevivente Condado de Knox (jaqueta vinho escuro / grafite)
 		mat.albedo_color = Color.html("#5c3a44")
 		mat.roughness = 0.72
 		mat.metallic = 0.08
@@ -115,6 +111,18 @@ static func find_first_animation_player(root: Node) -> AnimationPlayer:
 	return null
 
 
+static func stop_extra_animation_players(root: Node, keep_ap: AnimationPlayer) -> void:
+	## Garante que NUNCA existam dois AnimationPlayers tocando ao mesmo tempo no mesmo boneco!
+	if root is AnimationPlayer:
+		var ap := root as AnimationPlayer
+		ap.autoplay = ""
+		if ap != keep_ap:
+			ap.stop(true)
+			ap.active = false
+	for c in root.get_children():
+		stop_extra_animation_players(c, keep_ap)
+
+
 static func find_first_skeleton(root: Node) -> Skeleton3D:
 	if root is Skeleton3D:
 		return root as Skeleton3D
@@ -126,24 +134,25 @@ static func find_first_skeleton(root: Node) -> Skeleton3D:
 
 
 static func configure_looping_animations(anim_player: AnimationPlayer) -> void:
-	## Garante que animacoes continuas (idle, walk, jog, run, sprint, crouch, strafe, sit) rodem em loop infinito!
+	## Define loop infinito apenas em ciclos continuos e LOOP_NONE em one-shots (morte, golpe, pulo inicio, tiro).
 	if anim_player == null:
 		return
+	anim_player.autoplay = ""
 	var loop_keywords: PackedStringArray = [
 		"loop", "idle", "walk", "jog", "run", "sprint", "strafe", "crouch", "sit", "drive", "aim"
 	]
 	var one_shot_keywords: PackedStringArray = [
-		"death", "die", "attack", "slash", "punch", "shoot", "fire", "reload", "jump_start", "land", "hit"
+		"death", "die", "attack", "slash", "punch", "shoot", "fire", "reload", "jump_start", "jump_land", "land", "hit", "roll", "interact", "pick"
 	]
 	var all_names: PackedStringArray = anim_player.get_animation_list()
 	for an in all_names:
-		var low: String = an.to_lower()
+		var low: String = _strip_lib_prefix(an).to_lower()
 		var anim: Animation = anim_player.get_animation(an)
 		if anim == null:
 			continue
 		var is_one_shot: bool = false
 		for okw in one_shot_keywords:
-			if okw in low and not ("loop" in low):
+			if okw in low and not low.ends_with("_loop"):
 				is_one_shot = true
 				break
 		if is_one_shot:
@@ -156,7 +165,7 @@ static func configure_looping_animations(anim_player: AnimationPlayer) -> void:
 
 	if not _logged_rig_info and not all_names.is_empty():
 		_logged_rig_info = true
-		print("[AssetBridge] Rig 3D animado ativo com %d animacoes: %s" % [all_names.size(), ", ".join(all_names.slice(0, mini(14, all_names.size())))])
+		print("[AssetBridge] Rig 3D ativo com %d animacoes: %s" % [all_names.size(), ", ".join(all_names)])
 
 
 static func merge_external_animations(anim_player: AnimationPlayer) -> int:
@@ -215,15 +224,42 @@ static func merge_external_animations(anim_player: AnimationPlayer) -> int:
 	return added
 
 
-static func find_best_anim_name(anim_player: AnimationPlayer, keywords: PackedStringArray) -> String:
+static func _strip_lib_prefix(anim_name: String) -> String:
+	var slash_idx: int = anim_name.rfind("/")
+	if slash_idx >= 0:
+		return anim_name.substr(slash_idx + 1)
+	return anim_name
+
+
+static func find_best_anim_name(anim_player: AnimationPlayer, keywords: PackedStringArray, exclude: PackedStringArray = []) -> String:
+	## Busca em 2 etapas para NUNCA confundir Crouch_Idle_Loop com Idle_Loop:
+	## 1. Match EXATO (ignorando maiusculas e prefixo de biblioteca)
+	## 2. Match por substring SOMENTE se nenhuma palavra da lista 'exclude' estiver no nome!
 	if anim_player == null:
 		return ""
 	var all_anims: PackedStringArray = anim_player.get_animation_list()
+
+	# Passo 1: Match EXATO prioritario
 	for kw in keywords:
 		var kl: String = kw.to_lower()
 		for an in all_anims:
-			var al: String = an.to_lower()
-			if al == kl or kl in al:
+			var base: String = _strip_lib_prefix(an).to_lower()
+			if base == kl:
+				return an
+
+	# Passo 2: Substring filtrado por exclusoes
+	for kw in keywords:
+		var kl: String = kw.to_lower()
+		for an in all_anims:
+			var base: String = _strip_lib_prefix(an).to_lower()
+			if not (kl in base):
+				continue
+			var blocked: bool = false
+			for ex in exclude:
+				if ex.to_lower() in base:
+					blocked = true
+					break
+			if not blocked:
 				return an
 	return ""
 
@@ -246,29 +282,23 @@ static func _find_bone_index(skeleton: Skeleton3D, patterns: PackedStringArray, 
 	return -1
 
 
-static func attach_node_to_right_hand(skeleton: Skeleton3D, weapon_node: Node3D) -> bool:
-	if skeleton == null or weapon_node == null:
-		return false
-	var hand_idx: int = _find_bone_index(
-		skeleton,
-		["hand.r", "hand_r", "righthand", "r_hand", "wrist.r", "wrist_r"],
-		["thumb", "index", "middle", "ring", "pinky", "finger", "ik", "ctrl", "target"]
-	)
-	if hand_idx < 0:
-		return false
+static func create_bone_anchor(skeleton: Skeleton3D, anchor_name: String, patterns: PackedStringArray, exclude: PackedStringArray = []) -> BoneAttachment3D:
+	## Cria um BoneAttachment3D leve apenas para rastrear a posicao 3D exata do osso (peito / mao)
+	## sem herdar rotacoes caoticas de pulso durante corrida/idle!
+	if skeleton == null:
+		return null
+	var idx: int = _find_bone_index(skeleton, patterns, exclude)
+	if idx < 0:
+		return null
 	var ba := BoneAttachment3D.new()
-	ba.name = "RightHandWeaponBone"
-	ba.bone_name = skeleton.get_bone_name(hand_idx)
+	ba.name = anchor_name
+	ba.bone_name = skeleton.get_bone_name(idx)
 	skeleton.add_child(ba)
-	# Alinha a arma 3D saindo da palma da mao direita apontando para frente
-	weapon_node.position = Vector3(0.0, 0.08, 0.03)
-	weapon_node.rotation = Vector3(deg_to_rad(-88.0), deg_to_rad(180.0), 0.0)
-	ba.add_child(weapon_node)
-	return true
+	return ba
 
 
 static func attach_knox_headgear(skeleton: Skeleton3D) -> bool:
-	## Acopla o Chapeu Pork-Pie e os Oculos Wayfarer do Condado de Knox no osso da Cabeca do rig 3D!
+	## Acopla o Chapeu Pork-Pie e os Oculos Wayfarer do Condado de Knox no osso da Cabeca!
 	if skeleton == null:
 		return false
 	var head_idx: int = _find_bone_index(skeleton, ["head"], ["top", "end", "ik", "ctrl"])
@@ -289,7 +319,6 @@ static func attach_knox_headgear(skeleton: Skeleton3D) -> bool:
 	lens_mat.metallic = 0.72
 	lens_mat.roughness = 0.12
 
-	# Chapeu Pork-Pie
 	var hat := Node3D.new()
 	hat.position = Vector3(0.0, 0.18, 0.0)
 	ba.add_child(hat)
@@ -323,7 +352,6 @@ static func attach_knox_headgear(skeleton: Skeleton3D) -> bool:
 	band.material_override = band_mat
 	hat.add_child(band)
 
-	# Oculos Wayfarer na frente do rosto (+Z no rig Quaternius)
 	for side in [-1.0, 1.0]:
 		var lens := MeshInstance3D.new()
 		var lm := BoxMesh.new()

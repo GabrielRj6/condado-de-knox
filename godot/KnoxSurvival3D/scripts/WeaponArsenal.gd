@@ -4,7 +4,7 @@ class_name WeaponArsenal
 ## Arsenal REAL do Knox Survival 3D importado dos modelos 3D (.obj) e icones HUD (.png) do jogo!
 ## Coordenadas dos .obj da Forja 3D: +X = cano (muzzle), +Y = cima, +Z = direita, centro Y = 0.96.
 ## Rotacionando +90 graus em Y no Godot, o cano aponta exatamente para -Z (frente)!
-## grip_offset posiciona a empunhadura exatamente na palma da mao direita do personagem.
+## Cada arma possui perfil de som exclusivo, grip_offset 3P e posicoes calibradas de 1a Pessoa (Hip + ADS).
 
 const WEAPONS: Array[Dictionary] = [
 	{
@@ -19,21 +19,24 @@ const WEAPONS: Array[Dictionary] = [
 		"pellets": 1,
 		"spread": 0.0,
 		"ads_spread": 0.0,
-		"cooldown": 0.38,
+		"cooldown": 0.36,
 		"mag_size": 0,
 		"reload_time": 0.0,
-		"range": 2.7,
-		"recoil": 0.015,
+		"range": 2.9,
+		"recoil": 0.0,
 		"ads_fov": 68.0,
-		"sound": "pistol",
+		"sound": "melee_knife",
 		"noise": 8.0,
 		"mesh": "res://assets/weapons/kbar.obj",
 		"icon": "res://assets/weapons/kbar_icon.png",
 		"scale": 0.17,
-		"color": Color(0.26, 0.28, 0.30),
+		"color": Color(0.28, 0.30, 0.33),
 		"muzzle_z": -0.22,
+		"sight_y": 0.02,
 		"grip_offset": Vector3(0.0, 0.02, -0.08),
-		"foregrip_offset": Vector3(-0.14, -0.02, -0.10)
+		"foregrip_offset": Vector3(-0.14, -0.02, -0.10),
+		"fp_hip_pos": Vector3(0.24, -0.20, -0.40),
+		"fp_ads_pos": Vector3(0.14, -0.15, -0.34)
 	},
 	{
 		"id": "p9k",
@@ -46,13 +49,13 @@ const WEAPONS: Array[Dictionary] = [
 		"dmg": 30.0,
 		"pellets": 1,
 		"spread": 0.014,
-		"ads_spread": 0.0038,
+		"ads_spread": 0.0032,
 		"cooldown": 0.17,
 		"mag_size": 15,
 		"reload_time": 1.4,
 		"range": 145.0,
 		"recoil": 0.022,
-		"ads_fov": 58.0,
+		"ads_fov": 54.0,
 		"sound": "pistol",
 		"noise": 85.0,
 		"mesh": "res://assets/weapons/p9k.obj",
@@ -60,8 +63,11 @@ const WEAPONS: Array[Dictionary] = [
 		"scale": 0.18,
 		"color": Color(0.18, 0.19, 0.21),
 		"muzzle_z": -0.24,
+		"sight_y": 0.125,
 		"grip_offset": Vector3(0.0, 0.04, -0.06),
-		"foregrip_offset": Vector3(-0.02, -0.03, -0.03)
+		"foregrip_offset": Vector3(-0.02, -0.03, -0.03),
+		"fp_hip_pos": Vector3(0.22, -0.21, -0.42),
+		"fp_ads_pos": Vector3(0.0, -0.128, -0.36)
 	},
 	{
 		"id": "mag44",
@@ -74,22 +80,25 @@ const WEAPONS: Array[Dictionary] = [
 		"dmg": 68.0,
 		"pellets": 1,
 		"spread": 0.013,
-		"ads_spread": 0.0028,
+		"ads_spread": 0.0025,
 		"cooldown": 0.44,
 		"mag_size": 6,
 		"reload_time": 2.0,
 		"range": 180.0,
 		"recoil": 0.056,
-		"ads_fov": 56.0,
-		"sound": "rifle",
+		"ads_fov": 52.0,
+		"sound": "revolver",
 		"noise": 125.0,
 		"mesh": "res://assets/weapons/mag44.obj",
 		"icon": "res://assets/weapons/mag44_icon.png",
 		"scale": 0.20,
 		"color": Color(0.46, 0.48, 0.50),
 		"muzzle_z": -0.28,
+		"sight_y": 0.112,
 		"grip_offset": Vector3(0.0, 0.04, -0.08),
-		"foregrip_offset": Vector3(-0.02, -0.03, -0.04)
+		"foregrip_offset": Vector3(-0.02, -0.03, -0.04),
+		"fp_hip_pos": Vector3(0.23, -0.20, -0.44),
+		"fp_ads_pos": Vector3(0.0, -0.115, -0.38)
 	},
 	{
 		"id": "vx9",
@@ -102,22 +111,25 @@ const WEAPONS: Array[Dictionary] = [
 		"dmg": 25.0,
 		"pellets": 1,
 		"spread": 0.022,
-		"ads_spread": 0.007,
+		"ads_spread": 0.0062,
 		"cooldown": 0.075,
 		"mag_size": 32,
 		"reload_time": 1.65,
 		"range": 150.0,
 		"recoil": 0.016,
-		"ads_fov": 55.0,
-		"sound": "pistol",
+		"ads_fov": 50.0,
+		"sound": "smg",
 		"noise": 92.0,
 		"mesh": "res://assets/weapons/vx9.obj",
 		"icon": "res://assets/weapons/vx9_icon.png",
 		"scale": 0.24,
 		"color": Color(0.19, 0.20, 0.22),
 		"muzzle_z": -0.36,
+		"sight_y": 0.152,
 		"grip_offset": Vector3(0.0, 0.03, -0.10),
-		"foregrip_offset": Vector3(-0.02, -0.02, -0.24)
+		"foregrip_offset": Vector3(-0.02, -0.02, -0.24),
+		"fp_hip_pos": Vector3(0.24, -0.23, -0.45),
+		"fp_ads_pos": Vector3(0.0, -0.156, -0.40)
 	},
 	{
 		"id": "sg12",
@@ -130,22 +142,25 @@ const WEAPONS: Array[Dictionary] = [
 		"dmg": 24.0,
 		"pellets": 6,
 		"spread": 0.052,
-		"ads_spread": 0.032,
+		"ads_spread": 0.030,
 		"cooldown": 0.66,
 		"mag_size": 8,
 		"reload_time": 2.15,
 		"range": 78.0,
 		"recoil": 0.068,
-		"ads_fov": 56.0,
-		"sound": "rifle",
-		"noise": 140.0,
+		"ads_fov": 52.0,
+		"sound": "shotgun",
+		"noise": 145.0,
 		"mesh": "res://assets/weapons/sg12.obj",
 		"icon": "res://assets/weapons/sg12_icon.png",
 		"scale": 0.30,
 		"color": Color(0.22, 0.23, 0.25),
 		"muzzle_z": -0.52,
+		"sight_y": 0.074,
 		"grip_offset": Vector3(0.0, 0.02, -0.12),
-		"foregrip_offset": Vector3(-0.02, -0.02, -0.34)
+		"foregrip_offset": Vector3(-0.02, -0.02, -0.34),
+		"fp_hip_pos": Vector3(0.25, -0.19, -0.46),
+		"fp_ads_pos": Vector3(0.0, -0.082, -0.42)
 	},
 	{
 		"id": "m41t",
@@ -158,22 +173,25 @@ const WEAPONS: Array[Dictionary] = [
 		"dmg": 36.0,
 		"pellets": 1,
 		"spread": 0.014,
-		"ads_spread": 0.0032,
+		"ads_spread": 0.0028,
 		"cooldown": 0.095,
 		"mag_size": 30,
 		"reload_time": 1.85,
 		"range": 260.0,
 		"recoil": 0.020,
-		"ads_fov": 48.0,
-		"sound": "rifle",
+		"ads_fov": 44.0,
+		"sound": "rifle_556",
 		"noise": 122.0,
 		"mesh": "res://assets/weapons/m41t.obj",
 		"icon": "res://assets/weapons/m41t_icon.png",
 		"scale": 0.30,
 		"color": Color(0.17, 0.18, 0.20),
 		"muzzle_z": -0.54,
+		"sight_y": 0.142,
 		"grip_offset": Vector3(0.0, 0.02, -0.12),
-		"foregrip_offset": Vector3(-0.02, -0.02, -0.35)
+		"foregrip_offset": Vector3(-0.02, -0.02, -0.35),
+		"fp_hip_pos": Vector3(0.25, -0.23, -0.46),
+		"fp_ads_pos": Vector3(0.0, -0.146, -0.43)
 	},
 	{
 		"id": "ak74m",
@@ -186,22 +204,25 @@ const WEAPONS: Array[Dictionary] = [
 		"dmg": 46.0,
 		"pellets": 1,
 		"spread": 0.019,
-		"ads_spread": 0.0052,
+		"ads_spread": 0.0045,
 		"cooldown": 0.118,
 		"mag_size": 30,
 		"reload_time": 2.05,
 		"range": 270.0,
 		"recoil": 0.030,
-		"ads_fov": 50.0,
-		"sound": "rifle",
+		"ads_fov": 46.0,
+		"sound": "rifle_762",
 		"noise": 135.0,
 		"mesh": "res://assets/weapons/ak74m.obj",
 		"icon": "res://assets/weapons/ak74m_icon.png",
 		"scale": 0.31,
 		"color": Color(0.28, 0.22, 0.17),
 		"muzzle_z": -0.56,
+		"sight_y": 0.128,
 		"grip_offset": Vector3(0.0, 0.02, -0.12),
-		"foregrip_offset": Vector3(-0.02, -0.02, -0.36)
+		"foregrip_offset": Vector3(-0.02, -0.02, -0.36),
+		"fp_hip_pos": Vector3(0.25, -0.22, -0.46),
+		"fp_ads_pos": Vector3(0.0, -0.132, -0.44)
 	},
 	{
 		"id": "sr76",
@@ -214,13 +235,13 @@ const WEAPONS: Array[Dictionary] = [
 		"dmg": 125.0,
 		"pellets": 1,
 		"spread": 0.016,
-		"ads_spread": 0.0005,
+		"ads_spread": 0.0004,
 		"cooldown": 1.05,
 		"mag_size": 5,
 		"reload_time": 2.55,
 		"range": 500.0,
 		"recoil": 0.082,
-		"ads_fov": 20.0,
+		"ads_fov": 18.0,
 		"sound": "sniper",
 		"noise": 185.0,
 		"mesh": "res://assets/weapons/sr76.obj",
@@ -228,8 +249,11 @@ const WEAPONS: Array[Dictionary] = [
 		"scale": 0.34,
 		"color": Color(0.22, 0.25, 0.21),
 		"muzzle_z": -0.68,
+		"sight_y": 0.134,
 		"grip_offset": Vector3(0.0, 0.02, -0.14),
-		"foregrip_offset": Vector3(-0.02, -0.02, -0.40)
+		"foregrip_offset": Vector3(-0.02, -0.02, -0.40),
+		"fp_hip_pos": Vector3(0.26, -0.22, -0.48),
+		"fp_ads_pos": Vector3(0.0, -0.136, -0.42)
 	},
 	{
 		"id": "katana",
@@ -243,21 +267,24 @@ const WEAPONS: Array[Dictionary] = [
 		"pellets": 1,
 		"spread": 0.0,
 		"ads_spread": 0.0,
-		"cooldown": 0.52,
+		"cooldown": 0.48,
 		"mag_size": 0,
 		"reload_time": 0.0,
-		"range": 3.4,
-		"recoil": 0.018,
+		"range": 3.5,
+		"recoil": 0.0,
 		"ads_fov": 68.0,
-		"sound": "pistol",
+		"sound": "melee_katana",
 		"noise": 6.0,
 		"mesh": "res://assets/weapons/katana.obj",
 		"icon": "res://assets/weapons/katana_icon.png",
 		"scale": 0.34,
-		"color": Color(0.74, 0.78, 0.82),
+		"color": Color(0.76, 0.80, 0.84),
 		"muzzle_z": -0.48,
+		"sight_y": 0.02,
 		"grip_offset": Vector3(0.0, 0.02, -0.22),
-		"foregrip_offset": Vector3(-0.02, -0.03, -0.05)
+		"foregrip_offset": Vector3(-0.02, -0.03, -0.05),
+		"fp_hip_pos": Vector3(0.28, -0.22, -0.44),
+		"fp_ads_pos": Vector3(0.16, -0.14, -0.36)
 	}
 ]
 
@@ -320,6 +347,22 @@ static func build_weapon_node(idx: int, suppressed: bool = false, scale_mult: fl
 	mi.material_override = gun_mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	root.add_child(mi)
+
+	# Ponto luminoso de massa de mira (tritio verde) para mira limpa em 1a Pessoa!
+	if not bool(w["melee"]) and float(w["ads_fov"]) > 30.0:
+		var sight_dot := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.0045 * scale_mult
+		sm.height = 0.009 * scale_mult
+		sight_dot.mesh = sm
+		var smat_dot := StandardMaterial3D.new()
+		smat_dot.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		smat_dot.albedo_color = Color(0.25, 1.0, 0.45)
+		sight_dot.material_override = smat_dot
+		var sy: float = float(w.get("sight_y", 0.12)) * scale_mult
+		sight_dot.position = Vector3(grip_off.x, sy, grip_off.z + float(w["muzzle_z"]) * scale_mult * 0.72)
+		sight_dot.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(sight_dot)
 
 	# Silenciador acoplavel na ponta do cano [X]
 	if suppressed and not bool(w["melee"]):

@@ -1,10 +1,15 @@
 extends CharacterBody3D
 class_name Zombie3D
 
-## Zumbi 3D 1:1 portado de buildZombieEntity() do Knox Survival 3D:
+## Zumbi 3D Knox Survival (Godot 4):
 ## - 3 arquetipos reais (0=Shambler lento, 1=Walker classico, 2=Sprinter rapido)
-## - Rosto necrotico procedural, roupas rasgadas com mancha de sangue, cabelo opcional,
-##   bracos/pernas cilindricos articulados com sapatos + audio espacial 3D sincronizado.
+## - Maquina de estados exclusiva de animacao (1 animacao por vez, sem agachar sozinho parado
+##   e morte definitiva com Death01 uma unica vez — NUNCA caminha deitado!)
+## - Audio espacial 3D sincronizado em multiplayer.
+
+const STAND_EXCLUDE: PackedStringArray = [
+	"crouch", "sit", "swim", "climb", "roll", "crawl", "talk", "torch", "dance", "fix", "push"
+]
 
 var zombie_id: String = ""
 var hp: float = 100.0
@@ -15,6 +20,7 @@ var archetype: int = 1 # 0=Shambler, 1=Walker, 2=Sprinter
 
 var _alert_t: float = 0.0
 var _atk_cd: float = 0.0
+var _atk_anim_t: float = 0.0
 var _wander_t: float = 0.0
 var _wander_dir: Vector3 = Vector3.FORWARD
 var _sync_acc: float = 0.0
@@ -24,6 +30,7 @@ var _net_yaw: float = 0.0
 var _walk_phase: float = 0.0
 var _vocal_cd: float = 2.0
 var _was_chasing: bool = false
+var _col_shape: CollisionShape3D
 var _body: Node3D
 var _spine: Node3D
 var _leg_l: Node3D
@@ -34,6 +41,7 @@ var _world: Node = null
 var _ext_model: Node3D = null
 var _ext_anim: AnimationPlayer = null
 var _ext_cur_anim: String = ""
+var _ext_is_one_shot: bool = false
 
 const SHIRT_COLORS: Array[Color] = [
 	Color(0.32, 0.34, 0.30), Color(0.26, 0.30, 0.38),
@@ -80,13 +88,13 @@ func _cyl(rt: float, rb: float, h: float) -> CylinderMesh:
 
 
 func _build_zombie_rig() -> void:
-	var col := CollisionShape3D.new()
+	_col_shape = CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
 	cap.radius = 0.36
 	cap.height = 1.78
-	col.shape = cap
-	col.position = Vector3(0.0, 0.90, 0.0)
-	add_child(col)
+	_col_shape.shape = cap
+	_col_shape.position = Vector3(0.0, 0.90, 0.0)
+	add_child(_col_shape)
 
 	var rng := RandomNumberGenerator.new()
 	rng.seed = zombie_id.hash()
@@ -96,7 +104,6 @@ func _build_zombie_rig() -> void:
 	_body.scale = Vector3.ONE * sc
 	add_child(_body)
 
-	# Auto-carrega modelo 3D externo de zumbi (.glb/.tscn) caso exista em res://assets/characters/
 	_ext_model = AssetBridge.try_instantiate_character(true)
 	if _ext_model != null:
 		_body.add_child(_ext_model)
@@ -104,7 +111,12 @@ func _build_zombie_rig() -> void:
 		if _ext_anim == null:
 			_ext_anim = AnimationPlayer.new()
 			_ext_model.add_child(_ext_anim)
+		AssetBridge.stop_extra_animation_players(_ext_model, _ext_anim)
 		AssetBridge.merge_external_animations(_ext_anim)
+		var init_idle: String = AssetBridge.find_best_anim_name(_ext_anim, ["Idle_Loop", "Idle"], STAND_EXCLUDE)
+		if not init_idle.is_empty():
+			_ext_cur_anim = init_idle
+			_ext_anim.play(init_idle)
 		return
 
 	var skin := StandardMaterial3D.new()
@@ -125,13 +137,11 @@ func _build_zombie_rig() -> void:
 	var hair := StandardMaterial3D.new()
 	hair.albedo_color = Color(0.14, 0.12, 0.10)
 
-	# Pelve
 	var pelvis := Node3D.new()
 	pelvis.position = Vector3(0.0, 0.90, 0.0)
 	_body.add_child(pelvis)
 	_mk(pelvis, _cyl(0.155, 0.145, 0.15), pants, Vector3.ZERO, Vector3(1.0, 1.0, 0.68))
 
-	# Tronco + mancha de sangue
 	_spine = Node3D.new()
 	_spine.position = Vector3(0.0, 0.06, 0.0)
 	pelvis.add_child(_spine)
@@ -142,7 +152,6 @@ func _build_zombie_rig() -> void:
 	stain_m.size = Vector3(0.16, 0.20, 0.015)
 	_mk(_spine, stain_m, blood, Vector3(rng.randf_range(-0.05, 0.05), 0.22, -0.098))
 
-	# Cabeca cadaverica com rosto zumbi procedural + cabelo opcional
 	var head := Node3D.new()
 	head.position = Vector3(0.0, 0.455, 0.0)
 	_spine.add_child(head)
@@ -159,11 +168,8 @@ func _build_zombie_rig() -> void:
 		hair_m.size = Vector3(0.19, 0.06, 0.20)
 		_mk(head, hair_m, hair, Vector3(0.0, 0.248, 0.01))
 
-	# Bracos cilindricos estendidos para frente
 	_arm_l = _build_z_arm(-1.0, shirt, skin)
 	_arm_r = _build_z_arm(1.0, shirt, skin)
-
-	# Pernas cilindricas com sapatos
 	_leg_l = _build_z_leg(-1.0, pelvis, pants, shoe)
 	_leg_r = _build_z_leg(1.0, pelvis, pants, shoe)
 
@@ -197,6 +203,7 @@ func _physics_process(delta: float) -> void:
 	if is_dead:
 		return
 
+	_atk_anim_t = maxf(0.0, _atk_anim_t - delta)
 	var prev_pos: Vector3 = global_position
 	var is_srv: bool = (not multiplayer.has_multiplayer_peer()) or multiplayer.is_server()
 	if is_srv:
@@ -213,22 +220,28 @@ func _physics_process(delta: float) -> void:
 func _animate_zombie(delta: float, spd: float) -> void:
 	if _ext_anim != null:
 		var want: String = ""
-		var sp_s: float = 0.72 if archetype == 0 else (1.35 if archetype == 2 else 1.0)
-		if is_dead:
-			want = AssetBridge.find_best_anim_name(_ext_anim, ["death01", "death", "die"])
-			sp_s = 1.0
+		var sp_s: float = 0.72 if archetype == 0 else (1.30 if archetype == 2 else 1.0)
+		var one_shot: bool = false
+
+		if _atk_anim_t > 0.0:
+			want = AssetBridge.find_best_anim_name(_ext_anim, ["Punch_Jab", "Punch_Cross", "Zombie_Attack", "Attack"], STAND_EXCLUDE)
+			sp_s = 1.25
+			one_shot = true
 		elif is_chasing and spd > 2.2:
-			want = AssetBridge.find_best_anim_name(_ext_anim, ["sprint_loop", "jog_fwd_loop", "run", "chase", "walk_loop", "walk"])
+			want = AssetBridge.find_best_anim_name(_ext_anim, ["Sprint_Loop", "Jog_Fwd_Loop", "Run_Fwd_Loop", "Walk_Loop"], STAND_EXCLUDE)
 		elif spd > 0.25:
-			want = AssetBridge.find_best_anim_name(_ext_anim, ["walk_loop", "walk", "shamble"])
+			want = AssetBridge.find_best_anim_name(_ext_anim, ["Zombie_Walk_Fwd_Loop", "Walk_Loop", "Walk_Fwd_Loop", "Walk"], STAND_EXCLUDE)
 		else:
-			want = AssetBridge.find_best_anim_name(_ext_anim, ["idle_loop", "idle"])
+			want = AssetBridge.find_best_anim_name(_ext_anim, ["Idle_Loop", "Idle"], STAND_EXCLUDE)
+
 		if not want.is_empty():
 			_ext_anim.speed_scale = sp_s
-			if want != _ext_cur_anim or (not is_dead and not _ext_anim.is_playing()):
+			if want != _ext_cur_anim or (not one_shot and not _ext_anim.is_playing()):
 				_ext_cur_anim = want
-				_ext_anim.play(want, 0.16)
+				_ext_is_one_shot = one_shot
+				_ext_anim.play(want, 0.14)
 		return
+
 	if _leg_l == null or _leg_r == null:
 		return
 	if spd > 0.2:
@@ -272,6 +285,7 @@ func _tick_server_ai(delta: float) -> void:
 		if best_d <= 1.55 and nearest.current_vehicle == null:
 			if _atk_cd <= 0.0:
 				_atk_cd = 1.15
+				_atk_anim_t = 0.45
 				nearest.apply_damage(16)
 				_rpc_vocal.rpc("attack")
 		else:
@@ -351,6 +365,8 @@ func apply_server_damage(dmg: float) -> bool:
 
 @rpc("authority", "call_local", "reliable")
 func _rpc_vocal(vtype: String) -> void:
+	if vtype == "attack":
+		_atk_anim_t = 0.45
 	if _world != null and _world.audio_3d != null:
 		_world.audio_3d.play_zombie_vocal_3d(vtype, global_position, vocal_pitch)
 
@@ -360,10 +376,34 @@ func _rpc_die() -> void:
 	if is_dead:
 		return
 	is_dead = true
+	is_chasing = false
 	hp = 0.0
-	if _body != null:
+	velocity = Vector3.ZERO
+	# Desativa colisao imediatamente para nao bloquear tiros nem passagem
+	if _col_shape != null:
+		_col_shape.set_deferred("disabled", true)
+
+	# Para a caminhada IMEDIATAMENTE e toca Death01 UMA UNICA VEZ (sem caminhar deitado!)
+	if _ext_anim != null:
+		_ext_anim.stop(false)
+		var death_anim: String = AssetBridge.find_best_anim_name(_ext_anim, ["Death01", "Death_01", "Death", "Die"], ["loop"])
+		if not death_anim.is_empty():
+			var dclip: Animation = _ext_anim.get_animation(death_anim)
+			if dclip != null:
+				dclip.loop_mode = Animation.LOOP_NONE
+			_ext_cur_anim = death_anim
+			_ext_is_one_shot = true
+			_ext_anim.speed_scale = 1.0
+			_ext_anim.play(death_anim, 0.08)
+		elif _body != null:
+			_body.rotation.x = deg_to_rad(86.0)
+			_body.position.y = 0.18
+	elif _body != null:
+		if _leg_l != null: _leg_l.rotation.x = 0.0
+		if _leg_r != null: _leg_r.rotation.x = 0.0
 		_body.rotation.x = deg_to_rad(86.0)
 		_body.position.y = 0.18
+
 	if _world != null and _world.audio_3d != null:
 		_world.audio_3d.play_zombie_vocal_3d("death", global_position, vocal_pitch)
 	var t := get_tree().create_timer(22.0)
