@@ -2,7 +2,7 @@ extends CharacterBody3D
 class_name Zombie3D
 
 ## Zumbi autoritativo no Servidor (todos os jogadores veem exatamente os mesmos zumbis!)
-## com audio 3D de gemido ambiente, alerta, perseguicao, ataque, dor e morte.
+## com animacao articulada de caminhada/corrida e audio 3D (idle, alert, chase, attack, hurt, death).
 
 var zombie_id: String = ""
 var hp: float = 100.0
@@ -18,9 +18,14 @@ var _sync_acc: float = 0.0
 var _net_pos: Vector3 = Vector3.ZERO
 var _net_yaw: float = 0.0
 
+var _walk_phase: float = 0.0
 var _vocal_cd: float = 2.0
 var _was_chasing: bool = false
 var _body: Node3D
+var _leg_l: Node3D
+var _leg_r: Node3D
+var _arm_l: Node3D
+var _arm_r: Node3D
 var _world: Node = null
 
 
@@ -72,29 +77,52 @@ func _build_visual() -> void:
 	head.material_override = skin
 	_body.add_child(head)
 
-	for side in [-0.30, 0.30]:
-		var arm := MeshInstance3D.new()
-		var am := BoxMesh.new()
-		am.size = Vector3(0.14, 0.14, 0.62)
-		arm.mesh = am
-		arm.position = Vector3(side, 1.32, -0.34)
-		arm.material_override = skin
-		_body.add_child(arm)
+	var am := BoxMesh.new()
+	am.size = Vector3(0.14, 0.14, 0.62)
+	_arm_l = Node3D.new()
+	_arm_l.position = Vector3(-0.30, 1.34, -0.04)
+	_body.add_child(_arm_l)
+	var al_m := MeshInstance3D.new()
+	al_m.mesh = am
+	al_m.position = Vector3(0.0, 0.0, -0.30)
+	al_m.material_override = skin
+	_arm_l.add_child(al_m)
 
-	for side in [-0.14, 0.14]:
-		var leg := MeshInstance3D.new()
-		var lm := BoxMesh.new()
-		lm.size = Vector3(0.17, 0.74, 0.18)
-		leg.mesh = lm
-		leg.position = Vector3(side, 0.37, 0.0)
-		leg.material_override = cloth
-		_body.add_child(leg)
+	_arm_r = Node3D.new()
+	_arm_r.position = Vector3(0.30, 1.34, -0.04)
+	_body.add_child(_arm_r)
+	var ar_m := MeshInstance3D.new()
+	ar_m.mesh = am
+	ar_m.position = Vector3(0.0, 0.0, -0.30)
+	ar_m.material_override = skin
+	_arm_r.add_child(ar_m)
+
+	var lm := BoxMesh.new()
+	lm.size = Vector3(0.17, 0.74, 0.18)
+	_leg_l = Node3D.new()
+	_leg_l.position = Vector3(-0.14, 0.74, 0.0)
+	_body.add_child(_leg_l)
+	var ll_m := MeshInstance3D.new()
+	ll_m.mesh = lm
+	ll_m.position = Vector3(0.0, -0.37, 0.0)
+	ll_m.material_override = cloth
+	_leg_l.add_child(ll_m)
+
+	_leg_r = Node3D.new()
+	_leg_r.position = Vector3(0.14, 0.74, 0.0)
+	_body.add_child(_leg_r)
+	var lr_m := MeshInstance3D.new()
+	lr_m.mesh = lm
+	lr_m.position = Vector3(0.0, -0.37, 0.0)
+	lr_m.material_override = cloth
+	_leg_r.add_child(lr_m)
 
 
 func _physics_process(delta: float) -> void:
 	if is_dead:
 		return
 
+	var prev_pos: Vector3 = global_position
 	var is_srv: bool = (not multiplayer.has_multiplayer_peer()) or multiplayer.is_server()
 	if is_srv:
 		_tick_server_ai(delta)
@@ -102,7 +130,23 @@ func _physics_process(delta: float) -> void:
 		global_position = global_position.lerp(_net_pos, minf(1.0, delta * 11.0))
 		rotation.y = lerp_angle(rotation.y, _net_yaw, minf(1.0, delta * 11.0))
 
+	var spd: float = Vector2(global_position.x - prev_pos.x, global_position.z - prev_pos.z).length() / maxf(0.001, delta)
+	_animate_zombie(delta, spd)
 	_tick_spatial_vocals(delta)
+
+
+func _animate_zombie(delta: float, spd: float) -> void:
+	if _leg_l == null or _leg_r == null:
+		return
+	if spd > 0.2:
+		_walk_phase += delta * clampf(spd * 2.4, 3.0, 12.0)
+		var sw: float = sin(_walk_phase) * (0.65 if is_chasing else 0.38)
+		_leg_l.rotation.x = sw
+		_leg_r.rotation.x = -sw
+		if _arm_l != null and _arm_r != null:
+			var reach: float = 0.28 if is_chasing else -0.35
+			_arm_l.rotation.x = reach + sw * 0.25
+			_arm_r.rotation.x = reach - sw * 0.25
 
 
 func _tick_server_ai(delta: float) -> void:
@@ -196,15 +240,16 @@ func alert_by_sound(duration: float = 14.0) -> void:
 		_alert_t = maxf(_alert_t, duration)
 
 
-func apply_server_damage(dmg: float) -> void:
+func apply_server_damage(dmg: float) -> bool:
 	if is_dead:
-		return
+		return false
 	hp = maxf(0.0, hp - dmg)
 	_alert_t = 18.0
 	if hp <= 0.0:
 		_rpc_die.rpc()
-	else:
-		_rpc_vocal.rpc("hurt")
+		return true
+	_rpc_vocal.rpc("hurt")
+	return false
 
 
 @rpc("authority", "call_local", "reliable")
