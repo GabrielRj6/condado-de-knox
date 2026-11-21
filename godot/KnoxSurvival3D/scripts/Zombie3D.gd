@@ -1,14 +1,17 @@
 extends CharacterBody3D
 class_name Zombie3D
 
-## Zumbi autoritativo no Servidor (todos os jogadores veem exatamente os mesmos zumbis!)
-## com animacao articulada de caminhada/corrida e audio 3D (idle, alert, chase, attack, hurt, death).
+## Zumbi 3D 1:1 portado de buildZombieEntity() do Knox Survival 3D:
+## - 3 arquetipos reais (0=Shambler lento, 1=Walker classico, 2=Sprinter rapido)
+## - Rosto necrotico procedural, roupas rasgadas com mancha de sangue, cabelo opcional,
+##   bracos/pernas cilindricos articulados com sapatos + audio espacial 3D sincronizado.
 
 var zombie_id: String = ""
 var hp: float = 100.0
 var is_dead: bool = false
 var is_chasing: bool = false
 var vocal_pitch: float = 1.0
+var archetype: int = 1 # 0=Shambler, 1=Walker, 2=Sprinter
 
 var _alert_t: float = 0.0
 var _atk_cd: float = 0.0
@@ -22,29 +25,58 @@ var _walk_phase: float = 0.0
 var _vocal_cd: float = 2.0
 var _was_chasing: bool = false
 var _body: Node3D
+var _spine: Node3D
 var _leg_l: Node3D
 var _leg_r: Node3D
 var _arm_l: Node3D
 var _arm_r: Node3D
 var _world: Node = null
 
+const SHIRT_COLORS: Array[Color] = [
+	Color(0.32, 0.34, 0.30), Color(0.26, 0.30, 0.38),
+	Color(0.42, 0.28, 0.24), Color(0.24, 0.24, 0.22), Color(0.38, 0.36, 0.28)
+]
+const PANTS_COLORS: Array[Color] = [
+	Color(0.18, 0.20, 0.24), Color(0.20, 0.18, 0.16), Color(0.15, 0.16, 0.18)
+]
+
 
 func setup(p_id: String, p_world: Node, p_pitch: float) -> void:
 	zombie_id = p_id
 	_world = p_world
 	vocal_pitch = p_pitch
+	archetype = abs(p_id.hash()) % 3
 	name = "Z_%s" % p_id
 
 
 func _ready() -> void:
-	_build_visual()
+	_build_zombie_rig()
 	_net_pos = global_position
 	_net_yaw = rotation.y
 	_vocal_cd = randf_range(1.4, 6.2)
 	_wander_dir = Vector3(randf_range(-1.0, 1.0), 0.0, randf_range(-1.0, 1.0)).normalized()
 
 
-func _build_visual() -> void:
+func _mk(parent: Node3D, mesh: Mesh, mat: Material, pos: Vector3, scl: Vector3 = Vector3.ONE) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.position = pos
+	mi.scale = scl
+	parent.add_child(mi)
+	return mi
+
+
+func _cyl(rt: float, rb: float, h: float) -> CylinderMesh:
+	var c := CylinderMesh.new()
+	c.top_radius = rt
+	c.bottom_radius = rb
+	c.height = h
+	c.radial_segments = 10
+	return c
+
+
+func _build_zombie_rig() -> void:
 	var col := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
 	cap.radius = 0.36
@@ -53,69 +85,98 @@ func _build_visual() -> void:
 	col.position = Vector3(0.0, 0.90, 0.0)
 	add_child(col)
 
+	var rng := RandomNumberGenerator.new()
+	rng.seed = zombie_id.hash()
+
 	_body = Node3D.new()
+	var sc: float = rng.randf_range(0.95, 1.06)
+	_body.scale = Vector3.ONE * sc
 	add_child(_body)
 
 	var skin := StandardMaterial3D.new()
-	skin.albedo_color = Color(0.36, 0.46, 0.32)
-	var cloth := StandardMaterial3D.new()
-	cloth.albedo_color = Color(0.24, 0.22, 0.20)
+	skin.albedo_color = Color(0.43, 0.49, 0.39)
+	skin.roughness = 0.88
+	var face_mat := ProceduralTextures.get_zombie_face_mat()
+	var shirt := StandardMaterial3D.new()
+	shirt.albedo_color = SHIRT_COLORS[rng.randi() % SHIRT_COLORS.size()]
+	shirt.roughness = 0.92
+	var pants := StandardMaterial3D.new()
+	pants.albedo_color = PANTS_COLORS[rng.randi() % PANTS_COLORS.size()]
+	pants.roughness = 0.92
+	var blood := StandardMaterial3D.new()
+	blood.albedo_color = Color(0.36, 0.06, 0.05)
+	blood.roughness = 0.65
+	var shoe := StandardMaterial3D.new()
+	shoe.albedo_color = Color(0.14, 0.13, 0.12)
+	var hair := StandardMaterial3D.new()
+	hair.albedo_color = Color(0.14, 0.12, 0.10)
 
-	var torso := MeshInstance3D.new()
-	var tm := BoxMesh.new()
-	tm.size = Vector3(0.50, 0.72, 0.28)
-	torso.mesh = tm
-	torso.position = Vector3(0.0, 1.10, 0.0)
-	torso.material_override = cloth
-	_body.add_child(torso)
+	# Pelve
+	var pelvis := Node3D.new()
+	pelvis.position = Vector3(0.0, 0.90, 0.0)
+	_body.add_child(pelvis)
+	_mk(pelvis, _cyl(0.155, 0.145, 0.15), pants, Vector3.ZERO, Vector3(1.0, 1.0, 0.68))
 
-	var head := MeshInstance3D.new()
-	var hm := BoxMesh.new()
-	hm.size = Vector3(0.30, 0.32, 0.30)
-	head.mesh = hm
-	head.position = Vector3(0.0, 1.62, -0.05)
-	head.material_override = skin
-	_body.add_child(head)
+	# Tronco + mancha de sangue
+	_spine = Node3D.new()
+	_spine.position = Vector3(0.0, 0.06, 0.0)
+	pelvis.add_child(_spine)
+	var torso_m := BoxMesh.new()
+	torso_m.size = Vector3(0.34, 0.44, 0.19)
+	_mk(_spine, torso_m, shirt, Vector3(0.0, 0.225, 0.0))
+	var stain_m := BoxMesh.new()
+	stain_m.size = Vector3(0.16, 0.20, 0.015)
+	_mk(_spine, stain_m, blood, Vector3(rng.randf_range(-0.05, 0.05), 0.22, -0.098))
 
-	var am := BoxMesh.new()
-	am.size = Vector3(0.14, 0.14, 0.62)
-	_arm_l = Node3D.new()
-	_arm_l.position = Vector3(-0.30, 1.34, -0.04)
-	_body.add_child(_arm_l)
-	var al_m := MeshInstance3D.new()
-	al_m.mesh = am
-	al_m.position = Vector3(0.0, 0.0, -0.30)
-	al_m.material_override = skin
-	_arm_l.add_child(al_m)
+	# Cabeca cadaverica com rosto zumbi procedural + cabelo opcional
+	var head := Node3D.new()
+	head.position = Vector3(0.0, 0.455, 0.0)
+	_spine.add_child(head)
+	_mk(head, _cyl(0.052, 0.058, 0.09), skin, Vector3(0.0, 0.032, -0.005))
+	var head_sph := SphereMesh.new()
+	head_sph.radius = 0.115
+	head_sph.height = 0.23
+	_mk(head, head_sph, skin, Vector3(0.0, 0.152, 0.0), Vector3(0.90, 1.04, 0.94))
+	var face_box := BoxMesh.new()
+	face_box.size = Vector3(0.162, 0.185, 0.028)
+	_mk(head, face_box, face_mat, Vector3(0.0, 0.152, -0.096))
+	if rng.randf() > 0.30:
+		var hair_m := BoxMesh.new()
+		hair_m.size = Vector3(0.19, 0.06, 0.20)
+		_mk(head, hair_m, hair, Vector3(0.0, 0.248, 0.01))
 
-	_arm_r = Node3D.new()
-	_arm_r.position = Vector3(0.30, 1.34, -0.04)
-	_body.add_child(_arm_r)
-	var ar_m := MeshInstance3D.new()
-	ar_m.mesh = am
-	ar_m.position = Vector3(0.0, 0.0, -0.30)
-	ar_m.material_override = skin
-	_arm_r.add_child(ar_m)
+	# Bracos cilindricos estendidos para frente
+	_arm_l = _build_z_arm(-1.0, shirt, skin)
+	_arm_r = _build_z_arm(1.0, shirt, skin)
 
-	var lm := BoxMesh.new()
-	lm.size = Vector3(0.17, 0.74, 0.18)
-	_leg_l = Node3D.new()
-	_leg_l.position = Vector3(-0.14, 0.74, 0.0)
-	_body.add_child(_leg_l)
-	var ll_m := MeshInstance3D.new()
-	ll_m.mesh = lm
-	ll_m.position = Vector3(0.0, -0.37, 0.0)
-	ll_m.material_override = cloth
-	_leg_l.add_child(ll_m)
+	# Pernas cilindricas com sapatos
+	_leg_l = _build_z_leg(-1.0, pelvis, pants, shoe)
+	_leg_r = _build_z_leg(1.0, pelvis, pants, shoe)
 
-	_leg_r = Node3D.new()
-	_leg_r.position = Vector3(0.14, 0.74, 0.0)
-	_body.add_child(_leg_r)
-	var lr_m := MeshInstance3D.new()
-	lr_m.mesh = lm
-	lr_m.position = Vector3(0.0, -0.37, 0.0)
-	lr_m.material_override = cloth
-	_leg_r.add_child(lr_m)
+
+func _build_z_arm(side: float, shirt: Material, skin: Material) -> Node3D:
+	var sh := Node3D.new()
+	sh.position = Vector3(side * 0.205, 0.395, 0.0)
+	_spine.add_child(sh)
+	_mk(sh, _cyl(0.052, 0.045, 0.25), shirt, Vector3(0.0, -0.125, 0.0))
+	_mk(sh, _cyl(0.044, 0.038, 0.23), skin, Vector3(0.0, -0.35, 0.0))
+	var hand_m := BoxMesh.new()
+	hand_m.size = Vector3(0.056, 0.072, 0.042)
+	_mk(sh, hand_m, skin, Vector3(0.0, -0.49, -0.01))
+	sh.rotation.x = deg_to_rad(68.0)
+	return sh
+
+
+func _build_z_leg(side: float, pelvis: Node3D, pants: Material, shoe: Material) -> Node3D:
+	var hip := Node3D.new()
+	hip.position = Vector3(side * 0.092, -0.04, 0.0)
+	pelvis.add_child(hip)
+	_mk(hip, _cyl(0.072, 0.060, 0.42), pants, Vector3(0.0, -0.21, 0.0))
+	_mk(hip, _cyl(0.060, 0.050, 0.41), pants, Vector3(0.0, -0.62, 0.0))
+	var shoe_m := BoxMesh.new()
+	shoe_m.size = Vector3(0.098, 0.065, 0.21)
+	_mk(hip, shoe_m, shoe, Vector3(0.0, -0.84, -0.04))
+	return hip
 
 
 func _physics_process(delta: float) -> void:
@@ -139,14 +200,17 @@ func _animate_zombie(delta: float, spd: float) -> void:
 	if _leg_l == null or _leg_r == null:
 		return
 	if spd > 0.2:
-		_walk_phase += delta * clampf(spd * 2.4, 3.0, 12.0)
-		var sw: float = sin(_walk_phase) * (0.65 if is_chasing else 0.38)
+		_walk_phase += delta * clampf(spd * 2.4, 3.0, 12.5)
+		var sw: float = sin(_walk_phase) * (0.68 if is_chasing else 0.36)
 		_leg_l.rotation.x = sw
 		_leg_r.rotation.x = -sw
+		if _spine != null:
+			_spine.rotation.x = deg_to_rad(-16.0 if is_chasing else -8.0)
+			_spine.rotation.z = sin(_walk_phase) * (0.09 if archetype == 0 else 0.04)
 		if _arm_l != null and _arm_r != null:
-			var reach: float = 0.28 if is_chasing else -0.35
-			_arm_l.rotation.x = reach + sw * 0.25
-			_arm_r.rotation.x = reach - sw * 0.25
+			var reach: float = deg_to_rad(86.0) if is_chasing else deg_to_rad(52.0)
+			_arm_l.rotation.x = reach + sw * 0.22
+			_arm_r.rotation.x = reach - sw * 0.22
 
 
 func _tick_server_ai(delta: float) -> void:
@@ -164,23 +228,24 @@ func _tick_server_ai(delta: float) -> void:
 				best_d = d
 				nearest = p
 
-	if nearest != null and best_d <= 22.0:
+	if nearest != null and best_d <= 24.0:
 		_alert_t = maxf(_alert_t, 9.5)
 
 	is_chasing = _alert_t > 0.0 and nearest != null
 	var move_dir: Vector3 = Vector3.ZERO
-	var spd: float = 1.65
+	var chase_spd: float = 5.4 if archetype == 2 else (3.4 if archetype == 0 else 4.4)
+	var spd: float = 1.55
 
 	if is_chasing:
 		if best_d <= 1.55 and nearest.current_vehicle == null:
 			if _atk_cd <= 0.0:
-				_atk_cd = 1.2
+				_atk_cd = 1.15
 				nearest.apply_damage(16)
 				_rpc_vocal.rpc("attack")
 		else:
 			move_dir = nearest.global_position - global_position
 			move_dir.y = 0.0
-			spd = 4.65
+			spd = chase_spd
 	else:
 		_wander_t -= delta
 		if _wander_t <= 0.0:
@@ -265,8 +330,8 @@ func _rpc_die() -> void:
 	is_dead = true
 	hp = 0.0
 	if _body != null:
-		_body.rotation.x = deg_to_rad(85.0)
-		_body.position.y = 0.20
+		_body.rotation.x = deg_to_rad(86.0)
+		_body.position.y = 0.18
 	if _world != null and _world.audio_3d != null:
 		_world.audio_3d.play_zombie_vocal_3d("death", global_position, vocal_pitch)
 	var t := get_tree().create_timer(22.0)
