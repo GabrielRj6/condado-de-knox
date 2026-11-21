@@ -220,7 +220,7 @@ func _build_character_rig() -> void:
 	_body_root = Node3D.new()
 	add_child(_body_root)
 
-	# 1. Tenta carregar automaticamente modelo 3D (.glb/.tscn) + animacoes colocados em res://assets/characters/
+	# 1. Carrega automaticamente o Rig 3D animado (Quaternius AnimationLibrary_Godot_Standard.glb ou custom)
 	_ext_model = AssetBridge.try_instantiate_character(false)
 	if _ext_model != null:
 		_body_root.add_child(_ext_model)
@@ -230,6 +230,7 @@ func _build_character_rig() -> void:
 			_ext_model.add_child(_ext_anim)
 		AssetBridge.merge_external_animations(_ext_anim)
 		var skel := AssetBridge.find_first_skeleton(_ext_model)
+		AssetBridge.attach_knox_headgear(skel)
 		_weapon_aim_pivot = Node3D.new()
 		_tp_weapon_mount = Node3D.new()
 		_weapon_aim_pivot.add_child(_tp_weapon_mount)
@@ -423,6 +424,8 @@ func equip_weapon(idx: int) -> void:
 	reloading = false
 	reload_timer = 0.0
 	_apply_weapon_visual(active_weapon_idx)
+	if is_local_player() and _world != null and _world.audio_3d != null:
+		_world.audio_3d.play_ui_sfx("equip")
 
 
 func start_reload() -> void:
@@ -436,6 +439,8 @@ func start_reload() -> void:
 		return
 	reloading = true
 	reload_timer = float(w["reload_time"])
+	if _world != null and _world.audio_3d != null:
+		_world.audio_3d.play_reload_3d(global_position)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -869,27 +874,51 @@ func _drive_external_animations(h_spd: float) -> void:
 	if _ext_anim == null:
 		return
 	var desired: String = ""
-	if is_dead:
-		desired = AssetBridge.find_best_anim_name(_ext_anim, ["death", "die"])
-	elif reloading:
-		desired = AssetBridge.find_best_anim_name(_ext_anim, ["reload"])
-	elif _crouch_alpha > 0.45:
-		desired = AssetBridge.find_best_anim_name(_ext_anim, ["crouch", "kneel"])
-	elif h_spd > 0.35:
-		if absf(_local_move_vel.x) > absf(_local_move_vel.y) * 1.15 and (_ads_alpha > 0.15 or _combat_stance_t > 0.0):
-			desired = AssetBridge.find_best_anim_name(_ext_anim, ["strafe_right", "right"] if _local_move_vel.x > 0.0 else ["strafe_left", "left"])
-		elif _local_move_vel.y < -0.35 and (_ads_alpha > 0.15 or _combat_stance_t > 0.0):
-			desired = AssetBridge.find_best_anim_name(_ext_anim, ["walk_back", "run_back", "back"])
-		elif _is_sprinting or h_spd > 6.0:
-			desired = AssetBridge.find_best_anim_name(_ext_anim, ["run_fwd", "run", "sprint"])
-		else:
-			desired = AssetBridge.find_best_anim_name(_ext_anim, ["walk_fwd", "walk"])
-	else:
-		desired = AssetBridge.find_best_anim_name(_ext_anim, ["rifle_idle", "idle"])
+	var speed_scale: float = 1.0
+	var in_air: bool = (current_vehicle == null) and (not is_on_floor()) and is_local_player()
 
-	if not desired.is_empty() and desired != _ext_cur_anim:
-		_ext_cur_anim = desired
-		_ext_anim.play(desired, 0.16)
+	if is_dead:
+		desired = AssetBridge.find_best_anim_name(_ext_anim, ["death01", "death", "die"])
+	elif current_vehicle != null:
+		desired = AssetBridge.find_best_anim_name(_ext_anim, ["sitting_idle", "sitting", "sit", "crouch_idle", "idle_loop", "idle"])
+	elif _melee_swing_t > 0.0:
+		desired = AssetBridge.find_best_anim_name(_ext_anim, ["sword_attack", "slash", "punch", "attack"])
+		speed_scale = 1.35
+	elif reloading:
+		desired = AssetBridge.find_best_anim_name(_ext_anim, ["reload", "interact", "idle_loop", "idle"])
+	elif in_air:
+		desired = AssetBridge.find_best_anim_name(_ext_anim, ["jump_loop", "jump_start", "jump"])
+	elif _crouch_alpha > 0.45:
+		if h_spd > 0.30:
+			desired = AssetBridge.find_best_anim_name(_ext_anim, ["crouch_fwd", "crouch_walk", "crouch"])
+			speed_scale = clampf(h_spd / 2.6, 0.75, 1.4)
+		else:
+			desired = AssetBridge.find_best_anim_name(_ext_anim, ["crouch_idle", "crouch", "kneel"])
+	elif h_spd > 0.30:
+		var combat: bool = _ads_alpha > 0.15 or _combat_stance_t > 0.0
+		if combat and absf(_local_move_vel.x) > absf(_local_move_vel.y) * 1.15:
+			desired = AssetBridge.find_best_anim_name(_ext_anim, ["strafe_right", "right", "walk_loop", "walk"] if _local_move_vel.x > 0.0 else ["strafe_left", "left", "walk_loop", "walk"])
+			speed_scale = clampf(h_spd / 3.8, 0.8, 1.35)
+		elif combat and _local_move_vel.y < -0.35:
+			desired = AssetBridge.find_best_anim_name(_ext_anim, ["walk_back", "run_back", "back", "walk_loop", "walk"])
+			speed_scale = -1.0 if not ("back" in desired.to_lower()) else 1.0
+		elif _is_sprinting or h_spd > 6.0:
+			desired = AssetBridge.find_best_anim_name(_ext_anim, ["sprint_loop", "sprint", "jog_fwd_loop", "run_fwd", "run"])
+			speed_scale = clampf(h_spd / 7.2, 0.9, 1.35)
+		elif h_spd > 3.9:
+			desired = AssetBridge.find_best_anim_name(_ext_anim, ["jog_fwd_loop", "jog", "walk_loop", "walk_fwd", "walk"])
+			speed_scale = clampf(h_spd / 5.0, 0.85, 1.25)
+		else:
+			desired = AssetBridge.find_best_anim_name(_ext_anim, ["walk_loop", "walk_fwd", "walk"])
+			speed_scale = clampf(h_spd / 3.2, 0.75, 1.25)
+	else:
+		desired = AssetBridge.find_best_anim_name(_ext_anim, ["rifle_idle", "idle_loop", "idle"])
+
+	if not desired.is_empty():
+		_ext_anim.speed_scale = speed_scale
+		if desired != _ext_cur_anim or not _ext_anim.is_playing():
+			_ext_cur_anim = desired
+			_ext_anim.play(desired, 0.14)
 
 
 func _update_camera_and_viewmodel(delta: float, move_spd: float) -> void:
@@ -941,12 +970,16 @@ func _fire_weapon() -> void:
 	var is_melee: bool = bool(w["melee"])
 	if not is_melee:
 		if mags[active_weapon_idx] <= 0 and not infinite_ammo:
+			if _world.audio_3d != null:
+				_world.audio_3d.play_ui_sfx("empty")
 			start_reload()
 			return
 		if not infinite_ammo:
 			mags[active_weapon_idx] -= 1
 	else:
 		_melee_swing_t = 0.28
+		if _world.audio_3d != null:
+			_world.audio_3d.play_melee_3d(global_position, false)
 
 	_combat_stance_t = 1.65
 	_fire_cd = float(w["cooldown"])

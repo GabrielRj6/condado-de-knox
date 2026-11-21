@@ -213,17 +213,21 @@ func _physics_process(delta: float) -> void:
 func _animate_zombie(delta: float, spd: float) -> void:
 	if _ext_anim != null:
 		var want: String = ""
+		var sp_s: float = 0.72 if archetype == 0 else (1.35 if archetype == 2 else 1.0)
 		if is_dead:
-			want = AssetBridge.find_best_anim_name(_ext_anim, ["death", "die"])
+			want = AssetBridge.find_best_anim_name(_ext_anim, ["death01", "death", "die"])
+			sp_s = 1.0
 		elif is_chasing and spd > 2.2:
-			want = AssetBridge.find_best_anim_name(_ext_anim, ["run", "chase", "sprint", "walk"])
+			want = AssetBridge.find_best_anim_name(_ext_anim, ["sprint_loop", "jog_fwd_loop", "run", "chase", "walk_loop", "walk"])
 		elif spd > 0.25:
-			want = AssetBridge.find_best_anim_name(_ext_anim, ["walk", "shamble"])
+			want = AssetBridge.find_best_anim_name(_ext_anim, ["walk_loop", "walk", "shamble"])
 		else:
-			want = AssetBridge.find_best_anim_name(_ext_anim, ["idle"])
-		if not want.is_empty() and want != _ext_cur_anim:
-			_ext_cur_anim = want
-			_ext_anim.play(want, 0.18)
+			want = AssetBridge.find_best_anim_name(_ext_anim, ["idle_loop", "idle"])
+		if not want.is_empty():
+			_ext_anim.speed_scale = sp_s
+			if want != _ext_cur_anim or (not is_dead and not _ext_anim.is_playing()):
+				_ext_cur_anim = want
+				_ext_anim.play(want, 0.16)
 		return
 	if _leg_l == null or _leg_r == null:
 		return

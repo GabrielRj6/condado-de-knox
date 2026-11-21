@@ -778,9 +778,33 @@ func _build_dev_panel() -> void:
 	)
 	p_row.add_child(btn_tp)
 
-	# Indicador de Addons Asset Store detectados
+	var weather_row := HBoxContainer.new()
+	weather_row.add_theme_constant_override("separation", 4)
+	dv.add_child(weather_row)
+	var btn_storm := Button.new()
+	btn_storm.text = "Tempestade (Chuva)"
+	btn_storm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_style_btn(btn_storm, "#1d2d3a", "#294154", "#5582a6")
+	btn_storm.pressed.connect(func() -> void: request_set_time(time_hours, not storm_mode))
+	weather_row.add_child(btn_storm)
+
+	var btn_siren := Button.new()
+	btn_siren.text = "Sirene de Alerta"
+	btn_siren.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_style_btn(btn_siren, "#3e221b", "#593026", "#a85642")
+	btn_siren.pressed.connect(request_air_raid_siren)
+	weather_row.add_child(btn_siren)
+
+	# Indicador de Assets / Plugins Asset Store ativos
 	var addons: PackedStringArray = AssetBridge.detect_installed_addons()
-	_addons_lbl = _mk_lbl("Asset Store addons: " + (", ".join(addons) if not addons.is_empty() else "nenhum em res://addons/"))
+	var packs: PackedStringArray = []
+	if ResourceLoader.exists(AssetBridge.QUATERNIUS_RIG_PATH):
+		packs.append("Quaternius Rig+Anims")
+	if ResourceLoader.exists(AssetBridge.SFX_PACK_ROOT + "Hollywood/Titan Handgun.wav"):
+		packs.append("SFX Vol.1")
+	for ad in addons:
+		packs.append(ad)
+	_addons_lbl = _mk_lbl("Assets ativos: " + (", ".join(packs) if not packs.is_empty() else "padrao"))
 	_addons_lbl.add_theme_color_override("font_color", Color.html("#8da67e"))
 	dv.add_child(_addons_lbl)
 
@@ -1120,6 +1144,8 @@ func toggle_menu(open_state: bool) -> void:
 			_dev_panel.visible = false
 		if tactical_map != null:
 			tactical_map.close_map()
+	if audio_3d != null:
+		audio_3d.play_ui_sfx("menu")
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if is_ui_blocking() else Input.MOUSE_MODE_CAPTURED
 
 
@@ -1133,6 +1159,8 @@ func toggle_dev_panel(open_state: bool) -> void:
 			_menu_backdrop.visible = false
 		if tactical_map != null:
 			tactical_map.close_map()
+	if audio_3d != null:
+		audio_3d.play_ui_sfx("menu")
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if is_ui_blocking() else Input.MOUSE_MODE_CAPTURED
 
 
@@ -1149,6 +1177,8 @@ func toggle_full_map(open_state: bool) -> void:
 		tactical_map.open_map()
 	else:
 		tactical_map.close_map()
+	if audio_3d != null:
+		audio_3d.play_ui_sfx("map")
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if is_ui_blocking() else Input.MOUSE_MODE_CAPTURED
 
 
@@ -1313,6 +1343,8 @@ func try_pickup_nearest_loot(player: SurvivorPlayer, max_d: float) -> bool:
 		return false
 	c.visible = false
 	player.heal_and_restock()
+	if audio_3d != null:
+		audio_3d.play_ui_sfx("loot")
 	_set_status("Suprimentos coletados: +Vida, +Fome/Sede e Municao cheia!")
 	return true
 
@@ -1486,10 +1518,14 @@ func _apply_time_of_day() -> void:
 	_sun.rotation_degrees = Vector3(pitch_deg, (time_hours / 24.0) * 360.0 - 90.0, 0.0)
 	var is_night: bool = elev < 0.04
 	var is_golden: bool = elev >= 0.04 and elev < 0.34
-	_sun.light_energy = 0.14 if is_night else (lerpf(0.55, 1.15, (elev - 0.04) / 0.30) if is_golden else lerpf(1.15, 1.42, clampf(elev, 0.0, 1.0)))
-	_sun.light_color = Color(0.56, 0.70, 0.96) if is_night else (Color(1.0, 0.78, 0.56) if is_golden else Color(1.0, 0.95, 0.87))
+	var storm_dim: float = 0.52 if storm_mode else 1.0
+	_sun.light_energy = (0.14 if is_night else (lerpf(0.55, 1.15, (elev - 0.04) / 0.30) if is_golden else lerpf(1.15, 1.42, clampf(elev, 0.0, 1.0)))) * storm_dim
+	_sun.light_color = Color(0.56, 0.70, 0.96) if (is_night or storm_mode) else (Color(1.0, 0.78, 0.56) if is_golden else Color(1.0, 0.95, 0.87))
 	if _sky_mat != null:
-		if is_night:
+		if storm_mode:
+			_sky_mat.sky_top_color = Color(0.08, 0.10, 0.14)
+			_sky_mat.sky_horizon_color = Color(0.18, 0.21, 0.25)
+		elif is_night:
 			_sky_mat.sky_top_color = Color(0.03, 0.05, 0.11)
 			_sky_mat.sky_horizon_color = Color(0.07, 0.09, 0.16)
 		elif is_golden:
@@ -1499,9 +1535,35 @@ func _apply_time_of_day() -> void:
 			_sky_mat.sky_top_color = Color(0.24, 0.48, 0.82)
 			_sky_mat.sky_horizon_color = Color(0.66, 0.76, 0.86)
 	if _world_env != null and _world_env.environment != null:
-		_world_env.environment.fog_light_color = Color(0.05, 0.07, 0.12) if is_night else (Color(0.76, 0.58, 0.48) if is_golden else Color(0.64, 0.74, 0.84))
+		_world_env.environment.fog_light_color = Color(0.16, 0.19, 0.22) if storm_mode else (Color(0.05, 0.07, 0.12) if is_night else (Color(0.76, 0.58, 0.48) if is_golden else Color(0.64, 0.74, 0.84)))
 	if map_loader != null:
-		map_loader.set_night_streetlights(is_night)
+		map_loader.set_night_streetlights(is_night or storm_mode)
+	if audio_3d != null:
+		audio_3d.update_environment_ambience(is_night, storm_mode)
+
+
+func request_air_raid_siren() -> void:
+	var lp := get_local_player()
+	var origin: Vector3 = lp.global_position if lp != null else Vector3.ZERO
+	if not multiplayer.has_multiplayer_peer() or multiplayer.is_server():
+		alert_zombies_in_radius(origin, 140.0)
+		_rpc_play_siren.rpc(origin)
+	else:
+		_rpc_req_siren.rpc_id(1, origin)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_req_siren(origin: Vector3) -> void:
+	if multiplayer.is_server():
+		alert_zombies_in_radius(origin, 140.0)
+		_rpc_play_siren.rpc(origin)
+
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_play_siren(origin: Vector3) -> void:
+	if audio_3d != null:
+		audio_3d.play_siren_3d(origin)
+	_set_status("SIRENE DE ALERTA DO CONDADO DE KNOX ACIONADA!")
 
 
 func request_spawn_vehicle(kind: int) -> void:
@@ -1677,6 +1739,8 @@ func _show_hitmarker(is_crit: bool, got_kill: bool) -> void:
 		var lp := get_local_player()
 		if lp != null:
 			lp.kills += 1
+	if audio_3d != null:
+		audio_3d.play_ui_sfx("crit" if (is_crit or got_kill) else "hit")
 	if _hitmarker == null:
 		return
 	_hitmarker.color = Color(1.0, 0.22, 0.18, 0.95) if is_crit else Color(1.0, 1.0, 1.0, 0.92)

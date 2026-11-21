@@ -358,6 +358,51 @@ func _rebuild_geometry() -> void:
 	for cp in crate_positions:
 		_spawn_loot_crate(cp)
 
+	# 4. ROCHAS 3D REAIS DO PACK TERRAIN3D (RockA / RockB / RockC espalhadas nas areas verdes)
+	_spawn_terrain_rocks(rng)
+
+
+func _spawn_terrain_rocks(rng: RandomNumberGenerator) -> void:
+	var rock_paths: PackedStringArray = [
+		"res://demo/assets/models/RockA.tscn",
+		"res://demo/assets/models/RockC.tscn",
+		"res://demo/assets/models/RockB.glb"
+	]
+	var loaded_rocks: Array[PackedScene] = []
+	for rp in rock_paths:
+		if ResourceLoader.exists(rp):
+			var r := ResourceLoader.load(rp)
+			if r is PackedScene:
+				loaded_rocks.append(r as PackedScene)
+	if loaded_rocks.is_empty():
+		return
+
+	var placed: int = 0
+	var tries: int = 0
+	while placed < 34 and tries < 140:
+		tries += 1
+		var rx: float = rng.randf_range(-210.0, 210.0)
+		var rz: float = rng.randf_range(-210.0, 210.0)
+		# Evita ruas principais (grade a cada 64m) e centro de spawn
+		if Vector2(rx, rz).length() < 18.0:
+			continue
+		var mod_x: float = absf(fposmod(rx + 32.0, 64.0) - 32.0)
+		var mod_z: float = absf(fposmod(rz + 32.0, 64.0) - 32.0)
+		if mod_x < 10.5 or mod_z < 10.5:
+			continue
+		var ps: PackedScene = loaded_rocks[rng.randi() % loaded_rocks.size()]
+		var rock := ps.instantiate()
+		if rock is Node3D:
+			var rn := rock as Node3D
+			var sc: float = rng.randf_range(0.32, 0.78)
+			rn.position = Vector3(rx, -0.35 * sc, rz)
+			rn.rotation = Vector3(rng.randf_range(-0.12, 0.12), rng.randf_range(0.0, TAU), rng.randf_range(-0.12, 0.12))
+			rn.scale = Vector3.ONE * sc
+			_city_root.add_child(rn)
+			placed += 1
+		elif rock != null:
+			rock.queue_free()
+
 
 func _spawn_architectural_building(c: Vector3, sz: Vector2, h: float, kind: String, brick_m: Material, modern_m: Material, stucco_m: Material, hosp_m: Material, glass_m: Material, roof_m: Material, trim_m: Material, red_m: Material, blue_m: Material) -> void:
 	var sb := StaticBody3D.new()

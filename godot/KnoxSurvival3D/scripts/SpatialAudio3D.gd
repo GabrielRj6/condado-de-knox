@@ -27,10 +27,33 @@ var clip_drift_loop: AudioStream
 var clip_zombie_idle: AudioStream
 var clip_zombie_alert: AudioStream
 var clip_zombie_attack: AudioStream
+var clip_zombie_hurt: AudioStream
 var clip_zombie_death: AudioStream
+
+# Clips extras do Sound FX Starter Pack Vol. 1
+var clip_reload: AudioStream
+var clip_melee: AudioStream
+var clip_melee_whoosh: AudioStream
+var clip_hit: AudioStream
+var clip_loot: AudioStream
+var clip_equip: AudioStream
+var clip_ui_map: AudioStream
+var clip_ui_menu: AudioStream
+var clip_ui_click: AudioStream
+var clip_empty: AudioStream
+var clip_siren: AudioStream
+var clip_thunder: AudioStream
+var clip_amb_day: AudioStream
+var clip_amb_night: AudioStream
+var clip_amb_rain: AudioStream
 
 var _pool: Array[AudioStreamPlayer3D] = []
 var _pool_idx: int = 0
+var _ui_player: AudioStreamPlayer
+var _amb_player: AudioStreamPlayer
+var _cur_amb_mode: String = ""
+var _thunder_cd: float = 12.0
+var _storm_active: bool = false
 var _active_zombie_voices: int = 0
 var _last_zombie_voice_ms: int = 0
 
@@ -47,6 +70,96 @@ func _ready() -> void:
 		p.panning_strength = 1.35
 		add_child(p)
 		_pool.append(p)
+
+	_ui_player = AudioStreamPlayer.new()
+	_ui_player.volume_db = -7.0
+	add_child(_ui_player)
+
+	_amb_player = AudioStreamPlayer.new()
+	_amb_player.volume_db = -18.0
+	add_child(_amb_player)
+
+
+func _process(delta: float) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	if _storm_active and clip_thunder != null:
+		_thunder_cd -= delta
+		if _thunder_cd <= 0.0:
+			_thunder_cd = randf_range(11.0, 24.0)
+			if _ui_player != null:
+				_ui_player.stream = clip_thunder
+				_ui_player.volume_db = randf_range(-10.0, -5.0)
+				_ui_player.pitch_scale = randf_range(0.86, 1.08)
+				_ui_player.play()
+
+
+func update_environment_ambience(is_night: bool, is_storm: bool) -> void:
+	_storm_active = is_storm
+	if _amb_player == null:
+		return
+	var target_mode: String = "storm" if is_storm else ("night" if is_night else "day")
+	if target_mode == _cur_amb_mode and _amb_player.playing:
+		return
+	_cur_amb_mode = target_mode
+	var target_clip: AudioStream = clip_amb_rain if is_storm else (clip_amb_night if is_night else clip_amb_day)
+	if target_clip == null:
+		_amb_player.stop()
+		return
+	_amb_player.stream = target_clip
+	_amb_player.volume_db = -14.0 if is_storm else (-17.0 if is_night else -21.0)
+	_amb_player.play()
+
+
+func play_ui_sfx(kind: String) -> void:
+	if _ui_player == null:
+		return
+	var s: AudioStream = null
+	var vol: float = -7.0
+	match kind:
+		"map":
+			s = clip_ui_map
+		"menu":
+			s = clip_ui_menu
+		"equip":
+			s = clip_equip
+			vol = -8.0
+		"loot":
+			s = clip_loot
+			vol = -4.5
+		"hit":
+			s = clip_hit
+			vol = -9.0
+		"crit":
+			s = clip_hit
+			vol = -4.5
+		"empty":
+			s = clip_empty
+			vol = -8.0
+		_:
+			s = clip_ui_click
+			vol = -10.0
+	if s != null:
+		_ui_player.stream = s
+		_ui_player.volume_db = vol
+		_ui_player.pitch_scale = 1.18 if kind == "crit" else randf_range(0.96, 1.04)
+		_ui_player.play()
+
+
+func play_reload_3d(world_pos: Vector3) -> void:
+	if clip_reload != null:
+		_schedule_3d(clip_reload, world_pos + Vector3(0.0, 1.3, 0.0), -6.5, 11000.0, randf_range(0.95, 1.05), 22.0, 0.0)
+
+
+func play_melee_3d(world_pos: Vector3, is_hit: bool = false) -> void:
+	var c: AudioStream = clip_melee if (is_hit and clip_melee != null) else (clip_melee_whoosh if clip_melee_whoosh != null else clip_melee)
+	if c != null:
+		_schedule_3d(c, world_pos + Vector3(0.0, 1.3, 0.0), -4.5, 12000.0, randf_range(0.92, 1.08), 26.0, 0.0)
+
+
+func play_siren_3d(world_pos: Vector3) -> void:
+	if clip_siren != null:
+		_schedule_3d(clip_siren, world_pos + Vector3(0.0, 8.0, 0.0), -1.0, 12000.0, 1.0, 480.0, 0.0)
 
 
 func _next_voice() -> AudioStreamPlayer3D:
@@ -143,6 +256,7 @@ func play_zombie_vocal_3d(vocal_type: String, world_pos: Vector3, pitch_var: flo
 	match vocal_type:
 		"alert": clip = clip_zombie_alert
 		"attack": clip = clip_zombie_attack
+		"hurt": clip = clip_zombie_hurt if clip_zombie_hurt != null else clip_zombie_attack
 		"death": clip = clip_zombie_death
 		_: clip = clip_zombie_idle
 
@@ -244,7 +358,57 @@ func _generate_all_clips() -> void:
 
 
 func _load_custom_audio_overrides() -> void:
-	# Sobrescreve automaticamente com arquivos .wav/.ogg/.mp3 reais caso existam em res://assets/audio/
+	# 1. Conecta os sons reais de estudio do Sound FX Starter Pack Vol. 1!
+	var sfx: AudioStream
+	sfx = AssetBridge.load_sfx_pack_clip("Hollywood/Titan Handgun.wav")
+	if sfx != null: clip_pistol = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("Steampunk/Steampunk Gun.wav")
+	if sfx != null: clip_rifle = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("Hollywood/Mini Rocket Shot.wav")
+	if sfx != null: clip_sniper = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("Hollywood/Mega Bomb.wav")
+	if sfx != null: clip_explosion = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("Hollywood/Heavy Gun Reload.wav")
+	if sfx != null: clip_reload = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("Hollywood/Knife Kills.wav")
+	if sfx != null: clip_melee = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("Medieval/Weapon Whoosh.wav")
+	if sfx != null: clip_melee_whoosh = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("Hollywood/Deathpunch.wav")
+	if sfx != null: clip_hit = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("Hollywood/Reward.wav")
+	if sfx != null: clip_loot = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("UI & Menus/Equip.wav")
+	if sfx != null: clip_equip = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("UI & Menus/Map.wav")
+	if sfx != null: clip_ui_map = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("UI & Menus/Inventory.wav")
+	if sfx != null: clip_ui_menu = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("UI & Menus/Select.wav")
+	if sfx != null: clip_ui_click = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("UI & Menus/Error.wav")
+	if sfx != null: clip_empty = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("Community Requests/Air Raid Siren.wav")
+	if sfx != null: clip_siren = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("Community Requests/Rolling Thunder.wav")
+	if sfx != null: clip_thunder = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("Community Requests/Animal Pain.wav")
+	if sfx != null: clip_zombie_alert = sfx
+	sfx = AssetBridge.load_sfx_pack_clip("Horror/Pain Glitch.wav")
+	if sfx != null: clip_zombie_hurt = sfx
+
+	# Ambientes continuos (dia / noite / tempestade)
+	clip_amb_day = AssetBridge.load_sfx_pack_clip("Environment/Suburb Ext Distant Traffic Loop.wav")
+	if clip_amb_day == null:
+		clip_amb_day = AssetBridge.load_sfx_pack_clip("Environment/Grassy Field Loop.wav")
+	clip_amb_night = AssetBridge.load_sfx_pack_clip("Horror/Wind Of Rotting.wav")
+	if clip_amb_night == null:
+		clip_amb_night = AssetBridge.load_sfx_pack_clip("Environment/Wind Loop.wav")
+	clip_amb_rain = AssetBridge.load_sfx_pack_clip("Environment/Rain Urban Loop.wav")
+	if clip_amb_rain == null:
+		clip_amb_rain = AssetBridge.load_sfx_pack_clip("Environment/Rainy City Alley Loop.wav")
+
+	# 2. Permite sobrescrever qualquer som colocando arquivos extras em res://assets/audio/
 	var ov: AudioStream = AssetBridge.try_load_custom_audio(["gun_rifle", "rifle", "ak47", "m4"])
 	if ov != null: clip_rifle = ov
 	ov = AssetBridge.try_load_custom_audio(["gun_pistol", "pistol", "9mm"])

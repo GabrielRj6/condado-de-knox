@@ -38,6 +38,28 @@ static func _make_mat(key: String, tex: Texture2D, rough: float = 0.9, metal: fl
 
 
 static func get_grass_mat() -> StandardMaterial3D:
+	if _cache.has("mat_grass_pbr"):
+		return _cache["mat_grass_pbr"]
+	var alb_path: String = "res://demo/assets/textures/ground037_alb_ht.png"
+	var nrm_path: String = "res://demo/assets/textures/ground037_nrm_rgh.png"
+	if ResourceLoader.exists(alb_path):
+		var alb := ResourceLoader.load(alb_path)
+		if alb is Texture2D:
+			var m := StandardMaterial3D.new()
+			m.albedo_texture = alb as Texture2D
+			m.albedo_color = Color.html("#9eb08a")
+			m.roughness = 0.92
+			m.uv1_scale = Vector3(175.0, 175.0, 1.0)
+			m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+			if ResourceLoader.exists(nrm_path):
+				var nrm := ResourceLoader.load(nrm_path)
+				if nrm is Texture2D:
+					m.normal_enabled = true
+					m.normal_texture = nrm as Texture2D
+					m.normal_scale = 0.65
+			_cache["mat_grass_pbr"] = m
+			return m
+
 	var tex := _make_tex("grass", 128, 128, func(img: Image, w: int, h: int) -> void:
 		img.fill(Color.html("#3c472f"))
 		var rng := RandomNumberGenerator.new()
