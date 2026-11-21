@@ -1,8 +1,0 @@
-# Godot 4+ cache & exports
-.godot/
-builds/*
-!builds/.gitkeep
-*.log
-server_log.txt
-.DS_Store
-Thumbs.db
