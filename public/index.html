@@ -1106,6 +1106,24 @@
             <div class="menu-section-head"><span>Gráficos &amp; Áudio</span></div>
             <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px;">
               <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span>Qualidade Gráfica</span>
+                <span class="slider-val" id="gfx-quality-val">MÉDIO</span>
+              </div>
+              <div class="size-btn-row" id="graphics-quality-presets" style="margin-top:0;">
+                <button class="size-chip" data-quality="low">Baixo (FPS)</button>
+                <button class="size-chip active" data-quality="medium">Médio</button>
+                <button class="size-chip" data-quality="high">Alto</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-meta">
+                <span>Resolução Dinâmica</span>
+                <span class="setting-desc">Ajusta nitidez se o FPS cair</span>
+              </div>
+              <button class="mini-btn" id="btn-toggle-dynres" style="padding:6px 10px;font-weight:700;background:#3d4a34;border-color:#7a9468;color:#d8ecc5;">Ativada</button>
+            </div>
+            <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
                 <span>Distância de Renderização</span>
                 <span class="slider-val" id="draw-dist-val">220m</span>
               </div>
@@ -1298,6 +1316,7 @@
 import * as THREE from 'three';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   VEHICLE_CAR_SEAT_OFFSETS,
   VEHICLE_MOTO_SEAT_OFFSETS,
@@ -2433,7 +2452,7 @@ function createWorldBoxGeo(w, h, d, tile = 1.6, bottomY = 0) {
 }
 
 const Mats = {
-  grass: new THREE.MeshStandardMaterial({ map: Tex.grass, roughness: 0.96 }),
+  grass: new THREE.MeshLambertMaterial({ map: Tex.grass }),
   asphalt: new THREE.MeshStandardMaterial({ map: Tex.asphalt, roughness: 0.9 }),
   concrete: new THREE.MeshStandardMaterial({ map: Tex.concrete, roughness: 0.88 }),
   brick: new THREE.MeshStandardMaterial({ map: Tex.brick, roughness: 0.9 }),
@@ -2450,11 +2469,11 @@ const Mats = {
   darkWood: new THREE.MeshStandardMaterial({ color: 0x4c3523, roughness: 0.84 }),
   doorWood: new THREE.MeshStandardMaterial({ map: Tex.woodFloor, color: 0x9b8a77, roughness: 0.82 }),
   glass: new THREE.MeshStandardMaterial({ color: 0x90aab4, transparent: true, opacity: 0.36, roughness: 0.2, side: THREE.DoubleSide }),
-  yellowLine: new THREE.MeshStandardMaterial({ color: 0xc29b38, roughness: 0.85 }),
+  yellowLine: new THREE.MeshLambertMaterial({ color: 0xc29b38 }),
   poleMetal: new THREE.MeshStandardMaterial({ color: 0x3b3f42, roughness: 0.55, metalness: 0.55 }),
-  trunk: new THREE.MeshStandardMaterial({ color: 0x463628, roughness: 0.95 }),
-  pine: new THREE.MeshStandardMaterial({ color: 0x2a3b26, roughness: 0.92 }),
-  oak: new THREE.MeshStandardMaterial({ color: 0x3c4a2a, roughness: 0.92 }),
+  trunk: new THREE.MeshLambertMaterial({ color: 0x463628 }),
+  pine: new THREE.MeshLambertMaterial({ color: 0x2a3b26 }),
+  oak: new THREE.MeshLambertMaterial({ color: 0x3c4a2a }),
   tire: new THREE.MeshStandardMaterial({ color: 0x191a1b, roughness: 0.9 }),
   carGlass: new THREE.MeshStandardMaterial({
     color: 0x8eb4c8,
@@ -2506,13 +2525,201 @@ const isSoftwareGl = (() => {
 
 const canvas = document.getElementById('game-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: !isSoftwareGl, powerPreference: 'high-performance' });
-renderer.setPixelRatio(isSoftwareGl ? 0.75 : Math.min(window.devicePixelRatio, 1.25));
+renderer.setPixelRatio(isSoftwareGl ? 0.75 : Math.min(window.devicePixelRatio, 1.15));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = !isSoftwareGl;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+// Sombras sob demanda (20–30 Hz): reduz custo de GPU em até 50% mantendo sombras fluidas!
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.04;
+
+/* ============================================================================
+   PRESETS GRÁFICOS (BAIXO / MÉDIO / ALTO) + RESOLUÇÃO DINÂMICA + SOMBRA CONTROLADA
+   ============================================================================ */
+const GRAPHICS_PRESETS = {
+  low: {
+    label: 'BAIXO (FPS)',
+    shadowsEnabled: false,
+    shadowType: THREE.BasicShadowMap,
+    shadowMapSize: 512,
+    shadowHz: 0,
+    treeShadows: false,
+    pixelRatioCap: 0.85,
+    lodDistMult: 0.72,
+    maxParticles: 32,
+    zombieAnimFullDist: 16
+  },
+  medium: {
+    label: 'MÉDIO',
+    shadowsEnabled: true,
+    shadowType: THREE.PCFShadowMap,
+    shadowMapSize: 1024,
+    shadowHz: 20,
+    treeShadows: false,
+    pixelRatioCap: 1.05,
+    lodDistMult: 0.90,
+    maxParticles: 64,
+    zombieAnimFullDist: 24
+  },
+  high: {
+    label: 'ALTO',
+    shadowsEnabled: true,
+    shadowType: THREE.PCFSoftShadowMap,
+    shadowMapSize: 1024,
+    shadowHz: 30,
+    treeShadows: true,
+    pixelRatioCap: 1.25,
+    lodDistMult: 1.0,
+    maxParticles: 96,
+    zombieAnimFullDist: 30
+  }
+};
+
+const graphicsState = {
+  quality: (() => {
+    try {
+      const saved = localStorage.getItem('knox_gfx_quality');
+      if (saved && GRAPHICS_PRESETS[saved]) return saved;
+    } catch (_) {}
+    return isSoftwareGl ? 'low' : 'medium';
+  })(),
+  dynResEnabled: (() => {
+    try {
+      const saved = localStorage.getItem('knox_dyn_res');
+      if (saved === '0') return false;
+    } catch (_) {}
+    return true;
+  })(),
+  dynResScale: 1.0,
+  emaFps: 60,
+  dynResCooldown: 2.0,
+  shadowAcc: 0,
+  shadowForcePending: true,
+  lastShadowSunX: 1e9,
+  lastShadowSunZ: 1e9,
+  appliedPixelRatio: 1.0
+};
+
+function getGraphicsPreset() {
+  return GRAPHICS_PRESETS[graphicsState.quality] || GRAPHICS_PRESETS.medium;
+}
+
+function requestShadowUpdate(force = false) {
+  if (force) graphicsState.shadowForcePending = true;
+}
+
+function refreshRendererPixelRatio() {
+  const preset = getGraphicsPreset();
+  const baseCap = isSoftwareGl ? 0.75
+    : Math.min(
+      window.devicePixelRatio || 1,
+      preset.pixelRatioCap,
+      currentDrawDistance >= 850 ? 1.0 : (currentDrawDistance >= 550 ? 1.12 : 1.25)
+    );
+  const scale = (graphicsState.dynResEnabled && !isSoftwareGl) ? graphicsState.dynResScale : 1.0;
+  const finalPR = Math.max(0.55, Math.round(baseCap * scale * 20) / 20);
+  if (Math.abs(finalPR - graphicsState.appliedPixelRatio) >= 0.025) {
+    graphicsState.appliedPixelRatio = finalPR;
+    renderer.setPixelRatio(finalPR);
+  }
+}
+
+function applyGraphicsQuality(presetKey, silent = false) {
+  const key = GRAPHICS_PRESETS[presetKey] ? presetKey : 'medium';
+  graphicsState.quality = key;
+  graphicsState.dynResScale = 1.0;
+  graphicsState.dynResCooldown = 2.0;
+  try { localStorage.setItem('knox_gfx_quality', key); } catch (_) {}
+
+  const preset = getGraphicsPreset();
+  const useShadows = !isSoftwareGl && preset.shadowsEnabled;
+  renderer.shadowMap.enabled = useShadows;
+  renderer.shadowMap.type = preset.shadowType;
+  if (typeof sunLight !== 'undefined') {
+    sunLight.castShadow = useShadows;
+    if (useShadows && sunLight.shadow.mapSize.x !== preset.shadowMapSize) {
+      sunLight.shadow.mapSize.set(preset.shadowMapSize, preset.shadowMapSize);
+      if (sunLight.shadow.map) {
+        sunLight.shadow.map.dispose();
+        sunLight.shadow.map = null;
+      }
+    }
+  }
+  if (typeof treeInstancedSystem !== 'undefined') {
+    const tSh = useShadows && preset.treeShadows;
+    if (treeInstancedSystem.trunk) treeInstancedSystem.trunk.castShadow = tSh;
+    if (treeInstancedSystem.pine) treeInstancedSystem.pine.castShadow = tSh;
+    if (treeInstancedSystem.oak) treeInstancedSystem.oak.castShadow = tSh;
+  }
+  if (useShadows) {
+    renderer.shadowMap.needsUpdate = true;
+    graphicsState.shadowForcePending = true;
+  }
+
+  refreshRendererPixelRatio();
+
+  const valEl = document.getElementById('gfx-quality-val');
+  if (valEl) valEl.textContent = preset.label;
+  document.querySelectorAll('#graphics-quality-presets .size-chip').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.quality === key);
+  });
+  if (typeof streamingTimer !== 'undefined') streamingTimer = 0;
+  if (!silent && typeof showToast === 'function') showToast(`GRÁFICOS: ${preset.label}`);
+}
+
+function setDynamicResEnabled(enabled, silent = false) {
+  graphicsState.dynResEnabled = !!enabled;
+  if (!graphicsState.dynResEnabled) graphicsState.dynResScale = 1.0;
+  try { localStorage.setItem('knox_dyn_res', graphicsState.dynResEnabled ? '1' : '0'); } catch (_) {}
+  refreshRendererPixelRatio();
+  const btn = document.getElementById('btn-toggle-dynres');
+  if (btn) {
+    btn.textContent = graphicsState.dynResEnabled ? 'Ativada' : 'Desativada';
+    btn.style.background = graphicsState.dynResEnabled ? '#3d4a34' : '#3a2a24';
+    btn.style.borderColor = graphicsState.dynResEnabled ? '#7a9468' : '#8a5a48';
+    btn.style.color = graphicsState.dynResEnabled ? '#d8ecc5' : '#f0cbbd';
+  }
+  if (!silent && typeof showToast === 'function') {
+    showToast(`RESOLUÇÃO DINÂMICA: ${graphicsState.dynResEnabled ? 'ATIVADA' : 'DESATIVADA'}`);
+  }
+}
+
+function updateShadowScheduler(dt) {
+  const preset = getGraphicsPreset();
+  if (!renderer.shadowMap.enabled || preset.shadowHz <= 0) return;
+  graphicsState.shadowAcc += dt;
+  const interval = 1 / preset.shadowHz;
+  const sunMoved = Math.abs(sunLight.target.position.x - graphicsState.lastShadowSunX) > 0.35
+    || Math.abs(sunLight.target.position.z - graphicsState.lastShadowSunZ) > 0.35;
+  if (graphicsState.shadowForcePending || sunMoved || graphicsState.shadowAcc >= interval) {
+    graphicsState.shadowForcePending = false;
+    graphicsState.shadowAcc = 0;
+    graphicsState.lastShadowSunX = sunLight.target.position.x;
+    graphicsState.lastShadowSunZ = sunLight.target.position.z;
+    renderer.shadowMap.needsUpdate = true;
+  }
+}
+
+function updateDynamicResolution(rawDt) {
+  if (!graphicsState.dynResEnabled || isSoftwareGl || !isPlaying || rawDt <= 0.001 || rawDt > 0.25) return;
+  const instFps = Math.min(144, 1 / rawDt);
+  graphicsState.emaFps = graphicsState.emaFps * 0.92 + instFps * 0.08;
+  graphicsState.dynResCooldown -= rawDt;
+  if (graphicsState.dynResCooldown > 0) return;
+
+  if (graphicsState.emaFps < 44 && graphicsState.dynResScale > 0.66) {
+    graphicsState.dynResScale = Math.max(0.65, Math.round((graphicsState.dynResScale - 0.06) * 100) / 100);
+    graphicsState.dynResCooldown = 1.6;
+    refreshRendererPixelRatio();
+  } else if (graphicsState.emaFps > 56 && graphicsState.dynResScale < 1.0) {
+    graphicsState.dynResScale = Math.min(1.0, Math.round((graphicsState.dynResScale + 0.04) * 100) / 100);
+    graphicsState.dynResCooldown = 2.4;
+    refreshRendererPixelRatio();
+  }
+}
 
 // Mapa de ambiente IBL dedicado aos materiais PBR metálicos das armas e vidros dos veículos
 const _weaponPmrem = new THREE.PMREMGenerator(renderer);
@@ -2538,12 +2745,8 @@ function applyDrawDistance(dist, silent = false) {
   camera.far = Math.max(1450, clamped + 550);
   camera.updateProjectionMatrix();
 
-  // Adaptação suave de pixelRatio aliada à renderização direcional global (aguenta até 1000m sem derrubar FPS!)
-  const targetPR = isSoftwareGl ? 0.75
-    : clamped >= 850 ? Math.min(window.devicePixelRatio, 1.05)
-    : clamped >= 550 ? Math.min(window.devicePixelRatio, 1.15)
-    : Math.min(window.devicePixelRatio, 1.25);
-  renderer.setPixelRatio(targetPR);
+  // Adaptação suave de pixelRatio aliada ao preset gráfico e resolução dinâmica
+  refreshRendererPixelRatio();
 
   if (scene.fog) {
     const curSky = (typeof SKY_PRESETS !== 'undefined' && SKY_PRESETS[currentSkyPresetIdx]) ? SKY_PRESETS[currentSkyPresetIdx] : null;
@@ -7232,34 +7435,88 @@ function buildCommercialBuilding(ox, oz, dir, rng, lootCounterObj, baseY = 0, ki
   }
 }
 
-const SHARED_TREE_GEO = {
-  trunk: new THREE.CylinderGeometry(0.18, 0.26, 2.4, 6),
-  pine0: new THREE.ConeGeometry(1.75, 2.4, 6),
-  pine1: new THREE.ConeGeometry(1.37, 2.4, 6),
-  pine2: new THREE.ConeGeometry(0.99, 2.4, 6),
-  oak:   new THREE.DodecahedronGeometry(1.85, 0)
+const SHARED_TREE_GEO = (() => {
+  const trunk = new THREE.CylinderGeometry(0.18, 0.26, 2.4, 6);
+  trunk.translate(0, 1.2, 0);
+
+  const p0 = new THREE.ConeGeometry(1.75, 2.4, 6); p0.translate(0, 2.7, 0);
+  const p1 = new THREE.ConeGeometry(1.37, 2.4, 6); p1.translate(0, 3.95, 0);
+  const p2 = new THREE.ConeGeometry(0.99, 2.4, 6); p2.translate(0, 5.2, 0);
+  const pineCanopy = mergeGeometries([p0, p1, p2], false);
+  p0.dispose(); p1.dispose(); p2.dispose();
+
+  const oak = new THREE.DodecahedronGeometry(1.85, 0);
+  oak.translate(0, 3.5, 0);
+
+  return { trunk, pineCanopy, oak };
+})();
+
+const treeInstancedSystem = {
+  trunk: null,
+  pine: null,
+  oak: null,
+  dummy: new THREE.Object3D()
 };
+
+function clearInstancedTrees() {
+  if (treeInstancedSystem.trunk) { worldGroup.remove(treeInstancedSystem.trunk); treeInstancedSystem.trunk.dispose(); treeInstancedSystem.trunk = null; }
+  if (treeInstancedSystem.pine)  { worldGroup.remove(treeInstancedSystem.pine);  treeInstancedSystem.pine.dispose();  treeInstancedSystem.pine = null; }
+  if (treeInstancedSystem.oak)   { worldGroup.remove(treeInstancedSystem.oak);   treeInstancedSystem.oak.dispose();   treeInstancedSystem.oak = null; }
+}
+
+function buildInstancedTrees() {
+  clearInstancedTrees();
+  const total = streamingTrees.length;
+  if (total === 0) return;
+
+  let pineCount = 0;
+  let oakCount = 0;
+  for (let i = 0; i < total; i++) {
+    if (streamingTrees[i].isPine) pineCount++;
+    else oakCount++;
+  }
+
+  const preset = getGraphicsPreset();
+  const castSh = renderer.shadowMap.enabled && preset.treeShadows;
+
+  const trunkInst = new THREE.InstancedMesh(SHARED_TREE_GEO.trunk, Mats.trunk, total);
+  trunkInst.castShadow = castSh;
+  trunkInst.receiveShadow = false;
+  trunkInst.frustumCulled = false;
+  trunkInst.count = 0;
+  worldGroup.add(trunkInst);
+  treeInstancedSystem.trunk = trunkInst;
+
+  if (pineCount > 0) {
+    const pineInst = new THREE.InstancedMesh(SHARED_TREE_GEO.pineCanopy, Mats.pine, pineCount);
+    pineInst.castShadow = castSh;
+    pineInst.receiveShadow = false;
+    pineInst.frustumCulled = false;
+    pineInst.count = 0;
+    worldGroup.add(pineInst);
+    treeInstancedSystem.pine = pineInst;
+  }
+
+  if (oakCount > 0) {
+    const oakInst = new THREE.InstancedMesh(SHARED_TREE_GEO.oak, Mats.oak, oakCount);
+    oakInst.castShadow = castSh;
+    oakInst.receiveShadow = false;
+    oakInst.frustumCulled = false;
+    oakInst.count = 0;
+    worldGroup.add(oakInst);
+    treeInstancedSystem.oak = oakInst;
+  }
+}
 
 function buildTree(x, z, rng, forcedScale = null, forcedIsPine = null) {
   const baseY = getTerrainHeight(x, z);
-  const g = new THREE.Group(); g.position.set(x, baseY, z);
-  g.scale.setScalar(forcedScale !== null ? forcedScale : (0.85 + rng() * 0.6));
-  worldGroup.add(g);
-  const meshes = [];
-  const tr = new THREE.Mesh(SHARED_TREE_GEO.trunk, Mats.trunk); tr.position.y = 1.2; tr.castShadow = true; g.add(tr); meshes.push(tr);
+  const scale = forcedScale !== null ? forcedScale : (0.85 + rng() * 0.6);
   const isPine = forcedIsPine !== null ? forcedIsPine : (rng() < 0.6);
-  if (isPine) {
-    const pGeos = [SHARED_TREE_GEO.pine0, SHARED_TREE_GEO.pine1, SHARED_TREE_GEO.pine2];
-    for (let i = 0; i < 3; i++) {
-      const cn = new THREE.Mesh(pGeos[i], Mats.pine);
-      cn.position.y = 2.7 + i * 1.25; cn.castShadow = true; g.add(cn); meshes.push(cn);
-    }
-  } else {
-    const cr = new THREE.Mesh(SHARED_TREE_GEO.oak, Mats.oak);
-    cr.position.y = 3.5; cr.castShadow = true; g.add(cr); meshes.push(cr);
-  }
   registerCollider({ minX: x - 0.3, maxX: x + 0.3, minY: baseY, maxY: baseY + 3.0, minZ: z - 0.3, maxZ: z + 0.3, surface: 'wood', active: true });
-  streamingTrees.push({ group: g, pos: new THREE.Vector3(x, baseY + 2.2, z), meshes, shadowActive: true });
+  streamingTrees.push({
+    x, y: baseY, z, scale, isPine,
+    pos: new THREE.Vector3(x, baseY + 2.2, z)
+  });
 }
 
 /* ============================================================================
@@ -7305,12 +7562,129 @@ function clearRaycastIndex() {
   raycastIndex.camCacheTimer = 0;
 }
 
-// Congela matrizes de objetos 100% estáticos (evita milhares de recálculos de matriz por frame no Three.js!)
+// Cache de materiais Lambert ultraleves para proxies LOD distantes (evita PBR pesado no horizonte!)
+const _lodLambertCache = new Map();
+function getLambertMaterialForLOD(mat) {
+  if (!mat || Array.isArray(mat) || mat.isMeshLambertMaterial || mat.isMeshBasicMaterial) return mat;
+  if (_lodLambertCache.has(mat.uuid)) return _lodLambertCache.get(mat.uuid);
+  const lam = new THREE.MeshLambertMaterial({
+    color: mat.color ? mat.color.clone() : 0xffffff,
+    map: mat.map || null,
+    emissive: mat.emissive ? mat.emissive.clone() : 0x000000,
+    emissiveIntensity: mat.emissiveIntensity || 0,
+    transparent: !!mat.transparent,
+    opacity: mat.opacity !== undefined ? mat.opacity : 1,
+    side: mat.side !== undefined ? mat.side : THREE.FrontSide
+  });
+  _lodLambertCache.set(mat.uuid, lam);
+  return lam;
+}
+
+// Normaliza atributos para mesclagem 100% segura com mergeGeometries (sem falhar em index/UV mistos)
+function prepareGeometryForMerge(mesh) {
+  if (!mesh.geometry || !mesh.geometry.attributes || !mesh.geometry.attributes.position) return null;
+  let g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+  if (!g.attributes.normal) g.computeVertexNormals();
+  const posCount = g.attributes.position.count;
+  if (!g.attributes.uv) {
+    g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(posCount * 2), 2));
+  }
+  // Remove atributos extras raros que impediriam a mesclagem
+  for (const attrName of Object.keys(g.attributes)) {
+    if (attrName !== 'position' && attrName !== 'normal' && attrName !== 'uv') {
+      g.deleteAttribute(attrName);
+    }
+  }
+  mesh.updateMatrix();
+  g.applyMatrix4(mesh.matrix);
+  return g;
+}
+
+// Mescla filhos estáticos de um container por material/propriedades (reduz 60-80% dos draw calls da cidade!)
+function mergeStaticContainerMeshes(container, dynamicObjs, shootableSet, camCollideSet, exteriorSet, isLodProxy = false) {
+  if (!container || !container.children || container.children.length === 0) return;
+
+  if (isLodProxy) {
+    for (let i = 0; i < container.children.length; i++) {
+      const ch = container.children[i];
+      if (ch.isMesh && !Array.isArray(ch.material)) {
+        ch.material = getLambertMaterialForLOD(ch.material);
+        ch.castShadow = false;
+        ch.receiveShadow = false;
+      }
+    }
+  }
+
+  const buckets = new Map();
+  for (let i = 0; i < container.children.length; i++) {
+    const m = container.children[i];
+    if (!m.isMesh || m.isInstancedMesh || m.isSkinnedMesh) continue;
+    if (dynamicObjs.has(m)) continue;
+    if (!m.geometry || !m.material || Array.isArray(m.material)) continue;
+    const ud = m.userData || {};
+    if (ud.destructibleGlass || ud.interactiveDoor || ud.vehicle || ud.vehicleRef || ud.zombie || ud.loot) continue;
+
+    const inShoot = shootableSet.has(m) ? 1 : 0;
+    const inCam = camCollideSet.has(m) ? 1 : 0;
+    const inExt = exteriorSet && exteriorSet.has(m) ? 1 : 0;
+    const surf = ud.surface || '';
+    const isRoof = ud.isRoof ? 1 : 0;
+    const key = `${m.material.uuid}|${m.castShadow ? 1 : 0}|${m.receiveShadow ? 1 : 0}|${surf}|${isRoof}|${inShoot}|${inCam}|${inExt}`;
+    let list = buckets.get(key);
+    if (!list) { list = []; buckets.set(key, list); }
+    list.push(m);
+  }
+
+  for (const list of buckets.values()) {
+    if (list.length < 2) continue;
+    const geos = [];
+    let ok = true;
+    for (let i = 0; i < list.length; i++) {
+      const g = prepareGeometryForMerge(list[i]);
+      if (!g) { ok = false; break; }
+      geos.push(g);
+    }
+    if (!ok || geos.length < 2) {
+      for (let i = 0; i < geos.length; i++) geos[i].dispose();
+      continue;
+    }
+    const mergedGeo = mergeGeometries(geos, false);
+    for (let i = 0; i < geos.length; i++) geos[i].dispose();
+    if (!mergedGeo) continue;
+
+    mergedGeo.computeBoundingSphere();
+    mapDisposables.push(mergedGeo);
+
+    const sample = list[0];
+    const mergedMesh = new THREE.Mesh(mergedGeo, sample.material);
+    mergedMesh.castShadow = sample.castShadow;
+    mergedMesh.receiveShadow = sample.receiveShadow;
+    if (sample.userData && sample.userData.surface) mergedMesh.userData.surface = sample.userData.surface;
+    if (sample.userData && sample.userData.isRoof) mergedMesh.userData.isRoof = true;
+
+    const inShoot = shootableSet.has(sample);
+    const inCam = camCollideSet.has(sample);
+    const inExt = exteriorSet && exteriorSet.has(sample);
+
+    for (let i = 0; i < list.length; i++) {
+      const old = list[i];
+      container.remove(old);
+      if (inShoot) shootableSet.delete(old);
+      if (inCam) camCollideSet.delete(old);
+      if (inExt) exteriorSet.delete(old);
+    }
+
+    container.add(mergedMesh);
+    if (inShoot) shootableSet.add(mergedMesh);
+    if (inCam) camCollideSet.add(mergedMesh);
+    if (inExt) exteriorSet.add(mergedMesh);
+  }
+}
+
+// Congela matrizes de objetos 100% estáticos, mescla geometrias por material, instancia árvores
 // e indexa todos os meshes de colisão de câmera e tiro numa grade espacial 2D O(1)!
 function finalizeWorldOptimization() {
-  worldGroup.updateMatrixWorld(true);
-
-  // Marca portas e janelas animadas/dinâmicas para NÃO congelar suas matrizes
+  // Marca portas e janelas animadas/dinâmicas para NÃO congelar nem mesclar suas matrizes
   const dynamicObjs = new Set();
   for (let i = 0; i < interactiveDoors.length; i++) {
     const d = interactiveDoors[i];
@@ -7323,7 +7697,29 @@ function finalizeWorldOptimization() {
     if (vehicles[i].root) vehicles[i].root.traverse((o) => dynamicObjs.add(o));
   }
 
-  // Congela matrizes de construções, LOD proxies, chunks de terreno/estradas, árvores e loot estático
+  // Mesclagem automática de geometria estática por prédio/subgrupo (reduz draw calls em 60-80%!)
+  const shootableSet = new Set(shootableMeshes);
+  const camCollideSet = new Set(camCollideMeshes);
+  for (let i = 0; i < streamingHouses.length; i++) {
+    const h = streamingHouses[i];
+    const extSet = h.exteriorMeshes ? new Set(h.exteriorMeshes) : null;
+    mergeStaticContainerMeshes(h.group, dynamicObjs, shootableSet, camCollideSet, extSet, false);
+    if (h.roofGroup) mergeStaticContainerMeshes(h.roofGroup, dynamicObjs, shootableSet, camCollideSet, extSet, false);
+    if (h.upperStoryGroup) mergeStaticContainerMeshes(h.upperStoryGroup, dynamicObjs, shootableSet, camCollideSet, extSet, false);
+    if (h.detailGroup) mergeStaticContainerMeshes(h.detailGroup, dynamicObjs, shootableSet, camCollideSet, extSet, false);
+    if (h.interiorGroup) mergeStaticContainerMeshes(h.interiorGroup, dynamicObjs, shootableSet, camCollideSet, extSet, false);
+    if (h.lodProxy) mergeStaticContainerMeshes(h.lodProxy, dynamicObjs, shootableSet, camCollideSet, null, true);
+    if (extSet) h.exteriorMeshes = Array.from(extSet);
+  }
+  shootableMeshes = Array.from(shootableSet);
+  camCollideMeshes = Array.from(camCollideSet);
+
+  // Constrói os 3 InstancedMeshes globais das árvores (de ~1.000+ draw calls -> 3 draw calls!)
+  buildInstancedTrees();
+
+  worldGroup.updateMatrixWorld(true);
+
+  // Congela matrizes de construções, LOD proxies, chunks de terreno/estradas e loot estático
   const freezeGroupStatic = (rootObj) => {
     if (!rootObj) return;
     rootObj.traverse((o) => {
@@ -7340,9 +7736,6 @@ function finalizeWorldOptimization() {
   for (let i = 0; i < streamingChunks.length; i++) {
     const m = streamingChunks[i].mesh;
     if (m) { m.updateMatrix(); m.matrixAutoUpdate = false; }
-  }
-  for (let i = 0; i < streamingTrees.length; i++) {
-    freezeGroupStatic(streamingTrees[i].group);
   }
   for (let i = 0; i < lootItems.length; i++) {
     if (lootItems[i].mesh) freezeGroupStatic(lootItems[i].mesh);
@@ -7381,6 +7774,7 @@ function finalizeWorldOptimization() {
   indexMeshList(shootableMeshes, raycastIndex.shootGrid, raycastIndex.largeShoot, raycastIndex.shootCell);
   raycastIndex.ready = true;
   streamingTimer = 0; // força atualização imediata no próximo frame
+  requestShadowUpdate(true);
 }
 
 // Consulta ultrarrápida O(1) dos meshes próximos (< 22m) para colisão de câmera a pé (reduz ~25.000 -> ~60 meshes!)
@@ -7530,15 +7924,17 @@ function updateSceneStreamingAndLOD(dt) {
   const px = player.drivingCar ? player.drivingCar.pos.x : player.pos.x;
   const pz = player.drivingCar ? player.drivingCar.pos.z : player.pos.z;
   const drawDist = currentDrawDistance;
+  const gfxPreset = getGraphicsPreset();
+  const lodMult = gfxPreset.lodDistMult || 1.0;
   // 4-Tier LOD otimizado p/ renderização de longo alcance (até 1000m) a 60 FPS:
   // Tier 0 (< 26m): interior + mobília + detalhes + sombras
   // Tier 1 (26..36m): exterior completo + detalhes + sombras
   // Tier 2 (36..58m): exterior sem sombras/interior
-  // Tier 3 (58..drawDist): proxy LOD ultraleve (2 draw calls por prédio, zero custo de interior!)
-  const interiorDistSq = 26 * 26;
-  const shadowDistSq = 36 * 36;
-  const detailDistSq = 40 * 40;
-  const midFullDistSq = Math.min(58, drawDist * 0.45) ** 2;
+  // Tier 3 (58..drawDist): proxy LOD ultraleve (mesclado + Lambert, zero custo de interior!)
+  const interiorDistSq = (26 * lodMult) ** 2;
+  const shadowDistSq = renderer.shadowMap.enabled ? ((36 * lodMult) ** 2) : -1;
+  const detailDistSq = (40 * lodMult) ** 2;
+  const midFullDistSq = Math.min(58 * lodMult, drawDist * 0.45) ** 2;
 
   // 1. Streaming, Oclusão Direcional Global, Frustum Culling & 4-Tier LOD de Construções
   for (let i = 0; i < streamingHouses.length; i++) {
@@ -7570,7 +7966,7 @@ function updateSceneStreamingAndLOD(dt) {
       }
     }
 
-    // Tier 3 (Distância média/longa): exibe apenas o proxy LOD ultraleve (2-3 meshes)
+    // Tier 3 (Distância média/longa): exibe apenas o proxy LOD ultraleve (mesclado + Lambert)
     if (h.lodProxy && dSq > midFullDistSq) {
       if (h.group.visible) h.group.visible = false;
       if (!h.lodProxy.visible) h.lodProxy.visible = true;
@@ -7629,41 +8025,47 @@ function updateSceneStreamingAndLOD(dt) {
     if (ch.mesh.visible !== vis) ch.mesh.visible = vis;
   }
 
-  // 3. Streaming, Oclusão Direcional & Thinning Adaptativo de Árvores (renderiza à frente até o Draw Distance total!)
-  const treeShadowSq = 32 * 32;
-  const treeMaxDistSq = (drawDist * 1.02) ** 2;
-  const treeHalfThinSq = Math.min(drawDist * 0.72, 260) ** 2;
-  const treeQuarterThinSq = Math.min(drawDist * 0.88, 450) ** 2;
-  for (let i = 0; i < streamingTrees.length; i++) {
-    const tr = streamingTrees[i];
-    const dx = tr.pos.x - px, dz = tr.pos.z - pz;
-    const dSq = dx * dx + dz * dz;
-    if (dSq > treeMaxDistSq) {
-      if (tr.group.visible) tr.group.visible = false;
-      continue;
+  // 3. Streaming, Oclusão Direcional & Instancing de Árvores (TODAS as árvores visíveis em apenas 3 draw calls!)
+  const trunkInst = treeInstancedSystem.trunk;
+  if (trunkInst) {
+    const pineInst = treeInstancedSystem.pine;
+    const oakInst = treeInstancedSystem.oak;
+    const dummy = treeInstancedSystem.dummy;
+    const treeMaxDistSq = (drawDist * 1.02) ** 2;
+    const treeHalfThinSq = Math.min(drawDist * 0.72 * lodMult, 260) ** 2;
+    const treeQuarterThinSq = Math.min(drawDist * 0.88 * lodMult, 450) ** 2;
+
+    let tIdx = 0;
+    let pIdx = 0;
+    let oIdx = 0;
+    for (let i = 0; i < streamingTrees.length; i++) {
+      const tr = streamingTrees[i];
+      const dx = tr.x - px, dz = tr.z - pz;
+      const dSq = dx * dx + dz * dz;
+      if (dSq > treeMaxDistSq) continue;
+      if (dSq > treeQuarterThinSq && (i & 3) !== 0) continue;
+      if (dSq > treeHalfThinSq && (i & 1) !== 0) continue;
+      if (!isInCameraConeXZ(tr.x, tr.z, 5.2)) continue;
+      _cullSphere.set(tr.pos, 5.0);
+      if (!_cullFrustum.intersectsSphere(_cullSphere)) continue;
+
+      dummy.position.set(tr.x, tr.y, tr.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.setScalar(tr.scale);
+      dummy.updateMatrix();
+      trunkInst.setMatrixAt(tIdx++, dummy.matrix);
+      if (tr.isPine && pineInst) pineInst.setMatrixAt(pIdx++, dummy.matrix);
+      else if (!tr.isPine && oakInst) oakInst.setMatrixAt(oIdx++, dummy.matrix);
     }
-    if (dSq > treeQuarterThinSq && (i & 3) !== 0) {
-      if (tr.group.visible) tr.group.visible = false;
-      continue;
+    trunkInst.count = tIdx;
+    if (tIdx > 0) trunkInst.instanceMatrix.needsUpdate = true;
+    if (pineInst) {
+      pineInst.count = pIdx;
+      if (pIdx > 0) pineInst.instanceMatrix.needsUpdate = true;
     }
-    if (dSq > treeHalfThinSq && (i & 1) !== 0) {
-      if (tr.group.visible) tr.group.visible = false;
-      continue;
-    }
-    if (!isInCameraConeXZ(tr.pos.x, tr.pos.z, 5.2)) {
-      if (tr.group.visible) tr.group.visible = false;
-      continue;
-    }
-    _cullSphere.set(tr.pos, 5.0);
-    if (!_cullFrustum.intersectsSphere(_cullSphere)) {
-      if (tr.group.visible) tr.group.visible = false;
-      continue;
-    }
-    if (!tr.group.visible) tr.group.visible = true;
-    const sh = dSq < treeShadowSq;
-    if (tr.shadowActive !== sh) {
-      tr.shadowActive = sh;
-      for (let m = 0; m < tr.meshes.length; m++) tr.meshes[m].castShadow = sh;
+    if (oakInst) {
+      oakInst.count = oIdx;
+      if (oIdx > 0) oakInst.instanceMatrix.needsUpdate = true;
     }
   }
 
@@ -7970,9 +8372,17 @@ function updateStreetlightPool(dt) {
 function clearMap() {
   while (worldGroup.children.length) worldGroup.remove(worldGroup.children[0]);
   clearStreetLamps();
+  clearInstancedTrees();
+  if (typeof resetFxPools === 'function') resetFxPools();
   for (const d of decalPool) scene.remove(d);
-  for (const p of activeParticles) { scene.remove(p.mesh); if (p.ownGeo) p.mesh.geometry.dispose(); if (p.ownMat) p.mesh.material.dispose(); }
-  for (const tr of activeTracers) { scene.remove(tr.line); tr.line.geometry.dispose(); tr.line.material.dispose(); }
+  for (const p of activeParticles) {
+    if (p.pooled) { p.mesh.visible = false; continue; }
+    scene.remove(p.mesh); if (p.ownGeo) p.mesh.geometry.dispose(); if (p.ownMat) p.mesh.material.dispose();
+  }
+  for (const tr of activeTracers) {
+    if (tr.pooled) { tr.line.visible = false; continue; }
+    scene.remove(tr.line); tr.line.geometry.dispose(); tr.line.material.dispose();
+  }
   for (const pr of activeProjectiles) { scene.remove(pr.mesh); }
   for (const o of mapDisposables) if (o && typeof o.dispose === 'function') o.dispose();
   colliders = []; clearColliderGrid(); clearRaycastIndex();
@@ -12219,11 +12629,12 @@ function updateLocalPlayer(dt) {
 
     const fwd = (keys['KeyW'] ? 1 : 0) - (keys['KeyS'] ? 1 : 0);
     const str = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
-    const moveDir = new THREE.Vector3();
+    _playerMoveDir.set(0, 0, 0);
     if (fwd !== 0 || str !== 0) {
       const sy = Math.sin(player.yaw), cy = Math.cos(player.yaw);
-      moveDir.set(-sy * fwd + cy * str, 0, -cy * fwd - sy * str).normalize();
+      _playerMoveDir.set(-sy * fwd + cy * str, 0, -cy * fwd - sy * str).normalize();
     }
+    const moveDir = _playerMoveDir;
 
     // Atualização de ferimentos no corpo ao longo do tempo:
     if (player.legInjured) {
@@ -12902,8 +13313,112 @@ const sharedShellGeo = new THREE.CylinderGeometry(0.006, 0.006, 0.028, 6);
 sharedShellGeo.rotateZ(Math.PI * 0.5);
 const sharedSparkGeo = new THREE.BoxGeometry(0.036, 0.036, 0.036);
 const sharedSmokeGeo = new THREE.DodecahedronGeometry(0.28, 0);
+const sharedUnitBoxGeo = new THREE.BoxGeometry(1, 1, 1);
 const decalGeo = new THREE.PlaneGeometry(0.09, 0.09);
 const decalMat = new THREE.MeshBasicMaterial({ color: 0x111210, transparent: true, opacity: 0.78, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+
+// Scratch vectors e caches de materiais compartilhados (ZERO GC / ZERO leak de WebGL em tiroteios!)
+const _playerMoveDir = new THREE.Vector3();
+const _impactLookAt = new THREE.Vector3();
+const _cachedFxMats = new Map();
+function getCachedFxMat(color, isBasic = false, transparent = false, opacity = 1) {
+  const key = `${color}|${isBasic ? 1 : 0}|${transparent ? 1 : 0}|${opacity.toFixed(2)}`;
+  let mat = _cachedFxMats.get(key);
+  if (!mat) {
+    mat = isBasic
+      ? new THREE.MeshBasicMaterial({ color, transparent, opacity })
+      : new THREE.MeshLambertMaterial({ color, transparent, opacity });
+    _cachedFxMats.set(key, mat);
+  }
+  return mat;
+}
+
+// Object Pool de Traçantes (48 linhas pré-alocadas — zero new BufferGeometry / dispose durante combate!)
+const TRACER_POOL_SIZE = 48;
+const _tracerPool = [];
+for (let i = 0; i < TRACER_POOL_SIZE; i++) {
+  const arr = new Float32Array(6);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+  const mat = new THREE.LineBasicMaterial({ color: 0xffe29a, transparent: true, opacity: 0.55 });
+  const line = new THREE.Line(geo, mat);
+  line.frustumCulled = false;
+  line.visible = false;
+  scene.add(line);
+  _tracerPool.push({ line, posArr: arr, inUse: false, pooled: true, life: 0, maxLife: 0.055, baseOpacity: 0.55 });
+}
+
+// Object Pool de Partículas (96 meshes pré-alocados para faíscas, sangue, cápsulas, fumaça e explosões!)
+const PARTICLE_POOL_SIZE = 96;
+const _particlePool = [];
+for (let i = 0; i < PARTICLE_POOL_SIZE; i++) {
+  const mesh = new THREE.Mesh(sharedSparkGeo, getCachedFxMat(0x99988f, false));
+  mesh.visible = false;
+  mesh.frustumCulled = true;
+  scene.add(mesh);
+  _particlePool.push({
+    mesh,
+    vel: new THREE.Vector3(),
+    rotVel: new THREE.Vector3(),
+    life: 0,
+    bounced: true,
+    noGravity: false,
+    ownGeo: false,
+    ownMat: false,
+    pooled: true,
+    inUse: false
+  });
+}
+
+function resetFxPools() {
+  for (let i = 0; i < _tracerPool.length; i++) {
+    const tr = _tracerPool[i];
+    tr.inUse = false;
+    tr.line.visible = false;
+    if (!tr.line.parent) scene.add(tr.line);
+  }
+  for (let i = 0; i < _particlePool.length; i++) {
+    const p = _particlePool[i];
+    p.inUse = false;
+    p.mesh.visible = false;
+    if (!p.mesh.parent) scene.add(p.mesh);
+  }
+}
+
+function spawnPooledParticle(geo, mat, px, py, pz, vx, vy, vz, rvx, rvy, rvz, life, scale = 1, noGravity = false, bounced = true) {
+  const maxAllowed = getGraphicsPreset().maxParticles || 64;
+  if (activeParticles.length >= maxAllowed) {
+    // Recicla a partícula pooled mais antiga se atingiu o orçamento do preset
+    const oldest = activeParticles[0];
+    if (oldest && oldest.pooled) {
+      oldest.inUse = false;
+      oldest.mesh.visible = false;
+      activeParticles.shift();
+    } else {
+      return null;
+    }
+  }
+  let slot = null;
+  for (let i = 0; i < _particlePool.length; i++) {
+    if (!_particlePool[i].inUse) { slot = _particlePool[i]; break; }
+  }
+  if (!slot) return null;
+  slot.inUse = true;
+  slot.mesh.geometry = geo;
+  slot.mesh.material = mat;
+  slot.mesh.position.set(px, py, pz);
+  slot.mesh.rotation.set(0, 0, 0);
+  slot.mesh.scale.setScalar(scale);
+  slot.mesh.visible = true;
+  if (!slot.mesh.parent) scene.add(slot.mesh);
+  slot.vel.set(vx, vy, vz);
+  slot.rotVel.set(rvx, rvy, rvz);
+  slot.life = life;
+  slot.noGravity = noGravity;
+  slot.bounced = bounced;
+  activeParticles.push(slot);
+  return slot;
+}
 
 let hitmarkerTimeout = null;
 function showHitmarker(color = '#ffffff') {
@@ -12938,11 +13453,27 @@ function getMuzzleWorldPos(outVec) {
 }
 
 function spawnBulletTracer(fromPos, toPos, color = 0xffe29a, life = 0.055, opacity = 0.55) {
-  const geo = new THREE.BufferGeometry().setFromPoints([fromPos.clone(), toPos.clone()]);
-  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
-  const line = new THREE.Line(geo, mat);
-  scene.add(line);
-  activeTracers.push({ line, life, maxLife: life, baseOpacity: opacity });
+  let slot = null;
+  for (let i = 0; i < _tracerPool.length; i++) {
+    if (!_tracerPool[i].inUse) { slot = _tracerPool[i]; break; }
+  }
+  if (!slot) {
+    slot = activeTracers.shift();
+    if (!slot) return;
+  }
+  slot.inUse = true;
+  slot.life = life;
+  slot.maxLife = life;
+  slot.baseOpacity = opacity;
+  const a = slot.posArr;
+  a[0] = fromPos.x; a[1] = fromPos.y; a[2] = fromPos.z;
+  a[3] = toPos.x;   a[4] = toPos.y;   a[5] = toPos.z;
+  slot.line.geometry.attributes.position.needsUpdate = true;
+  slot.line.material.color.setHex(color);
+  slot.line.material.opacity = opacity;
+  slot.line.visible = true;
+  if (!slot.line.parent) scene.add(slot.line);
+  activeTracers.push(slot);
 }
 
 /* Projéteis Físicos 3D: Foguete 84mm HEAT (RL-84) e Granada de Fragmentação M67-G */
@@ -12970,28 +13501,23 @@ function triggerExplosiveBlast(pos, radius = 8.5, maxDmg = 240, broadcast = true
   });
 
   const fireCols = [0xff5a18, 0xffa822, 0x302e2b, 0x4b4843];
-  for (let i = 0; i < 24; i++) {
-    const isSmoke = i >= 14;
+  const blastCount = graphicsState.quality === 'low' ? 12 : 20;
+  for (let i = 0; i < blastCount; i++) {
+    const isSmoke = i >= Math.floor(blastCount * 0.58);
     const sz = isSmoke ? (0.34 + Math.random() * 0.35) : (0.12 + Math.random() * 0.16);
     const mat = isSmoke
-      ? new THREE.MeshStandardMaterial({ color: fireCols[2 + (i % 2)], roughness: 0.96, transparent: true, opacity: 0.85 })
-      : new THREE.MeshBasicMaterial({ color: fireCols[i % 2] });
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(sz, sz, sz), mat);
-    mesh.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 0.9, 0.2 + Math.random() * 0.7, (Math.random() - 0.5) * 0.9));
+      ? getCachedFxMat(fireCols[2 + (i % 2)], false, true, 0.85)
+      : getCachedFxMat(fireCols[i % 2], true, false, 1);
     const spd = isSmoke ? (1.8 + Math.random() * 3.4) : (4.5 + Math.random() * 9.5);
     const ang = Math.random() * Math.PI * 2;
-    const vel = new THREE.Vector3(Math.cos(ang) * spd, (isSmoke ? 3.0 : 4.2) + Math.random() * 5.2, Math.sin(ang) * spd);
-    scene.add(mesh);
-    activeParticles.push({
-      mesh,
-      vel,
-      rotVel: new THREE.Vector3(Math.random() * 9, Math.random() * 9, Math.random() * 9),
-      life: isSmoke ? (1.2 + Math.random() * 0.9) : (0.45 + Math.random() * 0.55),
-      noGravity: isSmoke,
-      bounced: true,
-      ownGeo: true,
-      ownMat: true
-    });
+    spawnPooledParticle(
+      sharedUnitBoxGeo, mat,
+      pos.x + (Math.random() - 0.5) * 0.9, pos.y + 0.2 + Math.random() * 0.7, pos.z + (Math.random() - 0.5) * 0.9,
+      Math.cos(ang) * spd, (isSmoke ? 3.0 : 4.2) + Math.random() * 5.2, Math.sin(ang) * spd,
+      Math.random() * 9, Math.random() * 9, Math.random() * 9,
+      isSmoke ? (1.2 + Math.random() * 0.9) : (0.45 + Math.random() * 0.55),
+      sz, isSmoke, true
+    );
   }
 
   // Tremor de câmera próximo da detonação
@@ -13117,21 +13643,31 @@ function spawnExplosiveProjectile(type, origin, dir, wDef) {
 
 function spawnImpactFX(point, normal, surf = 'concrete', isBlood = false) {
   if (!isBlood && surf !== 'grass') {
-    const decal = new THREE.Mesh(decalGeo, decalMat);
-    decal.position.copy(point).addScaledVector(normal, 0.008);
-    decal.lookAt(point.clone().add(normal));
-    scene.add(decal);
+    let decal;
+    if (decalPool.length >= 75) {
+      decal = decalPool.shift();
+    } else {
+      decal = new THREE.Mesh(decalGeo, decalMat);
+      scene.add(decal);
+    }
+    decal.position.set(point.x + normal.x * 0.008, point.y + normal.y * 0.008, point.z + normal.z * 0.008);
+    _impactLookAt.set(point.x + normal.x, point.y + normal.y, point.z + normal.z);
+    decal.lookAt(_impactLookAt);
     decalPool.push(decal);
-    if (decalPool.length > 75) scene.remove(decalPool.shift());
   }
   const color = isBlood ? 0x821412 : (surf === 'metal' ? 0xffb347 : (surf === 'wood' ? 0x8a6846 : 0x99988f));
-  const pMat = (surf === 'metal' && !isBlood) ? new THREE.MeshBasicMaterial({ color }) : new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
-  for (let i = 0; i < (isBlood ? 6 : 4); i++) {
-    const p = new THREE.Mesh(sharedSparkGeo, pMat);
-    p.position.copy(point).addScaledVector(normal, 0.03);
-    const vel = normal.clone().multiplyScalar(1.4 + Math.random() * 2.2).add(new THREE.Vector3((Math.random() - 0.5) * 2.4, 0.4 + Math.random() * 1.8, (Math.random() - 0.5) * 2.4));
-    scene.add(p);
-    activeParticles.push({ mesh: p, vel, rotVel: new THREE.Vector3(10, 10, 10), life: 0.42, bounced: true, ownGeo: false, ownMat: false });
+  const pMat = getCachedFxMat(color, surf === 'metal' && !isBlood, false, 1);
+  const count = graphicsState.quality === 'low' ? (isBlood ? 3 : 2) : (isBlood ? 6 : 4);
+  const sx = point.x + normal.x * 0.03, sy = point.y + normal.y * 0.03, sz = point.z + normal.z * 0.03;
+  for (let i = 0; i < count; i++) {
+    const sp = 1.4 + Math.random() * 2.2;
+    spawnPooledParticle(
+      sharedSparkGeo, pMat, sx, sy, sz,
+      normal.x * sp + (Math.random() - 0.5) * 2.4,
+      normal.y * sp + 0.4 + Math.random() * 1.8,
+      normal.z * sp + (Math.random() - 0.5) * 2.4,
+      10, 10, 10, 0.42, 1, false, true
+    );
   }
 }
 
@@ -13305,14 +13841,15 @@ function performAttack() {
     gunState.flashT = wDef.isPlasma ? 0.06 : 0.04;
   }
 
-  // Cápsula ejetada apenas para armas com estojo (ignora Plasma, Besta, Lançador e Granada)
+  // Cápsula ejetada apenas para armas com estojo (pooled + material em cache — zero alocação por tiro!)
   if (wDef.shellCol) {
-    const shellMat = new THREE.MeshStandardMaterial({ color: wDef.shellCol, roughness: 0.35, metalness: 0.6 });
-    const shell = new THREE.Mesh(sharedShellGeo, shellMat);
-    shell.position.copy(muzzlePos);
-    const rightV = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
-    scene.add(shell);
-    activeParticles.push({ mesh: shell, vel: rightV.multiplyScalar(2.0).add(new THREE.Vector3(0, 1.6, 0)), rotVel: new THREE.Vector3(15, 18, 12), life: 2.2, bounced: false, ownGeo: false, ownMat: true });
+    const shellMat = getCachedFxMat(wDef.shellCol, false, false, 1);
+    spawnPooledParticle(
+      sharedShellGeo, shellMat,
+      muzzlePos.x, muzzlePos.y, muzzlePos.z,
+      Math.cos(player.yaw) * 2.0, 1.6, -Math.sin(player.yaw) * 2.0,
+      15, 18, 12, 2.2, 1, false, false
+    );
   }
 
   // === ARMAS DE PROJÉTIL EXPLOSIVO (RL-84 FOGUETE 84MM & GRANADA M67-G) ===
@@ -13671,20 +14208,16 @@ function explodeVehicle(veh, attackerId = null, broadcast = true) {
 
   sfx.playExplosion(1.0, veh.pos);
 
-  for (let i = 0; i < 24; i++) {
-    const isFire = i < 14;
+  const vehBlastCount = graphicsState.quality === 'low' ? 12 : 20;
+  for (let i = 0; i < vehBlastCount; i++) {
+    const isFire = i < Math.floor(vehBlastCount * 0.6);
     const mat = isFire ? (i % 2 ? _sharedHoodFireMatA : _sharedHoodFireMatB) : _sharedHoodSmokeDark;
-    const p = new THREE.Mesh(sharedSmokeGeo, mat);
-    p.scale.setScalar(isFire ? 1.35 : 0.95);
-    p.position.copy(veh.pos).add(new THREE.Vector3((Math.random() - 0.5) * 2.0, 0.7 + Math.random() * 1.1, (Math.random() - 0.5) * 2.0));
-    scene.add(p);
-    activeParticles.push({
-      mesh: p,
-      vel: new THREE.Vector3((Math.random() - 0.5) * 14, 4 + Math.random() * 10, (Math.random() - 0.5) * 14),
-      rotVel: new THREE.Vector3(5, 6, 4),
-      life: 0.9 + Math.random() * 0.9,
-      bounced: true, ownGeo: false, ownMat: false
-    });
+    spawnPooledParticle(
+      sharedSmokeGeo, mat,
+      veh.pos.x + (Math.random() - 0.5) * 2.0, veh.pos.y + 0.7 + Math.random() * 1.1, veh.pos.z + (Math.random() - 0.5) * 2.0,
+      (Math.random() - 0.5) * 14, 4 + Math.random() * 10, (Math.random() - 0.5) * 14,
+      5, 6, 4, 0.9 + Math.random() * 0.9, isFire ? 1.35 : 0.95, false, true
+    );
   }
 
   if (player.drivingCar === veh) {
@@ -13891,20 +14424,11 @@ function updateVehicles(dt) {
             const tx = v.pos.x - fwdX * rearOff + rightX * sideS;
             const tz = v.pos.z - fwdZ * rearOff + rightZ * sideS;
             const ty = getSurfaceHeight(tx, tz) + 0.16;
-            const puff = new THREE.Mesh(sharedSmokeGeo, _sharedDriftSmokeMat);
-            puff.scale.setScalar((v.isMoto ? 0.34 : 0.45) + v.driftIntensity * 0.40);
-            puff.position.set(tx, ty, tz);
-            scene.add(puff);
-            activeParticles.push({
-              mesh: puff,
-              vel: new THREE.Vector3((Math.random() - 0.5) * 1.2 - v.vx * 0.08, 0.65 + Math.random() * 0.65, (Math.random() - 0.5) * 1.2 - v.vz * 0.08),
-              rotVel: new THREE.Vector3(2, 2, 2),
-              life: 0.48,
-              noGravity: true,
-              bounced: true,
-              ownGeo: false,
-              ownMat: false
-            });
+            spawnPooledParticle(
+              sharedSmokeGeo, _sharedDriftSmokeMat, tx, ty, tz,
+              (Math.random() - 0.5) * 1.2 - v.vx * 0.08, 0.65 + Math.random() * 0.65, (Math.random() - 0.5) * 1.2 - v.vz * 0.08,
+              2, 2, 2, 0.48, (v.isMoto ? 0.34 : 0.45) + v.driftIntensity * 0.40, true, true
+            );
           }
         }
       }
@@ -17001,6 +17525,22 @@ function updateZombies(dt) {
       if (nearest && nearestDist < nearest.range) z.alertT = Math.max(z.alertT, 8.5);
       z.alertT = Math.max(0, z.alertT - dt);
 
+      // Zumbis distantes patrulhando (sem perseguir): atualiza física/colisão a 15 Hz em vez de 60 Hz!
+      if (z.stagger <= 0 && z.alertT <= 0 && nearestDist > 58) {
+        z._farPhysAcc = (z._farPhysAcc || 0) + dt;
+        if (z._farPhysAcc < 0.066) continue;
+        const farDt = Math.min(0.12, z._farPhysAcc);
+        z._farPhysAcc = 0;
+        z.wanderTimer -= farDt;
+        if (z.wanderTimer <= 0) { z.wanderTimer = 3 + Math.random() * 4; z.yaw += (Math.random() - 0.5) * 2.0; }
+        moveSpd = z.speed * (z.legHit ? 0.25 : 0.38);
+        zp.x += -Math.sin(z.yaw) * moveSpd * farDt;
+        zp.z += -Math.cos(z.yaw) * moveSpd * farDt;
+        zp.y = getSurfaceHeight(zp.x, zp.z);
+        z.root.rotation.y = z.yaw;
+        continue;
+      }
+
       if (z.stagger > 0) {
         z.stagger = Math.max(0, z.stagger - dt);
         zp.x += z.knockX * dt;
@@ -17066,14 +17606,23 @@ function updateZombies(dt) {
       }
     }
 
-    // Pula animação esquelética completa (15 juntas) em zumbis ocultos ou distantes (> 56m) para poupar CPU!
+    // LOD de Animação Esquelética por Distância (60 Hz perto -> 20 Hz médio -> 10 Hz longe -> 0 Hz oculto/>56m)
     if (!z.root.visible || localDist > 56) continue;
+    const zFullDist = getGraphicsPreset().zombieAnimFullDist || 24;
+    let animDt = dt;
+    if (localDist > zFullDist) {
+      const minStep = localDist > 42 ? 0.10 : 0.05;
+      z._animAcc = (z._animAcc || 0) + dt;
+      if (z._animAcc < minStep) continue;
+      animDt = Math.min(0.15, z._animAcc);
+      z._animAcc = 0;
+    }
 
     const cycleRate = z.legHit ? (moveSpd * 2.8 + 0.9) : (moveSpd * 3.9 + 1.1);
-    z.phase += dt * cycleRate;
+    z.phase += animDt * cycleRate;
     const sw = Math.sin(z.phase);
     const cw = Math.cos(z.phase);
-    const sm = Math.min(1, dt * 11);
+    const sm = Math.min(1, animDt * 11);
 
     // === ANIMAÇÃO ARTICULADA COMPLETA (CAMINHADA, CORRIDA, MANCANDO, ATAQUE E RECUO DE TIRO) ===
     const staggerAlpha = THREE.MathUtils.clamp(z.stagger / 0.26, 0, 1);
@@ -18518,8 +19067,8 @@ function updateDebugOverlay(dt) {
     `<div style="color:var(--amb);font-weight:700;margin-bottom:3px;">DEBUG TELEMETRY // ${devState.fpsValue} FPS · ${formatClockFromHours(timeOfDayState.hours)}</div>` +
     `<div>POS: <b>${px.toFixed(1)}, ${py.toFixed(2)}, ${pz.toFixed(1)}</b> · ALT: <b>${Math.round((terrainState.meanElev || 0) + py)}m</b></div>` +
     `<div>SUP: <b>${surf.surface.toUpperCase()}</b> (Y=${surf.y.toFixed(2)}) · VIA: <b>${surf.roadName || 'TERRENO'}</b></div>` +
-    `<div>RENDER: <b>${rInfo.calls} calls</b> · <b>${Math.round(rInfo.triangles / 1000)}k tris</b> · RAY: <b>${raycastIndex.nearbyCam.length}/${raycastIndex.visibleShoot.length}</b></div>` +
-    `<div>MUNDO: <b>${streamingHouses.length} estr.</b> · <b>${terrainState.roadSegs.length} vias</b> · <b>${colliders.length} col.</b></div>` +
+    `<div>RENDER: <b>${rInfo.calls} calls</b> · <b>${Math.round(rInfo.triangles / 1000)}k tris</b> · GFX: <b>${getGraphicsPreset().label}</b> (${Math.round(graphicsState.dynResScale * 100)}%)</div>` +
+    `<div>MUNDO: <b>${streamingHouses.length} estr.</b> · <b>${streamingTrees.length} árv.</b> · <b>${colliders.length} col.</b></div>` +
     `<div>MODOS DEV: <b style="color:#a7e38d">${modes}</b></div>`;
 }
 
@@ -18605,9 +19154,14 @@ function updateWorldFXAndHUD(dt) {
       if (!p.bounced) { p.bounced = true; sfx.playClick(4100, 0.04); }
     }
     if (p.life <= 0) {
-      scene.remove(p.mesh);
-      if (p.ownGeo) p.mesh.geometry.dispose();
-      if (p.ownMat) p.mesh.material.dispose();
+      if (p.pooled) {
+        p.inUse = false;
+        p.mesh.visible = false;
+      } else {
+        scene.remove(p.mesh);
+        if (p.ownGeo) p.mesh.geometry.dispose();
+        if (p.ownMat) p.mesh.material.dispose();
+      }
       activeParticles.splice(i, 1);
     }
   }
@@ -18617,7 +19171,12 @@ function updateWorldFXAndHUD(dt) {
     tr.life -= dt;
     tr.line.material.opacity = Math.max(0, (tr.life / tr.maxLife) * (tr.baseOpacity ?? 0.50));
     if (tr.life <= 0) {
-      scene.remove(tr.line); tr.line.geometry.dispose(); tr.line.material.dispose();
+      if (tr.pooled) {
+        tr.inUse = false;
+        tr.line.visible = false;
+      } else {
+        scene.remove(tr.line); tr.line.geometry.dispose(); tr.line.material.dispose();
+      }
       activeTracers.splice(i, 1);
     }
   }
@@ -19709,6 +20268,22 @@ if (quickStopBtnEl) quickStopBtnEl.onclick = () => stopHostedServer();
 document.getElementById('btn-close-inv').onclick = () => toggleInventoryModal(false);
 document.getElementById('btn-open-party-from-inv').onclick = () => togglePartyModal(true);
 document.getElementById('btn-close-party').onclick = () => togglePartyModal(false);
+document.querySelectorAll('#graphics-quality-presets .size-chip').forEach((btn) => {
+  btn.onclick = () => {
+    sfx.init();
+    applyGraphicsQuality(btn.dataset.quality, false);
+  };
+});
+const dynResToggleBtn = document.getElementById('btn-toggle-dynres');
+if (dynResToggleBtn) {
+  dynResToggleBtn.onclick = () => {
+    sfx.init();
+    setDynamicResEnabled(!graphicsState.dynResEnabled, false);
+  };
+}
+applyGraphicsQuality(graphicsState.quality, true);
+setDynamicResEnabled(graphicsState.dynResEnabled, true);
+
 const drawDistSlider = document.getElementById('draw-dist-slider');
 if (drawDistSlider) {
   drawDistSlider.oninput = (e) => applyDrawDistance(parseFloat(e.target.value), false);
@@ -20177,6 +20752,8 @@ function animate() {
       : 0;
     sfx.updateVehicleEngines(vehicles, player.drivingCar, localThr);
   }
+  updateShadowScheduler(dt);
+  updateDynamicResolution(dt);
   renderer.render(scene, camera);
   scheduleNextFrame();
 }
