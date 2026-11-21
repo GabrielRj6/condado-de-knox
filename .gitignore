@@ -34,3 +34,9 @@ unity/**/*.user
 unity/**/*.pidb
 unity/**/*.booproj
 
+# Godot 4 generated folders
+godot/**/.godot/
+godot/**/builds/
+godot/**/*.export_presets.cfg
+
+

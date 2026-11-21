@@ -1,0 +1,7 @@
+# Godot 4+ cache & exports
+.godot/
+builds/
+*.log
+server_log.txt
+.DS_Store
+Thumbs.db
