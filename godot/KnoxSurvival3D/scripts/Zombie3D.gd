@@ -31,6 +31,9 @@ var _leg_r: Node3D
 var _arm_l: Node3D
 var _arm_r: Node3D
 var _world: Node = null
+var _ext_model: Node3D = null
+var _ext_anim: AnimationPlayer = null
+var _ext_cur_anim: String = ""
 
 const SHIRT_COLORS: Array[Color] = [
 	Color(0.32, 0.34, 0.30), Color(0.26, 0.30, 0.38),
@@ -92,6 +95,17 @@ func _build_zombie_rig() -> void:
 	var sc: float = rng.randf_range(0.95, 1.06)
 	_body.scale = Vector3.ONE * sc
 	add_child(_body)
+
+	# Auto-carrega modelo 3D externo de zumbi (.glb/.tscn) caso exista em res://assets/characters/
+	_ext_model = AssetBridge.try_instantiate_character(true)
+	if _ext_model != null:
+		_body.add_child(_ext_model)
+		_ext_anim = AssetBridge.find_first_animation_player(_ext_model)
+		if _ext_anim == null:
+			_ext_anim = AnimationPlayer.new()
+			_ext_model.add_child(_ext_anim)
+		AssetBridge.merge_external_animations(_ext_anim)
+		return
 
 	var skin := StandardMaterial3D.new()
 	skin.albedo_color = Color(0.43, 0.49, 0.39)
@@ -197,6 +211,20 @@ func _physics_process(delta: float) -> void:
 
 
 func _animate_zombie(delta: float, spd: float) -> void:
+	if _ext_anim != null:
+		var want: String = ""
+		if is_dead:
+			want = AssetBridge.find_best_anim_name(_ext_anim, ["death", "die"])
+		elif is_chasing and spd > 2.2:
+			want = AssetBridge.find_best_anim_name(_ext_anim, ["run", "chase", "sprint", "walk"])
+		elif spd > 0.25:
+			want = AssetBridge.find_best_anim_name(_ext_anim, ["walk", "shamble"])
+		else:
+			want = AssetBridge.find_best_anim_name(_ext_anim, ["idle"])
+		if not want.is_empty() and want != _ext_cur_anim:
+			_ext_cur_anim = want
+			_ext_anim.play(want, 0.18)
+		return
 	if _leg_l == null or _leg_r == null:
 		return
 	if spd > 0.2:

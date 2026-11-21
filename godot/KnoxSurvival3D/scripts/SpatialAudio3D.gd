@@ -10,24 +10,24 @@ class_name SpatialAudio3D
 const SAMPLE_RATE: int = 22050
 const SPEED_OF_SOUND: float = 343.0
 
-var clip_rifle: AudioStreamWAV
-var clip_pistol: AudioStreamWAV
-var clip_sniper: AudioStreamWAV
-var clip_suppressed: AudioStreamWAV
-var clip_whiz: AudioStreamWAV
-var clip_explosion: AudioStreamWAV
-var clip_horn_car: AudioStreamWAV
-var clip_horn_moto: AudioStreamWAV
-var clip_start_car: AudioStreamWAV
-var clip_start_moto: AudioStreamWAV
-var clip_engine_car: AudioStreamWAV
-var clip_engine_trail: AudioStreamWAV
-var clip_engine_street: AudioStreamWAV
-var clip_drift_loop: AudioStreamWAV
-var clip_zombie_idle: AudioStreamWAV
-var clip_zombie_alert: AudioStreamWAV
-var clip_zombie_attack: AudioStreamWAV
-var clip_zombie_death: AudioStreamWAV
+var clip_rifle: AudioStream
+var clip_pistol: AudioStream
+var clip_sniper: AudioStream
+var clip_suppressed: AudioStream
+var clip_whiz: AudioStream
+var clip_explosion: AudioStream
+var clip_horn_car: AudioStream
+var clip_horn_moto: AudioStream
+var clip_start_car: AudioStream
+var clip_start_moto: AudioStream
+var clip_engine_car: AudioStream
+var clip_engine_trail: AudioStream
+var clip_engine_street: AudioStream
+var clip_drift_loop: AudioStream
+var clip_zombie_idle: AudioStream
+var clip_zombie_alert: AudioStream
+var clip_zombie_attack: AudioStream
+var clip_zombie_death: AudioStream
 
 var _pool: Array[AudioStreamPlayer3D] = []
 var _pool_idx: int = 0
@@ -60,7 +60,7 @@ func _next_voice() -> AudioStreamPlayer3D:
 func play_gunshot_3d(profile: String, muzzle_pos: Vector3, end_pos: Vector3, is_local: bool) -> void:
 	if _pool.is_empty():
 		return
-	var clip: AudioStreamWAV = clip_rifle
+	var clip: AudioStream = clip_rifle
 	match profile:
 		"pistol": clip = clip_pistol
 		"sniper": clip = clip_sniper
@@ -139,7 +139,7 @@ func play_zombie_vocal_3d(vocal_type: String, world_pos: Vector3, pitch_var: flo
 	if dist > max_d:
 		return
 
-	var clip: AudioStreamWAV = clip_zombie_idle
+	var clip: AudioStream = clip_zombie_idle
 	match vocal_type:
 		"alert": clip = clip_zombie_alert
 		"attack": clip = clip_zombie_attack
@@ -175,18 +175,18 @@ func play_zombie_vocal_3d(vocal_type: String, world_pos: Vector3, pitch_var: flo
 func play_horn_3d(is_moto: bool, world_pos: Vector3) -> void:
 	if _pool.is_empty():
 		return
-	var clip: AudioStreamWAV = clip_horn_moto if is_moto else clip_horn_car
+	var clip: AudioStream = clip_horn_moto if is_moto else clip_horn_car
 	_schedule_3d(clip, world_pos + Vector3(0.0, 1.1, 0.0), -2.5, 9500.0, 1.0, 150.0, 0.0)
 
 
 func play_engine_start_3d(is_moto: bool, world_pos: Vector3) -> void:
 	if _pool.is_empty():
 		return
-	var clip: AudioStreamWAV = clip_start_moto if is_moto else clip_start_car
+	var clip: AudioStream = clip_start_moto if is_moto else clip_start_car
 	_schedule_3d(clip, world_pos + Vector3(0.0, 0.8, 0.0), -4.0, 7500.0, 1.0, 55.0, 0.0)
 
 
-func get_engine_clip(is_moto: bool, moto_style: String) -> AudioStreamWAV:
+func get_engine_clip(is_moto: bool, moto_style: String) -> AudioStream:
 	if not is_moto:
 		return clip_engine_car
 	if moto_style == "street":
@@ -194,7 +194,7 @@ func get_engine_clip(is_moto: bool, moto_style: String) -> AudioStreamWAV:
 	return clip_engine_trail
 
 
-func _schedule_3d(clip: AudioStreamWAV, pos: Vector3, vol_db: float, cutoff_hz: float, pitch: float, max_d: float, delay: float) -> void:
+func _schedule_3d(clip: AudioStream, pos: Vector3, vol_db: float, cutoff_hz: float, pitch: float, max_d: float, delay: float) -> void:
 	var fire := func() -> void:
 		if not is_inside_tree():
 			return
@@ -240,6 +240,33 @@ func _generate_all_clips() -> void:
 	clip_zombie_alert = _make_zombie_wav(152.0, 94.0, 0.58)
 	clip_zombie_attack = _make_zombie_wav(184.0, 78.0, 0.32)
 	clip_zombie_death = _make_zombie_wav(116.0, 44.0, 0.82)
+	_load_custom_audio_overrides()
+
+
+func _load_custom_audio_overrides() -> void:
+	# Sobrescreve automaticamente com arquivos .wav/.ogg/.mp3 reais caso existam em res://assets/audio/
+	var ov: AudioStream = AssetBridge.try_load_custom_audio(["gun_rifle", "rifle", "ak47", "m4"])
+	if ov != null: clip_rifle = ov
+	ov = AssetBridge.try_load_custom_audio(["gun_pistol", "pistol", "9mm"])
+	if ov != null: clip_pistol = ov
+	ov = AssetBridge.try_load_custom_audio(["gun_sniper", "sniper", "awp"])
+	if ov != null: clip_sniper = ov
+	ov = AssetBridge.try_load_custom_audio(["gun_suppressed", "suppressed", "silencer"])
+	if ov != null: clip_suppressed = ov
+	ov = AssetBridge.try_load_custom_audio(["engine_car", "car_engine"])
+	if ov != null: clip_engine_car = ov
+	ov = AssetBridge.try_load_custom_audio(["engine_moto", "engine_trail", "moto_engine"])
+	if ov != null: clip_engine_trail = ov
+	ov = AssetBridge.try_load_custom_audio(["engine_street", "sportbike"])
+	if ov != null: clip_engine_street = ov
+	ov = AssetBridge.try_load_custom_audio(["zombie_idle", "zombie_groan"])
+	if ov != null: clip_zombie_idle = ov
+	ov = AssetBridge.try_load_custom_audio(["zombie_alert", "zombie_scream"])
+	if ov != null: clip_zombie_alert = ov
+	ov = AssetBridge.try_load_custom_audio(["zombie_attack", "zombie_bite"])
+	if ov != null: clip_zombie_attack = ov
+	ov = AssetBridge.try_load_custom_audio(["zombie_death", "zombie_die"])
+	if ov != null: clip_zombie_death = ov
 
 
 func _build_wav(samples: PackedByteArray, looping: bool = false) -> AudioStreamWAV:

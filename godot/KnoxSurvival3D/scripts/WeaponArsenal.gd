@@ -4,14 +4,16 @@ class_name WeaponArsenal
 ## Arsenal REAL do Knox Survival 3D importado dos modelos 3D (.obj) e icones HUD (.png) do jogo!
 ## Coordenadas dos .obj da Forja 3D: +X = cano (muzzle), +Y = cima, +Z = direita, centro Y = 0.96.
 ## Rotacionando +90 graus em Y no Godot, o cano aponta exatamente para -Z (frente)!
+## grip_offset posiciona a empunhadura exatamente na palma da mao direita do personagem.
 
 const WEAPONS: Array[Dictionary] = [
 	{
 		"id": "kbar",
 		"code": "K-BAR",
 		"name": "FACA TATICA K-BAR",
-		"cal": "MELEE",
+		"cal": "MELEE · LAMINA",
 		"melee": true,
+		"two_hand": false,
 		"auto": false,
 		"dmg": 60.0,
 		"pellets": 1,
@@ -27,16 +29,19 @@ const WEAPONS: Array[Dictionary] = [
 		"noise": 8.0,
 		"mesh": "res://assets/weapons/kbar.obj",
 		"icon": "res://assets/weapons/kbar_icon.png",
-		"scale": 0.16,
-		"color": Color(0.24, 0.25, 0.27),
-		"muzzle_z": -0.22
+		"scale": 0.17,
+		"color": Color(0.26, 0.28, 0.30),
+		"muzzle_z": -0.22,
+		"grip_offset": Vector3(0.0, 0.02, -0.08),
+		"foregrip_offset": Vector3(-0.14, -0.02, -0.10)
 	},
 	{
 		"id": "p9k",
 		"code": "P9-K",
 		"name": "PISTOLA P9-K 9MM",
-		"cal": "9x19mm",
+		"cal": "9x19mm · SEMI",
 		"melee": false,
+		"two_hand": false,
 		"auto": false,
 		"dmg": 30.0,
 		"pellets": 1,
@@ -52,16 +57,19 @@ const WEAPONS: Array[Dictionary] = [
 		"noise": 85.0,
 		"mesh": "res://assets/weapons/p9k.obj",
 		"icon": "res://assets/weapons/p9k_icon.png",
-		"scale": 0.17,
+		"scale": 0.18,
 		"color": Color(0.18, 0.19, 0.21),
-		"muzzle_z": -0.24
+		"muzzle_z": -0.24,
+		"grip_offset": Vector3(0.0, 0.04, -0.06),
+		"foregrip_offset": Vector3(-0.02, -0.03, -0.03)
 	},
 	{
 		"id": "mag44",
 		"code": "MAG-44",
 		"name": "REVOLVER MAG-44",
-		"cal": ".44 Magnum",
+		"cal": ".44 MAGNUM · SEMI",
 		"melee": false,
+		"two_hand": false,
 		"auto": false,
 		"dmg": 68.0,
 		"pellets": 1,
@@ -77,16 +85,19 @@ const WEAPONS: Array[Dictionary] = [
 		"noise": 125.0,
 		"mesh": "res://assets/weapons/mag44.obj",
 		"icon": "res://assets/weapons/mag44_icon.png",
-		"scale": 0.19,
-		"color": Color(0.42, 0.44, 0.46),
-		"muzzle_z": -0.28
+		"scale": 0.20,
+		"color": Color(0.46, 0.48, 0.50),
+		"muzzle_z": -0.28,
+		"grip_offset": Vector3(0.0, 0.04, -0.08),
+		"foregrip_offset": Vector3(-0.02, -0.03, -0.04)
 	},
 	{
 		"id": "vx9",
 		"code": "VX-9",
 		"name": "SMG VX-9 TATICA",
-		"cal": "9mm AUTO",
+		"cal": "9mm · AUTO",
 		"melee": false,
+		"two_hand": true,
 		"auto": true,
 		"dmg": 25.0,
 		"pellets": 1,
@@ -102,16 +113,19 @@ const WEAPONS: Array[Dictionary] = [
 		"noise": 92.0,
 		"mesh": "res://assets/weapons/vx9.obj",
 		"icon": "res://assets/weapons/vx9_icon.png",
-		"scale": 0.22,
+		"scale": 0.24,
 		"color": Color(0.19, 0.20, 0.22),
-		"muzzle_z": -0.36
+		"muzzle_z": -0.36,
+		"grip_offset": Vector3(0.0, 0.03, -0.10),
+		"foregrip_offset": Vector3(-0.02, -0.02, -0.24)
 	},
 	{
 		"id": "sg12",
 		"code": "SG-12",
 		"name": "ESCOPETA SG-12",
-		"cal": "12 GAUGE",
+		"cal": "12 GAUGE · PUMP",
 		"melee": false,
+		"two_hand": true,
 		"auto": false,
 		"dmg": 24.0,
 		"pellets": 6,
@@ -129,14 +143,17 @@ const WEAPONS: Array[Dictionary] = [
 		"icon": "res://assets/weapons/sg12_icon.png",
 		"scale": 0.30,
 		"color": Color(0.22, 0.23, 0.25),
-		"muzzle_z": -0.52
+		"muzzle_z": -0.52,
+		"grip_offset": Vector3(0.0, 0.02, -0.12),
+		"foregrip_offset": Vector3(-0.02, -0.02, -0.34)
 	},
 	{
 		"id": "m41t",
 		"code": "M41-T",
 		"name": "FUZIL M41-T 5.56",
-		"cal": "5.56 NATO",
+		"cal": "5.56 NATO · AUTO",
 		"melee": false,
+		"two_hand": true,
 		"auto": true,
 		"dmg": 36.0,
 		"pellets": 1,
@@ -154,14 +171,17 @@ const WEAPONS: Array[Dictionary] = [
 		"icon": "res://assets/weapons/m41t_icon.png",
 		"scale": 0.30,
 		"color": Color(0.17, 0.18, 0.20),
-		"muzzle_z": -0.54
+		"muzzle_z": -0.54,
+		"grip_offset": Vector3(0.0, 0.02, -0.12),
+		"foregrip_offset": Vector3(-0.02, -0.02, -0.35)
 	},
 	{
 		"id": "ak74m",
 		"code": "AK-74M",
 		"name": "RIFLE AK-74M",
-		"cal": "7.62x39mm",
+		"cal": "7.62x39mm · AUTO",
 		"melee": false,
+		"two_hand": true,
 		"auto": true,
 		"dmg": 46.0,
 		"pellets": 1,
@@ -178,15 +198,18 @@ const WEAPONS: Array[Dictionary] = [
 		"mesh": "res://assets/weapons/ak74m.obj",
 		"icon": "res://assets/weapons/ak74m_icon.png",
 		"scale": 0.31,
-		"color": Color(0.26, 0.21, 0.17),
-		"muzzle_z": -0.56
+		"color": Color(0.28, 0.22, 0.17),
+		"muzzle_z": -0.56,
+		"grip_offset": Vector3(0.0, 0.02, -0.12),
+		"foregrip_offset": Vector3(-0.02, -0.02, -0.36)
 	},
 	{
 		"id": "sr76",
 		"code": "SR-76",
 		"name": "SNIPER SR-76 .50",
-		"cal": ".50 BMG",
+		"cal": ".50 BMG · BOLT",
 		"melee": false,
+		"two_hand": true,
 		"auto": false,
 		"dmg": 125.0,
 		"pellets": 1,
@@ -203,15 +226,18 @@ const WEAPONS: Array[Dictionary] = [
 		"mesh": "res://assets/weapons/sr76.obj",
 		"icon": "res://assets/weapons/sr76_icon.png",
 		"scale": 0.34,
-		"color": Color(0.22, 0.24, 0.20),
-		"muzzle_z": -0.68
+		"color": Color(0.22, 0.25, 0.21),
+		"muzzle_z": -0.68,
+		"grip_offset": Vector3(0.0, 0.02, -0.14),
+		"foregrip_offset": Vector3(-0.02, -0.02, -0.40)
 	},
 	{
 		"id": "katana",
 		"code": "KAT-0",
 		"name": "KATANA TATICA",
-		"cal": "MELEE",
+		"cal": "MELEE · KATANA",
 		"melee": true,
+		"two_hand": true,
 		"auto": false,
 		"dmg": 95.0,
 		"pellets": 1,
@@ -228,8 +254,10 @@ const WEAPONS: Array[Dictionary] = [
 		"mesh": "res://assets/weapons/katana.obj",
 		"icon": "res://assets/weapons/katana_icon.png",
 		"scale": 0.34,
-		"color": Color(0.72, 0.76, 0.80),
-		"muzzle_z": -0.48
+		"color": Color(0.74, 0.78, 0.82),
+		"muzzle_z": -0.48,
+		"grip_offset": Vector3(0.0, 0.02, -0.22),
+		"foregrip_offset": Vector3(-0.02, -0.03, -0.05)
 	}
 ]
 
@@ -260,6 +288,7 @@ static func build_weapon_node(idx: int, suppressed: bool = false, scale_mult: fl
 	var root := Node3D.new()
 	var sc: float = float(w["scale"]) * scale_mult
 	var path: String = str(w["mesh"])
+	var grip_off: Vector3 = (w["grip_offset"] as Vector3) * scale_mult
 
 	var mi := MeshInstance3D.new()
 	var loaded_mesh: Mesh = null
@@ -273,15 +302,15 @@ static func build_weapon_node(idx: int, suppressed: bool = false, scale_mult: fl
 
 	var gun_mat := StandardMaterial3D.new()
 	gun_mat.albedo_color = w["color"]
-	gun_mat.metallic = 0.62
-	gun_mat.roughness = 0.34
+	gun_mat.metallic = 0.64
+	gun_mat.roughness = 0.32
 
 	if loaded_mesh != null:
 		mi.mesh = loaded_mesh
 		mi.scale = Vector3.ONE * sc
-		# +X do OBJ vira -Z (frente no Godot); compensa centro Y=0.96
+		# +X do OBJ vira -Z (frente no Godot); compensa centro Y=0.96 e alinha a empunhadura no pivot
 		mi.rotation.y = PI * 0.5
-		mi.position = Vector3(0.0, -0.96 * sc, 0.0)
+		mi.position = Vector3(grip_off.x, -0.96 * sc + grip_off.y, grip_off.z)
 	else:
 		var fallback := BoxMesh.new()
 		fallback.size = Vector3(0.06, 0.11, 0.65 * scale_mult)
@@ -296,16 +325,16 @@ static func build_weapon_node(idx: int, suppressed: bool = false, scale_mult: fl
 	if suppressed and not bool(w["melee"]):
 		var sup := MeshInstance3D.new()
 		var cm := CylinderMesh.new()
-		cm.top_radius = 0.020 * scale_mult
-		cm.bottom_radius = 0.020 * scale_mult
+		cm.top_radius = 0.019 * scale_mult
+		cm.bottom_radius = 0.019 * scale_mult
 		cm.height = 0.19 * scale_mult
 		sup.mesh = cm
 		sup.rotation.x = PI * 0.5
-		sup.position = Vector3(0.0, 0.03 * scale_mult, float(w["muzzle_z"]) * scale_mult - 0.06 * scale_mult)
+		sup.position = Vector3(grip_off.x, grip_off.y + 0.025 * scale_mult, grip_off.z + float(w["muzzle_z"]) * scale_mult - 0.06 * scale_mult)
 		var smat := StandardMaterial3D.new()
 		smat.albedo_color = Color(0.11, 0.12, 0.13)
-		smat.metallic = 0.72
-		smat.roughness = 0.30
+		smat.metallic = 0.74
+		smat.roughness = 0.28
 		sup.material_override = smat
 		root.add_child(sup)
 

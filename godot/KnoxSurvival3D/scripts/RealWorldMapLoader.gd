@@ -284,18 +284,18 @@ func _rebuild_geometry() -> void:
 			var pm := PlaneMesh.new()
 			pm.size = Vector2(8.4, length + 0.6)
 			seg.mesh = pm
-			seg.transform = Transform3D(basis_r, Vector3(mid.x, 0.04, mid.z))
+			seg.transform = Transform3D(basis_r, Vector3(mid.x, 0.015, mid.z))
 			seg.material_override = road_mat
 			_city_root.add_child(seg)
 
-			# Calcadas nas duas laterais
+			# Calcadas rebaixadas nas laterais (meio-fio baixo para pneus nao afundarem!)
 			var right_v: Vector3 = basis_r.x
 			for side in [-1.0, 1.0]:
 				var sw := MeshInstance3D.new()
 				var swm := BoxMesh.new()
-				swm.size = Vector3(2.2, 0.14, length)
+				swm.size = Vector3(2.2, 0.04, length)
 				sw.mesh = swm
-				sw.transform = Transform3D(basis_r, Vector3(mid.x, 0.07, mid.z) + right_v * (side * 5.3))
+				sw.transform = Transform3D(basis_r, Vector3(mid.x, 0.02, mid.z) + right_v * (side * 5.3))
 				sw.material_override = sidewalk_mat
 				_city_root.add_child(sw)
 
@@ -304,10 +304,10 @@ func _rebuild_geometry() -> void:
 				for st_i in range(-3, 4):
 					var stripe := MeshInstance3D.new()
 					var sm := BoxMesh.new()
-					sm.size = Vector3(0.55, 0.02, 2.8)
+					sm.size = Vector3(0.55, 0.012, 2.8)
 					stripe.mesh = sm
 					var cw_pos: Vector3 = a + dir_n * 7.5 + right_v * (float(st_i) * 1.05)
-					stripe.transform = Transform3D(basis_r, Vector3(cw_pos.x, 0.055, cw_pos.z))
+					stripe.transform = Transform3D(basis_r, Vector3(cw_pos.x, 0.022, cw_pos.z))
 					stripe.material_override = crosswalk_mat
 					_city_root.add_child(stripe)
 

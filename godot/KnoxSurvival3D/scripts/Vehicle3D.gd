@@ -25,6 +25,8 @@ var speed_mps: float = 0.0
 var steer_smooth: float = 0.0
 var drift_alpha: float = 0.0
 var lights_on: bool = false
+var hp: float = 1000.0
+var max_hp: float = 1000.0
 
 var _in_thr: float = 0.0
 var _in_str: float = 0.0
@@ -59,6 +61,8 @@ func setup(p_id: String, p_world: Node, kind: int) -> void:
 		accel_rate = 18.5
 		steer_deg_sec = 122.0
 		seats = [0, 0]
+		max_hp = 550.0
+		hp = 550.0
 	elif kind == 2:
 		is_moto = true
 		is_police = false
@@ -68,6 +72,8 @@ func setup(p_id: String, p_world: Node, kind: int) -> void:
 		accel_rate = 21.5
 		steer_deg_sec = 114.0
 		seats = [0, 0]
+		max_hp = 550.0
+		hp = 550.0
 	elif kind == 3:
 		is_moto = false
 		is_police = true
@@ -77,6 +83,8 @@ func setup(p_id: String, p_world: Node, kind: int) -> void:
 		accel_rate = 17.5
 		steer_deg_sec = 94.0
 		seats = [0, 0, 0, 0]
+		max_hp = 1200.0
+		hp = 1200.0
 	else:
 		is_moto = false
 		is_police = false
@@ -86,6 +94,8 @@ func setup(p_id: String, p_world: Node, kind: int) -> void:
 		accel_rate = 15.0
 		steer_deg_sec = 88.0
 		seats = [0, 0, 0, 0]
+		max_hp = 1000.0
+		hp = 1000.0
 
 
 func _ready() -> void:
@@ -277,12 +287,12 @@ func _build_vehicle_mesh() -> void:
 		_visual_root.add_child(sw)
 		_steer_wheel_mesh = sw
 
-		# 4 Bancos internos + Nos de Assento
+		# 4 Bancos internos + Nos de Assento (Y=0.28 garante cabeca/chapeu 100% DENTRO do teto!)
 		var seat_offsets: Array[Vector3] = [
-			Vector3(-0.46, 0.38, -0.18),
-			Vector3(0.46, 0.38, -0.18),
-			Vector3(-0.46, 0.38, 0.68),
-			Vector3(0.46, 0.38, 0.68)
+			Vector3(-0.46, 0.28, -0.18),
+			Vector3(0.46, 0.28, -0.18),
+			Vector3(-0.46, 0.28, 0.68),
+			Vector3(0.46, 0.28, 0.68)
 		]
 		for so in seat_offsets:
 			_mk_box(_visual_root, Vector3(0.56, 0.14, 0.50), Vector3(so.x, 0.46, so.z + 0.02), seat_mat)
@@ -490,6 +500,14 @@ func get_seat_node(seat_idx: int) -> Node3D:
 	if seat_idx >= 0 and seat_idx < _seat_nodes.size():
 		return _seat_nodes[seat_idx]
 	return _visual_root
+
+
+func get_occupied_count() -> int:
+	var n: int = 0
+	for sid in seats:
+		if sid != 0:
+			n += 1
+	return n
 
 
 func send_drive_input(thr: float, str_in: float, hb: bool) -> void:

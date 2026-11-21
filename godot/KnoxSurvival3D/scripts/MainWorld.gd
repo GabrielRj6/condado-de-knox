@@ -1,12 +1,16 @@
 extends Node3D
 class_name MainWorld
 
-## Cena principal Knox Survival 3D (Godot 4 Forward+ Vulkan GPU + CPU multi-core + Radmin VPN).
-## - Visual & UI 1:1 alinhados ao Knox Survival 3D (tema oliva escuro tatico sem cortes!)
-## - Minimapa ao vivo (canto superior direito) + Mapa Tatico completo [M]
-## - Hotbar com os ICONES REAIS das 9 armas [1..9] + Vitais (HP/Stamina/Fome/Sede) + Velocimetro
-## - Mira tatica + Scope de Sniper SR-76 + Hitmarker + Coleta de Suprimentos [E]
-## - Radmin VPN (Host / Cliente / Servidor Dedicado --dedicated) + Busca de Cidades OSM
+## Cena principal Knox Survival 3D — Godot 4 (Forward+ Vulkan GPU + Multi-Core CPU + Radmin VPN).
+## - HUD completo 1:1 do Condado de Knox (Web -> Godot 4):
+##   * Relogio Tatico Superior Esquerdo (Hora + Rede + Zumbis + Abates + Botao DEV [F1])
+##   * Faixa Superior Central de Atalhos
+##   * Painel de Status Inferior Esquerdo com Silhueta Corporal colorida por HP + Postura + Vitais
+##   * Card de Arma Ativa elevado (icone grande, nome, calibre, municao, silenciador) + Hotbar [1..9]
+##   * Minimapa Tatico no Canto Inferior Direito com zoom [- / +] + Mapa Completo [M]
+##   * HUD de Veiculo acima do Minimapa com Diagrama Superior (Carro 4 rodas / Moto 2 rodas), KM/H e DRIFT
+##   * Painel DEV [F1] completo (God Mode, Municao Infinita, Horario + 6 presets, Spawns, Curar, TP)
+## - Compatibilidade automatica com plugins da Godot Asset Store (Sky3D, Terrain3D, TerraBrush, RoadGenerator)
 
 const PROFILE_PATH: String = "user://knox_profile.cfg"
 
@@ -38,23 +42,59 @@ var active_city_km2: float = 1.0
 var has_custom_city: bool = false
 
 var _menu_open: bool = true
+var _dev_open: bool = false
 var _hud_layer: CanvasLayer
 var _menu_backdrop: ColorRect
 var _menu_panel: PanelContainer
+var _dev_panel: PanelContainer
 var _status_lbl: Label
 var _prompt_lbl: Label
-var _weapon_info_lbl: Label
-var _kills_lbl: Label
-var _veh_panel: PanelContainer
-var _veh_lbl: Label
+
+# HUD Condado de Knox — Top-Left Watch Widget
+var _clock_lbl: Label
+var _net_badge_lbl: Label
+var _watch_sub_lbl: Label
+var _addons_lbl: Label
+
+# HUD Condado de Knox — Bottom-Left Status Panel + Silhueta Corporal
+var _body_diagram: KnoxHUDDiagrams
+var _posture_lbl: Label
+var _hp_val_lbl: Label
+var _stamina_val_lbl: Label
+var _limbs_lbl: Label
 var _hp_bar: ProgressBar
 var _stamina_bar: ProgressBar
 var _hunger_bar: ProgressBar
 var _thirst_bar: ProgressBar
+
+# HUD Condado de Knox — Bottom-Center Weapon Callout + Hotbar 9 slots
+var _active_wp_icon: TextureRect
+var _active_wp_name: Label
+var _active_wp_cal: Label
+var _active_wp_ammo: Label
+var _active_wp_badge: Label
 var _hotbar_slots: Array[PanelContainer] = []
 var _slot_style_normal: StyleBoxFlat
 var _slot_style_active: StyleBoxFlat
 var _last_hotbar_idx: int = -1
+
+# HUD Condado de Knox — Right-Side Vehicle HUD (acima do minimapa)
+var _veh_panel: PanelContainer
+var _veh_diagram: KnoxHUDDiagrams
+var _veh_name_lbl: Label
+var _veh_seat_lbl: Label
+var _veh_speed_lbl: Label
+var _veh_drift_lbl: Label
+var _veh_lights_lbl: Label
+var _veh_hp_bar: ProgressBar
+
+# DEV Panel Controls
+var _dev_god_chk: CheckButton
+var _dev_ammo_chk: CheckButton
+var _dev_time_slider: HSlider
+var _dev_time_val_lbl: Label
+
+# Mira / Scope / Hitmarker / Inputs
 var _crosshair_root: Control
 var _scope_overlay: Control
 var _hitmarker: ColorRect
@@ -144,51 +184,61 @@ func _save_profile() -> void:
 
 
 func _build_environment_and_ground() -> void:
-	_world_env = WorldEnvironment.new()
-	var env := Environment.new()
-	_sky_mat = ProceduralSkyMaterial.new()
-	var sky := Sky.new()
-	sky.sky_material = _sky_mat
-	env.background_mode = Environment.BG_SKY
-	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.85
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.fog_enabled = true
-	env.fog_mode = Environment.FOG_MODE_DEPTH
-	env.fog_depth_begin = draw_distance * 0.45
-	env.fog_depth_end = draw_distance * 0.96
-	_world_env.environment = env
-	add_child(_world_env)
+	# Se o usuario ja colocou um Sky3D ou WorldEnvironment customizado na cena Main.tscn, respeita!
+	var existing_env := get_node_or_null("WorldEnvironment")
+	var existing_sky := get_node_or_null("Sky3D")
+	if existing_env == null and existing_sky == null:
+		_world_env = WorldEnvironment.new()
+		var env := Environment.new()
+		_sky_mat = ProceduralSkyMaterial.new()
+		var sky := Sky.new()
+		sky.sky_material = _sky_mat
+		env.background_mode = Environment.BG_SKY
+		env.sky = sky
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+		env.ambient_light_energy = 0.88
+		env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+		env.glow_enabled = true
+		env.glow_intensity = 0.25
+		env.glow_bloom = 0.08
+		env.fog_enabled = true
+		env.fog_mode = Environment.FOG_MODE_DEPTH
+		env.fog_depth_begin = draw_distance * 0.45
+		env.fog_depth_end = draw_distance * 0.96
+		_world_env.environment = env
+		add_child(_world_env)
 
-	_sun = DirectionalLight3D.new()
-	_sun.shadow_enabled = true
-	add_child(_sun)
+		_sun = DirectionalLight3D.new()
+		_sun.shadow_enabled = true
+		add_child(_sun)
 
-	var ground := StaticBody3D.new()
-	ground.name = "Ground"
-	var col := CollisionShape3D.new()
-	var shape := BoxShape3D.new()
-	shape.size = Vector3(1400.0, 1.0, 1400.0)
-	col.shape = shape
-	col.position = Vector3(0.0, -0.5, 0.0)
-	ground.add_child(col)
+	# Se o usuario ja adicionou Terrain3D ou TerraBrush na cena Main.tscn, nao cria o plano padrao por cima
+	var has_custom_terrain: bool = (get_node_or_null("Terrain3D") != null) or (get_node_or_null("TerraBrush") != null)
+	if not has_custom_terrain:
+		var ground := StaticBody3D.new()
+		ground.name = "Ground"
+		var col := CollisionShape3D.new()
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(1400.0, 1.0, 1400.0)
+		col.shape = shape
+		col.position = Vector3(0.0, -0.5, 0.0)
+		ground.add_child(col)
 
-	var mesh := MeshInstance3D.new()
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(1400.0, 1400.0)
-	mesh.mesh = pm
-	mesh.material_override = ProceduralTextures.get_grass_mat()
-	ground.add_child(mesh)
-	add_child(ground)
+		var mesh := MeshInstance3D.new()
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(1400.0, 1400.0)
+		mesh.mesh = pm
+		mesh.material_override = ProceduralTextures.get_grass_mat()
+		ground.add_child(mesh)
+		add_child(ground)
 
 
-func _make_panel_style(bg: Color, border: Color, pad: int = 10) -> StyleBoxFlat:
+func _make_panel_style(bg: Color, border: Color, pad: int = 10, radius: int = 3) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = bg
 	sb.border_color = border
 	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(3)
+	sb.set_corner_radius_all(radius)
 	sb.content_margin_left = pad
 	sb.content_margin_right = pad
 	sb.content_margin_top = pad
@@ -197,18 +247,19 @@ func _make_panel_style(bg: Color, border: Color, pad: int = 10) -> StyleBoxFlat:
 
 
 func _style_btn(b: Button, bg_hex: String = "#1e291d", hover_hex: String = "#2c3d2a", border_hex: String = "#556b49") -> void:
+	b.focus_mode = Control.FOCUS_NONE
 	b.add_theme_stylebox_override("normal", _make_panel_style(Color.html(bg_hex), Color.html(border_hex), 6))
 	b.add_theme_stylebox_override("hover", _make_panel_style(Color.html(hover_hex), Color.html("#8ca878"), 6))
 	b.add_theme_stylebox_override("pressed", _make_panel_style(Color.html("#141c13"), Color.html("#a6c48a"), 6))
 	b.add_theme_color_override("font_color", Color.html("#f2ead8"))
-	b.add_theme_font_size_override("font_size", 12)
+	b.add_theme_font_size_override("font_size", 11)
 
 
 func _build_ui() -> void:
 	_hud_layer = CanvasLayer.new()
 	add_child(_hud_layer)
 
-	# 1. OVERLAY DE MIRA SNIPER SR-76 (so aparece ao dar zoom com a Sniper)
+	# 1. OVERLAY DE MIRA SNIPER SR-76
 	_scope_overlay = Control.new()
 	_scope_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_scope_overlay.visible = false
@@ -238,9 +289,9 @@ func _build_ui() -> void:
 	_crosshair_root.set_anchors_preset(Control.PRESET_CENTER)
 	_crosshair_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud_layer.add_child(_crosshair_root)
-	for rect_def in [[-12, -1, -4, 1], [4, -1, 12, 1], [-1, -12, 1, -4], [-1, 4, 1, 12]]:
+	for rect_def in [[-11, -1, -4, 1], [4, -1, 11, 1], [-1, -11, 1, -4], [-1, 4, 1, 11]]:
 		var cr := ColorRect.new()
-		cr.color = Color(0.95, 0.96, 0.90, 0.86)
+		cr.color = Color(0.95, 0.96, 0.90, 0.88)
 		cr.offset_left = rect_def[0]
 		cr.offset_top = rect_def[1]
 		cr.offset_right = rect_def[2]
@@ -259,89 +310,218 @@ func _build_ui() -> void:
 	_hitmarker.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud_layer.add_child(_hitmarker)
 
-	# 3. PROMPT DE INTERACAO CENTRAL INFERIOR ([E] Entrar no veiculo / Coletar Suprimento)
+	# 3. RELOGIO TATICO SUPERIOR ESQUERDO (.watch-widget do Condado de Knox!)
+	var watch_panel := PanelContainer.new()
+	watch_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	watch_panel.offset_left = 14
+	watch_panel.offset_top = 14
+	watch_panel.offset_right = 278
+	watch_panel.offset_bottom = 104
+	watch_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.05, 0.07, 0.05, 0.88), Color(0.32, 0.42, 0.28, 0.92), 8))
+	_hud_layer.add_child(watch_panel)
+
+	var w_vbox := VBoxContainer.new()
+	w_vbox.add_theme_constant_override("separation", 4)
+	watch_panel.add_child(w_vbox)
+
+	var w_top := HBoxContainer.new()
+	w_top.add_theme_constant_override("separation", 8)
+	w_vbox.add_child(w_top)
+
+	_clock_lbl = Label.new()
+	_clock_lbl.text = "11:30"
+	_clock_lbl.add_theme_font_size_override("font_size", 20)
+	_clock_lbl.add_theme_color_override("font_color", Color.html("#e9f0dc"))
+	w_top.add_child(_clock_lbl)
+
+	_net_badge_lbl = Label.new()
+	_net_badge_lbl.text = "OFFLINE // SOLO"
+	_net_badge_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_net_badge_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_net_badge_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_net_badge_lbl.add_theme_font_size_override("font_size", 10)
+	_net_badge_lbl.add_theme_color_override("font_color", Color.html("#8ec47a"))
+	w_top.add_child(_net_badge_lbl)
+
+	_watch_sub_lbl = Label.new()
+	_watch_sub_lbl.text = "CONDADO DE KNOX  ·  ZUMBIS: 0  ·  ABATES: 0"
+	_watch_sub_lbl.add_theme_font_size_override("font_size", 10)
+	_watch_sub_lbl.add_theme_color_override("font_color", Color.html("#a9b89c"))
+	w_vbox.add_child(_watch_sub_lbl)
+
+	var w_btns := HBoxContainer.new()
+	w_btns.add_theme_constant_override("separation", 6)
+	w_vbox.add_child(w_btns)
+
+	var btn_dev := Button.new()
+	btn_dev.text = "DEV [F1]"
+	btn_dev.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_style_btn(btn_dev, "#24301f", "#33472c", "#74925e")
+	btn_dev.pressed.connect(func() -> void: toggle_dev_panel(not _dev_open))
+	w_btns.add_child(btn_dev)
+
+	var btn_menu_top := Button.new()
+	btn_menu_top.text = "MENU / RADMIN [TAB]"
+	btn_menu_top.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_style_btn(btn_menu_top, "#1b241c", "#293829", "#4f6647")
+	btn_menu_top.pressed.connect(func() -> void: toggle_menu(not _menu_open))
+	w_btns.add_child(btn_menu_top)
+
+	# 4. FAIXA SUPERIOR CENTRAL DE DICAS (.top-hints do Condado de Knox)
+	var hints_panel := PanelContainer.new()
+	hints_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	hints_panel.offset_left = -300
+	hints_panel.offset_top = 14
+	hints_panel.offset_right = 300
+	hints_panel.offset_bottom = 40
+	hints_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.05, 0.07, 0.05, 0.72), Color(0.26, 0.34, 0.24, 0.70), 4))
+	hints_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud_layer.add_child(hints_panel)
+
+	var hints_lbl := Label.new()
+	hints_lbl.text = "[WASD] Mover  ·  [SHIFT] Correr  ·  [C] Agachar  ·  [RMB] Mira  ·  [V] 1P/3P  ·  [Q] Ombro  ·  [M] Mapa  ·  [E] Veiculo"
+	hints_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hints_lbl.add_theme_font_size_override("font_size", 10)
+	hints_lbl.add_theme_color_override("font_color", Color.html("#cfd9c2"))
+	hints_panel.add_child(hints_lbl)
+
+	# 5. PROMPT DE INTERACAO CENTRAL INFERIOR ([E])
 	_prompt_lbl = Label.new()
 	_prompt_lbl.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_prompt_lbl.offset_left = -240
-	_prompt_lbl.offset_top = -128
-	_prompt_lbl.offset_right = 240
-	_prompt_lbl.offset_bottom = -102
+	_prompt_lbl.offset_left = -260
+	_prompt_lbl.offset_top = -176
+	_prompt_lbl.offset_right = 260
+	_prompt_lbl.offset_bottom = -150
 	_prompt_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_prompt_lbl.add_theme_color_override("font_color", Color.html("#ffe6a8"))
-	_prompt_lbl.add_theme_font_size_override("font_size", 14)
+	_prompt_lbl.add_theme_font_size_override("font_size", 13)
 	_prompt_lbl.visible = false
 	_hud_layer.add_child(_prompt_lbl)
 
-	# 4. MINIMAPA TATICO AO VIVO (Canto superior direito, identico ao Web!)
-	minimap_hud = MinimapHUD.new()
-	minimap_hud.world = self
-	_hud_layer.add_child(minimap_hud)
+	# 6. PAINEL DE STATUS INFERIOR ESQUERDO (.status-panel com SILHUETA CORPORAL!)
+	var status_panel := PanelContainer.new()
+	status_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	status_panel.offset_left = 14
+	status_panel.offset_top = -148
+	status_panel.offset_right = 312
+	status_panel.offset_bottom = -14
+	status_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.05, 0.07, 0.05, 0.90), Color(0.32, 0.42, 0.28, 0.92), 8))
+	status_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud_layer.add_child(status_panel)
 
-	# 5. PAINEL DE VITAIS DE SOBREVIVENCIA (Canto inferior esquerdo)
-	var vitals_panel := PanelContainer.new()
-	vitals_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	vitals_panel.offset_left = 16
-	vitals_panel.offset_top = -132
-	vitals_panel.offset_right = 256
-	vitals_panel.offset_bottom = -16
-	vitals_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.06, 0.08, 0.06, 0.86), Color(0.30, 0.39, 0.27, 0.90), 8))
-	vitals_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_hud_layer.add_child(vitals_panel)
+	var sp_hbox := HBoxContainer.new()
+	sp_hbox.add_theme_constant_override("separation", 10)
+	status_panel.add_child(sp_hbox)
+
+	_body_diagram = KnoxHUDDiagrams.new()
+	_body_diagram.mode = "body"
+	_body_diagram.custom_minimum_size = Vector2(64, 114)
+	sp_hbox.add_child(_body_diagram)
 
 	var v_box := VBoxContainer.new()
+	v_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	v_box.add_theme_constant_override("separation", 4)
-	vitals_panel.add_child(v_box)
+	sp_hbox.add_child(v_box)
 
-	_kills_lbl = Label.new()
-	_kills_lbl.text = "ABATES: 0  ·  [TAB] MENU  ·  [M] MAPA"
-	_kills_lbl.add_theme_font_size_override("font_size", 11)
-	_kills_lbl.add_theme_color_override("font_color", Color.html("#d8e4c8"))
-	v_box.add_child(_kills_lbl)
+	_posture_lbl = Label.new()
+	_posture_lbl.text = "EM PE  ·  3A PESSOA  ·  SOLO"
+	_posture_lbl.add_theme_font_size_override("font_size", 10)
+	_posture_lbl.add_theme_color_override("font_color", Color.html("#d8e4c8"))
+	v_box.add_child(_posture_lbl)
 
-	_hp_bar = _add_vital_bar(v_box, "VIDA", 200.0, Color.html("#c4342d"))
-	_stamina_bar = _add_vital_bar(v_box, "STAMINA", 100.0, Color.html("#52a866"))
-	_hunger_bar = _add_vital_bar(v_box, "FOME", 100.0, Color.html("#c98a32"))
-	_thirst_bar = _add_vital_bar(v_box, "SEDE", 100.0, Color.html("#3c84b8"))
+	var hp_pair := _add_vital_bar(v_box, "SAUDE", 200.0, Color.html("#4ade80"), "200/200")
+	_hp_bar = hp_pair[0]
+	_hp_val_lbl = hp_pair[1]
 
-	# 6. VELOCIMETRO DO VEICULO (Canto inferior direito quando embarcado)
-	_veh_panel = PanelContainer.new()
-	_veh_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	_veh_panel.offset_left = -290
-	_veh_panel.offset_top = -98
-	_veh_panel.offset_right = -16
-	_veh_panel.offset_bottom = -16
-	_veh_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.06, 0.08, 0.06, 0.88), Color(0.45, 0.56, 0.38, 0.95), 8))
-	_veh_panel.visible = false
-	_hud_layer.add_child(_veh_panel)
-	_veh_lbl = Label.new()
-	_veh_lbl.add_theme_font_size_override("font_size", 12)
-	_veh_lbl.add_theme_color_override("font_color", Color.html("#f2ead8"))
-	_veh_panel.add_child(_veh_lbl)
+	var st_pair := _add_vital_bar(v_box, "VIGOR", 100.0, Color.html("#60a5fa"), "100%")
+	_stamina_bar = st_pair[0]
+	_stamina_val_lbl = st_pair[1]
 
-	# 7. HOTBAR DAS 9 ARMAS REAIS COM ICONES PNG (Centro inferior)
+	var needs_row := HBoxContainer.new()
+	needs_row.add_theme_constant_override("separation", 6)
+	v_box.add_child(needs_row)
+	_hunger_bar = _add_mini_bar(needs_row, "FOME", Color.html("#d99a38"))
+	_thirst_bar = _add_mini_bar(needs_row, "SEDE", Color.html("#38bdf8"))
+
+	_limbs_lbl = Label.new()
+	_limbs_lbl.text = "BRACO: OK  ·  PERNA: OK  ·  [F] LUZ"
+	_limbs_lbl.add_theme_font_size_override("font_size", 9)
+	_limbs_lbl.add_theme_color_override("font_color", Color.html("#98b08a"))
+	v_box.add_child(_limbs_lbl)
+
+	# 7. CARD DE ARMA ATIVA ELEVADO + HOTBAR 9 SLOTS (Centro Inferior, igual ao Knox Web!)
 	var hotbar_wrap := VBoxContainer.new()
 	hotbar_wrap.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	hotbar_wrap.offset_left = -315
-	hotbar_wrap.offset_top = -94
-	hotbar_wrap.offset_right = 315
+	hotbar_wrap.offset_left = -318
+	hotbar_wrap.offset_top = -146
+	hotbar_wrap.offset_right = 318
 	hotbar_wrap.offset_bottom = -12
-	hotbar_wrap.add_theme_constant_override("separation", 4)
+	hotbar_wrap.add_theme_constant_override("separation", 6)
 	hotbar_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud_layer.add_child(hotbar_wrap)
 
-	_weapon_info_lbl = Label.new()
-	_weapon_info_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_weapon_info_lbl.add_theme_font_size_override("font_size", 12)
-	_weapon_info_lbl.add_theme_color_override("font_color", Color.html("#f2ead8"))
-	hotbar_wrap.add_child(_weapon_info_lbl)
+	# Active Weapon Callout Card
+	var callout_center := HBoxContainer.new()
+	callout_center.alignment = BoxContainer.ALIGNMENT_CENTER
+	callout_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hotbar_wrap.add_child(callout_center)
 
+	var wp_card := PanelContainer.new()
+	wp_card.custom_minimum_size = Vector2(360, 56)
+	wp_card.add_theme_stylebox_override("panel", _make_panel_style(Color(0.05, 0.07, 0.05, 0.90), Color(0.45, 0.56, 0.36, 0.94), 6))
+	wp_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	callout_center.add_child(wp_card)
+
+	var wp_h := HBoxContainer.new()
+	wp_h.add_theme_constant_override("separation", 10)
+	wp_card.add_child(wp_h)
+
+	_active_wp_icon = TextureRect.new()
+	_active_wp_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_active_wp_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_active_wp_icon.custom_minimum_size = Vector2(74, 40)
+	wp_h.add_child(_active_wp_icon)
+
+	var wp_mid := VBoxContainer.new()
+	wp_mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	wp_mid.add_theme_constant_override("separation", 1)
+	wp_h.add_child(wp_mid)
+
+	_active_wp_name = Label.new()
+	_active_wp_name.text = "FUZIL M41-T 5.56"
+	_active_wp_name.add_theme_font_size_override("font_size", 12)
+	_active_wp_name.add_theme_color_override("font_color", Color.html("#f2ead8"))
+	wp_mid.add_child(_active_wp_name)
+
+	_active_wp_cal = Label.new()
+	_active_wp_cal.text = "5.56 NATO · AUTO"
+	_active_wp_cal.add_theme_font_size_override("font_size", 10)
+	_active_wp_cal.add_theme_color_override("font_color", Color.html("#9cb38e"))
+	wp_mid.add_child(_active_wp_cal)
+
+	_active_wp_badge = Label.new()
+	_active_wp_badge.text = "[R] Recarregar · [X] Silenciador OFF"
+	_active_wp_badge.add_theme_font_size_override("font_size", 9)
+	_active_wp_badge.add_theme_color_override("font_color", Color.html("#c8b674"))
+	wp_mid.add_child(_active_wp_badge)
+
+	_active_wp_ammo = Label.new()
+	_active_wp_ammo.text = "30 / 30"
+	_active_wp_ammo.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_active_wp_ammo.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_active_wp_ammo.custom_minimum_size = Vector2(74, 0)
+	_active_wp_ammo.add_theme_font_size_override("font_size", 18)
+	_active_wp_ammo.add_theme_color_override("font_color", Color.html("#f5e3a6"))
+	wp_h.add_child(_active_wp_ammo)
+
+	# 9-Slot Icon Hotbar
 	var slots_row := HBoxContainer.new()
 	slots_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	slots_row.add_theme_constant_override("separation", 5)
 	hotbar_wrap.add_child(slots_row)
 
-	_slot_style_normal = _make_panel_style(Color(0.06, 0.08, 0.06, 0.82), Color(0.28, 0.35, 0.25, 0.80), 4)
-	_slot_style_active = _make_panel_style(Color(0.18, 0.25, 0.15, 0.95), Color(0.86, 0.78, 0.44, 1.0), 4)
+	_slot_style_normal = _make_panel_style(Color(0.05, 0.07, 0.05, 0.84), Color(0.28, 0.36, 0.25, 0.84), 4)
+	_slot_style_active = _make_panel_style(Color(0.18, 0.25, 0.14, 0.96), Color(0.90, 0.80, 0.42, 1.0), 4)
 	_hotbar_slots.clear()
 	for i in range(WeaponArsenal.WEAPONS.size()):
 		var slot := PanelContainer.new()
@@ -371,15 +551,244 @@ func _build_ui() -> void:
 		slots_row.add_child(slot)
 		_hotbar_slots.append(slot)
 
-	# 8. MAPA TATICO COMPLETO [M]
+	# 8. MINIMAPA TATICO NO CANTO INFERIOR DIREITO (#minimap-hud)
+	minimap_hud = MinimapHUD.new()
+	minimap_hud.world = self
+	_hud_layer.add_child(minimap_hud)
+
+	# 9. HUD DE VEICULO COM DIAGRAMA SUPERIOR (logo acima do Minimapa no canto direito!)
+	_veh_panel = PanelContainer.new()
+	_veh_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_veh_panel.offset_left = -286
+	_veh_panel.offset_top = -352
+	_veh_panel.offset_right = -14
+	_veh_panel.offset_bottom = -234
+	_veh_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.05, 0.07, 0.05, 0.90), Color(0.42, 0.54, 0.35, 0.95), 8))
+	_veh_panel.visible = false
+	_hud_layer.add_child(_veh_panel)
+
+	var vh := HBoxContainer.new()
+	vh.add_theme_constant_override("separation", 10)
+	_veh_panel.add_child(vh)
+
+	_veh_diagram = KnoxHUDDiagrams.new()
+	_veh_diagram.mode = "vehicle"
+	_veh_diagram.custom_minimum_size = Vector2(66, 98)
+	vh.add_child(_veh_diagram)
+
+	var vv := VBoxContainer.new()
+	vv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vv.add_theme_constant_override("separation", 2)
+	vh.add_child(vv)
+
+	_veh_name_lbl = Label.new()
+	_veh_name_lbl.text = "VIATURA KNOX PD"
+	_veh_name_lbl.add_theme_font_size_override("font_size", 11)
+	_veh_name_lbl.add_theme_color_override("font_color", Color.html("#f2ead8"))
+	vv.add_child(_veh_name_lbl)
+
+	_veh_seat_lbl = Label.new()
+	_veh_seat_lbl.text = "MOTORISTA · 1/4"
+	_veh_seat_lbl.add_theme_font_size_override("font_size", 9)
+	_veh_seat_lbl.add_theme_color_override("font_color", Color.html("#9cb38e"))
+	vv.add_child(_veh_seat_lbl)
+
+	var spd_row := HBoxContainer.new()
+	spd_row.add_theme_constant_override("separation", 6)
+	vv.add_child(spd_row)
+
+	_veh_speed_lbl = Label.new()
+	_veh_speed_lbl.text = "0 KM/H"
+	_veh_speed_lbl.add_theme_font_size_override("font_size", 19)
+	_veh_speed_lbl.add_theme_color_override("font_color", Color.html("#f5e3a6"))
+	spd_row.add_child(_veh_speed_lbl)
+
+	_veh_drift_lbl = Label.new()
+	_veh_drift_lbl.text = "DRIFT"
+	_veh_drift_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_veh_drift_lbl.add_theme_font_size_override("font_size", 11)
+	_veh_drift_lbl.add_theme_color_override("font_color", Color.html("#f59e0b"))
+	_veh_drift_lbl.visible = false
+	spd_row.add_child(_veh_drift_lbl)
+
+	_veh_lights_lbl = Label.new()
+	_veh_lights_lbl.text = "FAROIS: OFF  ·  [H] BUZINA"
+	_veh_lights_lbl.add_theme_font_size_override("font_size", 9)
+	_veh_lights_lbl.add_theme_color_override("font_color", Color.html("#b9c4ad"))
+	vv.add_child(_veh_lights_lbl)
+
+	_veh_hp_bar = _add_mini_bar(vv, "LATARIA", Color.html("#4ade80"))
+
+	var v_hint := Label.new()
+	v_hint.text = "[E] Sair · [G] Assento · [F] Farol"
+	v_hint.add_theme_font_size_override("font_size", 9)
+	v_hint.add_theme_color_override("font_color", Color.html("#8ca07e"))
+	vv.add_child(v_hint)
+
+	# 10. PAINEL DEV TOOLS [F1] (Sandbox Condado de Knox)
+	_build_dev_panel()
+
+	# 11. MAPA TATICO COMPLETO [M]
 	tactical_map = TacticalMapOverlay.new()
 	tactical_map.world = self
 	_hud_layer.add_child(tactical_map)
 
-	# 9. MENU CENTRALIZADO KNOX SURVIVAL 3D [TAB] (ZERO CORTES!)
+	# 12. MENU CENTRALIZADO KNOX SURVIVAL 3D [TAB]
+	_build_main_menu()
+
+
+func _build_dev_panel() -> void:
+	_dev_panel = PanelContainer.new()
+	_dev_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_dev_panel.offset_left = 14
+	_dev_panel.offset_top = 112
+	_dev_panel.offset_right = 310
+	_dev_panel.offset_bottom = 528
+	_dev_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.05, 0.07, 0.05, 0.95), Color(0.54, 0.68, 0.42, 0.96), 10))
+	_dev_panel.visible = false
+	_hud_layer.add_child(_dev_panel)
+
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_dev_panel.add_child(scroll)
+
+	var dv := VBoxContainer.new()
+	dv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dv.add_theme_constant_override("separation", 6)
+	scroll.add_child(dv)
+
+	var hdr := HBoxContainer.new()
+	dv.add_child(hdr)
+	var d_title := Label.new()
+	d_title.text = "DEV TOOLS // CONDADO DE KNOX [F1]"
+	d_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	d_title.add_theme_font_size_override("font_size", 11)
+	d_title.add_theme_color_override("font_color", Color.html("#f5e3a6"))
+	hdr.add_child(d_title)
+
+	var btn_x := Button.new()
+	btn_x.text = "X"
+	_style_btn(btn_x, "#36201e", "#4d2b28", "#8f4c44")
+	btn_x.pressed.connect(func() -> void: toggle_dev_panel(false))
+	hdr.add_child(btn_x)
+
+	_dev_god_chk = CheckButton.new()
+	_dev_god_chk.text = "Modo Deus (Vida/Vigor Infinitos)"
+	_dev_god_chk.add_theme_font_size_override("font_size", 11)
+	_dev_god_chk.toggled.connect(func(on: bool) -> void:
+		var lp := get_local_player()
+		if lp != null:
+			lp.god_mode = on
+	)
+	dv.add_child(_dev_god_chk)
+
+	_dev_ammo_chk = CheckButton.new()
+	_dev_ammo_chk.text = "Municao Infinita"
+	_dev_ammo_chk.add_theme_font_size_override("font_size", 11)
+	_dev_ammo_chk.toggled.connect(func(on: bool) -> void:
+		var lp := get_local_player()
+		if lp != null:
+			lp.infinite_ammo = on
+	)
+	dv.add_child(_dev_ammo_chk)
+
+	_dev_time_val_lbl = _mk_lbl("Horario Global: 11:30")
+	dv.add_child(_dev_time_val_lbl)
+	_dev_time_slider = HSlider.new()
+	_dev_time_slider.min_value = 0.0
+	_dev_time_slider.max_value = 23.95
+	_dev_time_slider.step = 0.1
+	_dev_time_slider.value = time_hours
+	_dev_time_slider.value_changed.connect(func(val: float) -> void:
+		request_set_time(val, storm_mode)
+	)
+	dv.add_child(_dev_time_slider)
+
+	# 6 presets de horario identicos ao Condado de Knox Web
+	var tp_grid := GridContainer.new()
+	tp_grid.columns = 3
+	tp_grid.add_theme_constant_override("h_separation", 4)
+	tp_grid.add_theme_constant_override("v_separation", 4)
+	dv.add_child(tp_grid)
+	for preset in [["05:45", 5.75], ["07:30", 7.5], ["12:00", 12.0], ["17:48", 17.8], ["19:39", 19.65], ["23:00", 23.0]]:
+		var b := Button.new()
+		b.text = preset[0]
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_style_btn(b)
+		var th: float = preset[1]
+		b.pressed.connect(func() -> void: request_set_time(th, storm_mode))
+		tp_grid.add_child(b)
+
+	dv.add_child(_mk_lbl("Spawn de Veiculos (Global):"))
+	var v_grid := GridContainer.new()
+	v_grid.columns = 2
+	v_grid.add_theme_constant_override("h_separation", 4)
+	v_grid.add_theme_constant_override("v_separation", 4)
+	dv.add_child(v_grid)
+	for sp_item in [["+ Sedan '92", 0], ["+ Viatura PD", 3], ["+ Moto Trail", 1], ["+ Moto Street", 2]]:
+		var b := Button.new()
+		b.text = sp_item[0]
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_style_btn(b)
+		var k: int = sp_item[1]
+		b.pressed.connect(func() -> void: request_spawn_vehicle(k))
+		v_grid.add_child(b)
+
+	dv.add_child(_mk_lbl("Horda de Zumbis (Global):"))
+	var z_row := HBoxContainer.new()
+	z_row.add_theme_constant_override("separation", 4)
+	dv.add_child(z_row)
+	for zc in [["+5", 5], ["+20", 20]]:
+		var b := Button.new()
+		b.text = zc[0]
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_style_btn(b, "#3b221e", "#522d27", "#995248")
+		var cnt: int = zc[1]
+		b.pressed.connect(func() -> void: request_spawn_zombies(cnt))
+		z_row.add_child(b)
+	var btn_clr_z := Button.new()
+	btn_clr_z.text = "Limpar"
+	btn_clr_z.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_style_btn(btn_clr_z, "#2a2d24", "#3b4032", "#6c7a5c")
+	btn_clr_z.pressed.connect(request_clear_zombies)
+	z_row.add_child(btn_clr_z)
+
+	var p_row := HBoxContainer.new()
+	p_row.add_theme_constant_override("separation", 4)
+	dv.add_child(p_row)
+	var btn_heal := Button.new()
+	btn_heal.text = "Curar 200 HP"
+	btn_heal.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_style_btn(btn_heal, "#213a21", "#2e522e", "#5fa35f")
+	btn_heal.pressed.connect(func() -> void:
+		var lp := get_local_player()
+		if lp != null:
+			lp.heal_and_restock()
+	)
+	p_row.add_child(btn_heal)
+
+	var btn_tp := Button.new()
+	btn_tp.text = "TP Centro"
+	btn_tp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_style_btn(btn_tp)
+	btn_tp.pressed.connect(func() -> void:
+		var lp := get_local_player()
+		if lp != null and lp.current_vehicle == null:
+			lp.global_position = Vector3(0.0, 0.5, 0.0)
+	)
+	p_row.add_child(btn_tp)
+
+	# Indicador de Addons Asset Store detectados
+	var addons: PackedStringArray = AssetBridge.detect_installed_addons()
+	_addons_lbl = _mk_lbl("Asset Store addons: " + (", ".join(addons) if not addons.is_empty() else "nenhum em res://addons/"))
+	_addons_lbl.add_theme_color_override("font_color", Color.html("#8da67e"))
+	dv.add_child(_addons_lbl)
+
+
+func _build_main_menu() -> void:
 	_menu_backdrop = ColorRect.new()
 	_menu_backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_menu_backdrop.color = Color(0.03, 0.04, 0.03, 0.56)
+	_menu_backdrop.color = Color(0.03, 0.04, 0.03, 0.58)
 	_hud_layer.add_child(_menu_backdrop)
 
 	_menu_panel = PanelContainer.new()
@@ -388,7 +797,7 @@ func _build_ui() -> void:
 	_menu_panel.offset_top = -315
 	_menu_panel.offset_right = 280
 	_menu_panel.offset_bottom = 315
-	_menu_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.07, 0.09, 0.07, 0.96), Color(0.42, 0.54, 0.36, 0.96), 16))
+	_menu_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.06, 0.08, 0.06, 0.96), Color(0.42, 0.54, 0.36, 0.96), 16))
 	_menu_backdrop.add_child(_menu_panel)
 
 	var scroll := ScrollContainer.new()
@@ -401,20 +810,19 @@ func _build_ui() -> void:
 	scroll.add_child(vbox)
 
 	var title := Label.new()
-	title.text = "KNOX SURVIVAL 3D — GODOT 4 (RADMIN VPN)"
+	title.text = "CONDADO DE KNOX — SURVIVAL 3D (GODOT 4)"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 17)
 	title.add_theme_color_override("font_color", Color.html("#f2ead8"))
 	vbox.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "Engine Vulkan GPU + Multi-Core CPU · 9 Armas 3D · Carros/Motos · Audio 3D"
+	sub.text = "Vulkan GPU + Multi-Core CPU · 9 Armas 3D · Carros/Motos · Audio 3D · Radmin VPN"
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_font_size_override("font_size", 11)
 	sub.add_theme_color_override("font_color", Color.html("#9cb08e"))
 	vbox.add_child(sub)
 
-	# Perfil em 2 colunas (Nome + Time)
 	var prof_row := HBoxContainer.new()
 	prof_row.add_theme_constant_override("separation", 10)
 	vbox.add_child(prof_row)
@@ -484,7 +892,6 @@ func _build_ui() -> void:
 	)
 	vbox.add_child(btn_resume)
 
-	# Draw distance slider
 	_draw_dist_lbl = _mk_lbl("Distancia de Visao (GPU Frustum Culling): %dm" % int(draw_distance))
 	vbox.add_child(_draw_dist_lbl)
 	var dd_slider := HSlider.new()
@@ -495,12 +902,11 @@ func _build_ui() -> void:
 	dd_slider.value_changed.connect(func(val: float) -> void: _apply_draw_distance(val))
 	vbox.add_child(dd_slider)
 
-	# Horario sincronizado
 	vbox.add_child(_mk_lbl("Horario Global (sincronizado para TODOS):"))
 	var h_row := HBoxContainer.new()
 	h_row.add_theme_constant_override("separation", 6)
 	vbox.add_child(h_row)
-	for pair in [["Dia 11h", 11.5], ["Tarde 17h", 17.5], ["Noite 22h", 22.5]]:
+	for pair in [["Amanhecer 06h", 6.2], ["Dia 12h", 12.0], ["Tarde 17:45", 17.75], ["Noite 23h", 23.0]]:
 		var b := Button.new()
 		b.text = pair[0]
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -509,7 +915,6 @@ func _build_ui() -> void:
 		b.pressed.connect(func() -> void: request_set_time(target_h, storm_mode))
 		h_row.add_child(b)
 
-	# Spawns sincronizados
 	vbox.add_child(_mk_lbl("Spawnar para TODOS na sala:"))
 	var s_row := HBoxContainer.new()
 	s_row.add_theme_constant_override("separation", 6)
@@ -529,7 +934,6 @@ func _build_ui() -> void:
 	btn_z.pressed.connect(func() -> void: request_spawn_zombies(10))
 	vbox.add_child(btn_z)
 
-	# Busca de cidade real OSM
 	vbox.add_child(_mk_lbl("Buscar Cidade / Bairro Real (OpenStreetMap):"))
 	var city_row := HBoxContainer.new()
 	city_row.add_theme_constant_override("separation", 6)
@@ -571,17 +975,25 @@ func _build_ui() -> void:
 	vbox.add_child(_status_lbl)
 
 
-func _add_vital_bar(parent: VBoxContainer, caption: String, max_v: float, fill_col: Color) -> ProgressBar:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	parent.add_child(row)
+func _add_vital_bar(parent: VBoxContainer, caption: String, max_v: float, fill_col: Color, init_val: String) -> Array:
+	var wrap := VBoxContainer.new()
+	wrap.add_theme_constant_override("separation", 1)
+	parent.add_child(wrap)
 
+	var top := HBoxContainer.new()
+	wrap.add_child(top)
 	var lbl := Label.new()
 	lbl.text = caption
-	lbl.custom_minimum_size = Vector2(56, 0)
-	lbl.add_theme_font_size_override("font_size", 10)
-	lbl.add_theme_color_override("font_color", Color.html("#c4ccb8"))
-	row.add_child(lbl)
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl.add_theme_font_size_override("font_size", 9)
+	lbl.add_theme_color_override("font_color", Color.html("#b4c2a8"))
+	top.add_child(lbl)
+
+	var val_lbl := Label.new()
+	val_lbl.text = init_val
+	val_lbl.add_theme_font_size_override("font_size", 9)
+	val_lbl.add_theme_color_override("font_color", Color.html("#e9f0dc"))
+	top.add_child(val_lbl)
 
 	var bar := ProgressBar.new()
 	bar.min_value = 0.0
@@ -589,16 +1001,47 @@ func _add_vital_bar(parent: VBoxContainer, caption: String, max_v: float, fill_c
 	bar.value = max_v
 	bar.show_percentage = false
 	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bar.custom_minimum_size = Vector2(0, 14)
+	bar.custom_minimum_size = Vector2(0, 11)
 	var bg := StyleBoxFlat.new()
-	bg.bg_color = Color(0.11, 0.13, 0.11, 0.95)
+	bg.bg_color = Color(0.10, 0.13, 0.10, 0.96)
 	bg.set_corner_radius_all(2)
 	var fg := StyleBoxFlat.new()
 	fg.bg_color = fill_col
 	fg.set_corner_radius_all(2)
 	bar.add_theme_stylebox_override("background", bg)
 	bar.add_theme_stylebox_override("fill", fg)
-	row.add_child(bar)
+	wrap.add_child(bar)
+	return [bar, val_lbl]
+
+
+func _add_mini_bar(parent: Control, caption: String, fill_col: Color) -> ProgressBar:
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 1)
+	parent.add_child(col)
+
+	var lbl := Label.new()
+	lbl.text = caption
+	lbl.add_theme_font_size_override("font_size", 8)
+	lbl.add_theme_color_override("font_color", Color.html("#9cb08e"))
+	col.add_child(lbl)
+
+	var bar := ProgressBar.new()
+	bar.min_value = 0.0
+	bar.max_value = 100.0
+	bar.value = 100.0
+	bar.show_percentage = false
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.custom_minimum_size = Vector2(0, 8)
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.10, 0.13, 0.10, 0.96)
+	bg.set_corner_radius_all(2)
+	var fg := StyleBoxFlat.new()
+	fg.bg_color = fill_col
+	fg.set_corner_radius_all(2)
+	bar.add_theme_stylebox_override("background", bg)
+	bar.add_theme_stylebox_override("fill", fg)
+	col.add_child(bar)
 	return bar
 
 
@@ -615,6 +1058,13 @@ func _set_status(msg: String) -> void:
 	if _status_lbl != null:
 		_status_lbl.text = msg
 	print("[Knox] ", msg)
+
+
+func _format_clock(h: float) -> String:
+	var wrapped: float = fposmod(h, 24.0)
+	var hh: int = int(floorf(wrapped))
+	var mm: int = int(floorf((wrapped - float(hh)) * 60.0))
+	return "%02d:%02d" % [hh, mm]
 
 
 func _apply_draw_distance(meters: float) -> void:
@@ -657,15 +1107,32 @@ func _on_geocode_completed(result: int, response_code: int, _headers: PackedStri
 
 
 func is_ui_blocking() -> bool:
-	return _menu_open or (tactical_map != null and tactical_map.visible)
+	return _menu_open or _dev_open or (tactical_map != null and tactical_map.visible)
 
 
 func toggle_menu(open_state: bool) -> void:
 	_menu_open = open_state
 	if _menu_backdrop != null:
 		_menu_backdrop.visible = open_state
-	if open_state and tactical_map != null:
-		tactical_map.close_map()
+	if open_state:
+		_dev_open = false
+		if _dev_panel != null:
+			_dev_panel.visible = false
+		if tactical_map != null:
+			tactical_map.close_map()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if is_ui_blocking() else Input.MOUSE_MODE_CAPTURED
+
+
+func toggle_dev_panel(open_state: bool) -> void:
+	_dev_open = open_state
+	if _dev_panel != null:
+		_dev_panel.visible = open_state
+	if open_state:
+		_menu_open = false
+		if _menu_backdrop != null:
+			_menu_backdrop.visible = false
+		if tactical_map != null:
+			tactical_map.close_map()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if is_ui_blocking() else Input.MOUSE_MODE_CAPTURED
 
 
@@ -674,8 +1141,11 @@ func toggle_full_map(open_state: bool) -> void:
 		return
 	if open_state:
 		_menu_open = false
+		_dev_open = false
 		if _menu_backdrop != null:
 			_menu_backdrop.visible = false
+		if _dev_panel != null:
+			_dev_panel.visible = false
 		tactical_map.open_map()
 	else:
 		tactical_map.close_map()
@@ -688,9 +1158,20 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var kc := (event as InputEventKey).keycode
 		if kc == KEY_TAB or kc == KEY_ESCAPE:
-			toggle_menu(not _menu_open)
+			if _dev_open:
+				toggle_dev_panel(false)
+			elif tactical_map != null and tactical_map.visible:
+				toggle_full_map(false)
+			else:
+				toggle_menu(not _menu_open)
+		elif kc == KEY_F1:
+			toggle_dev_panel(not _dev_open)
 		elif kc == KEY_M:
 			toggle_full_map(tactical_map != null and not tactical_map.visible)
+		elif kc == KEY_MINUS and minimap_hud != null:
+			minimap_hud.adjust_zoom(-0.22)
+		elif kc == KEY_EQUAL and minimap_hud != null:
+			minimap_hud.adjust_zoom(0.22)
 
 
 func _process(delta: float) -> void:
@@ -701,19 +1182,53 @@ func _process(delta: float) -> void:
 		if _hitmarker_t <= 0.0 and _hitmarker != null:
 			_hitmarker.visible = false
 
+	# Atualiza Relogio Tatico Superior Esquerdo
+	var alive_z: int = 0
+	for z in get_all_zombies():
+		if not z.is_dead:
+			alive_z += 1
+	if _clock_lbl != null:
+		_clock_lbl.text = _format_clock(time_hours)
+	if _net_badge_lbl != null:
+		if not multiplayer.has_multiplayer_peer() or (multiplayer.multiplayer_peer is OfflineMultiplayerPeer):
+			_net_badge_lbl.text = "OFFLINE // SOLO"
+			_net_badge_lbl.add_theme_color_override("font_color", Color.html("#b0b8a8"))
+		elif multiplayer.is_server():
+			_net_badge_lbl.text = "HOST // UDP %d" % server_port
+			_net_badge_lbl.add_theme_color_override("font_color", Color.html("#4ade80"))
+		else:
+			_net_badge_lbl.text = "RADMIN // CONECTADO"
+			_net_badge_lbl.add_theme_color_override("font_color", Color.html("#38bdf8"))
+
 	var lp := get_local_player()
+	if _watch_sub_lbl != null:
+		var k_cnt: int = lp.kills if lp != null else 0
+		_watch_sub_lbl.text = "CONDADO DE KNOX  ·  ZUMBIS: %d  ·  ABATES: %d" % [alive_z, k_cnt]
+
 	if lp == null:
 		return
 
-	# Vitais
+	# Painel de Status Inferior Esquerdo + Silhueta Corporal
+	var hp_ratio: float = clampf(float(lp.hp) / 200.0, 0.0, 1.0)
+	if _body_diagram != null:
+		_body_diagram.set_body_state(hp_ratio)
 	if _hp_bar != null:
 		_hp_bar.value = lp.hp
 		_stamina_bar.value = lp.stamina
 		_hunger_bar.value = lp.hunger
 		_thirst_bar.value = lp.thirst
-	if _kills_lbl != null:
+	if _hp_val_lbl != null:
+		_hp_val_lbl.text = "%d / 200 HP" % lp.hp
+	if _stamina_val_lbl != null:
+		_stamina_val_lbl.text = "%d%%" % int(roundf(lp.stamina))
+	if _posture_lbl != null:
+		var cam_m: String = "1A PESSOA" if lp.is_first_person_mode() else "3A PESSOA"
 		var t_tag: String = local_team if not local_team.is_empty() else "SOLO"
-		_kills_lbl.text = "ABATES: %d  ·  TIME: %s  ·  [V] 1P/3P  ·  [F] LUZ" % [lp.kills, t_tag]
+		_posture_lbl.text = "%s  ·  %s  ·  %s" % [lp.get_posture_label(), cam_m, t_tag]
+	if _limbs_lbl != null:
+		var limb_s: String = "OK" if hp_ratio > 0.65 else ("FERIDO" if hp_ratio > 0.30 else "CRITICO")
+		var fl_s: String = "ON" if lp.flashlight_on else "OFF"
+		_limbs_lbl.text = "BRACO: %s  ·  PERNA: %s  ·  LUZ: %s" % [limb_s, limb_s, fl_s]
 
 	# Sniper Scope vs Crosshair
 	var scoped: bool = lp.is_sniper_scoped() and not is_ui_blocking()
@@ -722,14 +1237,21 @@ func _process(delta: float) -> void:
 	if _crosshair_root != null:
 		_crosshair_root.visible = (not scoped) and (not is_ui_blocking())
 
-	# Velocimetro do veiculo
+	# HUD de Veiculo com Diagrama Superior (Carro/Moto)
 	if _veh_panel != null:
 		if lp.current_vehicle != null:
+			var veh: Vehicle3D = lp.current_vehicle
 			_veh_panel.visible = true
-			var kmh: int = int(roundf(absf(lp.current_vehicle.speed_mps) * 3.6))
-			var seat_n: String = "PILOTO" if (lp.current_vehicle.is_moto and lp.current_seat == 0) else ("GARUPA" if lp.current_vehicle.is_moto else ("MOTORISTA" if lp.current_seat == 0 else "PASSAGEIRO"))
-			var f_txt: String = "ON" if lp.current_vehicle.lights_on else "OFF"
-			_veh_lbl.text = "%s (%s)\n%d KM/H  ·  FAROL: %s\n[E] Sair · [G] Assento · [H] Buzina · [F] Farol" % [lp.current_vehicle.label, seat_n, kmh, f_txt]
+			var kmh: int = int(roundf(absf(veh.speed_mps) * 3.6))
+			var seat_n: String = "PILOTO" if (veh.is_moto and lp.current_seat == 0) else ("GARUPA" if veh.is_moto else ("MOTORISTA" if lp.current_seat == 0 else "PASSAGEIRO"))
+			_veh_name_lbl.text = veh.label
+			_veh_seat_lbl.text = "%s  ·  %d/%d OCUP." % [seat_n, veh.get_occupied_count(), veh.seats.size()]
+			_veh_speed_lbl.text = "%d KM/H" % kmh
+			_veh_drift_lbl.visible = veh.drift_alpha > 0.25
+			_veh_lights_lbl.text = "FAROIS: %s  ·  [H] BUZINA" % ("ON" if veh.lights_on else "OFF")
+			var v_ratio: float = clampf(veh.hp / maxf(1.0, veh.max_hp), 0.0, 1.0)
+			_veh_hp_bar.value = v_ratio * 100.0
+			_veh_diagram.set_vehicle_state(v_ratio, veh.is_moto, veh.is_police, veh.lights_on, veh.steer_smooth)
 		else:
 			_veh_panel.visible = false
 
@@ -746,19 +1268,27 @@ func _process(delta: float) -> void:
 		_prompt_lbl.text = p_txt
 		_prompt_lbl.visible = not p_txt.is_empty()
 
-	# Hotbar das 9 armas
+	# Active Weapon Callout + Hotbar das 9 armas
 	var w: Dictionary = lp.get_active_weapon_def()
-	if _weapon_info_lbl != null:
-		var sup_tag: String = " [SILENCIADOR]" if (lp.suppressed and not bool(w["melee"])) else ""
+	if _active_wp_name != null:
+		_active_wp_name.text = str(w["name"])
+		_active_wp_cal.text = str(w["cal"])
 		if bool(w["melee"]):
-			_weapon_info_lbl.text = "%s  (CORPO A CORPO)" % str(w["name"])
+			_active_wp_ammo.text = "∞"
+			_active_wp_badge.text = "CORPO A CORPO  ·  [CLIQUE ESQ.] GOLPE"
 		elif lp.reloading:
-			_weapon_info_lbl.text = "%s  —  RECARREGANDO..." % str(w["name"])
+			_active_wp_ammo.text = "..."
+			_active_wp_badge.text = "RECARREGANDO..."
 		else:
-			_weapon_info_lbl.text = "%s%s   %d / %d   ·  [R] Recarregar  ·  [X] Silenciador" % [str(w["name"]), sup_tag, lp.get_active_mag(), int(w["mag_size"])]
+			var ammo_txt: String = "∞" if lp.infinite_ammo else ("%d / %d" % [lp.get_active_mag(), int(w["mag_size"])])
+			_active_wp_ammo.text = ammo_txt
+			var sup_s: String = "SILENCIADOR ON [X]" if lp.suppressed else "[R] Recarregar · [X] Silenciador OFF"
+			_active_wp_badge.text = sup_s
 
 	if lp.active_weapon_idx != _last_hotbar_idx:
 		_last_hotbar_idx = lp.active_weapon_idx
+		if _active_wp_icon != null:
+			_active_wp_icon.texture = WeaponArsenal.get_weapon_icon(lp.active_weapon_idx)
 		for i in range(_hotbar_slots.size()):
 			_hotbar_slots[i].add_theme_stylebox_override("panel", _slot_style_active if i == lp.active_weapon_idx else _slot_style_normal)
 
@@ -842,10 +1372,10 @@ func disconnect_network() -> void:
 
 
 func _spawn_starter_world_entities() -> void:
-	_server_spawn_vehicle(Vector3(6.0, 0.2, -7.0), 0.15, 3)   # Viatura Policial Knox PD
-	_server_spawn_vehicle(Vector3(-4.8, 0.2, -6.5), 0.35, 1)  # Moto Trail 450
-	_server_spawn_vehicle(Vector3(-8.2, 0.2, -6.5), -0.25, 2) # Moto Street 600
-	_server_spawn_vehicle(Vector3(10.5, 0.2, -11.0), -0.4, 0) # Knox Sedan '92
+	_server_spawn_vehicle(Vector3(6.0, 0.12, -7.0), 0.15, 3)   # Viatura Policial Knox PD
+	_server_spawn_vehicle(Vector3(-4.8, 0.12, -6.5), 0.35, 1)  # Moto Trail 450
+	_server_spawn_vehicle(Vector3(-8.2, 0.12, -6.5), -0.25, 2) # Moto Street 600
+	_server_spawn_vehicle(Vector3(10.5, 0.12, -11.0), -0.4, 0) # Knox Sedan '92
 	_server_spawn_zombies(Vector3(0.0, 0.0, -34.0), 12)
 
 
@@ -903,6 +1433,10 @@ func _spawn_player_local(pid: int, pos: Vector3, p_nick: String, p_team: String)
 	p.global_position = pos
 	if is_me:
 		p.set_draw_distance(draw_distance)
+		if _dev_god_chk != null:
+			p.god_mode = _dev_god_chk.button_pressed
+		if _dev_ammo_chk != null:
+			p.infinite_ammo = _dev_ammo_chk.button_pressed
 	return p
 
 
@@ -937,6 +1471,10 @@ func _rpc_req_time(h: float, storm: bool) -> void:
 func _rpc_apply_time(h: float, storm: bool) -> void:
 	time_hours = fposmod(h, 24.0)
 	storm_mode = storm
+	if _dev_time_slider != null:
+		_dev_time_slider.set_value_no_signal(time_hours)
+	if _dev_time_val_lbl != null:
+		_dev_time_val_lbl.text = "Horario Global: %s" % _format_clock(time_hours)
 	_apply_time_of_day()
 
 
@@ -944,27 +1482,37 @@ func _apply_time_of_day() -> void:
 	if _sun == null:
 		return
 	var elev: float = sin(((time_hours - 6.0) / 24.0) * TAU)
-	var pitch_deg: float = lerpf(-22.0, -72.0, inverse_lerp(-1.0, 1.0, elev))
+	var pitch_deg: float = lerpf(-18.0, -72.0, inverse_lerp(-1.0, 1.0, elev))
 	_sun.rotation_degrees = Vector3(pitch_deg, (time_hours / 24.0) * 360.0 - 90.0, 0.0)
-	var is_night: bool = elev < 0.05
-	_sun.light_energy = 0.14 if is_night else lerpf(0.48, 1.40, clampf(elev, 0.0, 1.0))
-	_sun.light_color = Color(0.56, 0.70, 0.96) if is_night else Color(1.0, 0.95, 0.86)
+	var is_night: bool = elev < 0.04
+	var is_golden: bool = elev >= 0.04 and elev < 0.34
+	_sun.light_energy = 0.14 if is_night else (lerpf(0.55, 1.15, (elev - 0.04) / 0.30) if is_golden else lerpf(1.15, 1.42, clampf(elev, 0.0, 1.0)))
+	_sun.light_color = Color(0.56, 0.70, 0.96) if is_night else (Color(1.0, 0.78, 0.56) if is_golden else Color(1.0, 0.95, 0.87))
 	if _sky_mat != null:
-		_sky_mat.sky_top_color = Color(0.03, 0.05, 0.11) if is_night else Color(0.24, 0.48, 0.82)
-		_sky_mat.sky_horizon_color = Color(0.07, 0.09, 0.16) if is_night else Color(0.66, 0.76, 0.86)
+		if is_night:
+			_sky_mat.sky_top_color = Color(0.03, 0.05, 0.11)
+			_sky_mat.sky_horizon_color = Color(0.07, 0.09, 0.16)
+		elif is_golden:
+			_sky_mat.sky_top_color = Color(0.20, 0.34, 0.58)
+			_sky_mat.sky_horizon_color = Color(0.88, 0.58, 0.40)
+		else:
+			_sky_mat.sky_top_color = Color(0.24, 0.48, 0.82)
+			_sky_mat.sky_horizon_color = Color(0.66, 0.76, 0.86)
 	if _world_env != null and _world_env.environment != null:
-		_world_env.environment.fog_light_color = Color(0.05, 0.07, 0.12) if is_night else Color(0.64, 0.74, 0.84)
+		_world_env.environment.fog_light_color = Color(0.05, 0.07, 0.12) if is_night else (Color(0.76, 0.58, 0.48) if is_golden else Color(0.64, 0.74, 0.84))
 	if map_loader != null:
 		map_loader.set_night_streetlights(is_night)
 
 
 func request_spawn_vehicle(kind: int) -> void:
 	var lp := get_local_player()
-	var pos: Vector3 = Vector3(0.0, 0.3, -6.0)
+	var pos: Vector3 = Vector3(0.0, 0.15, -6.0)
 	var yaw: float = 0.0
 	if lp != null:
-		pos = lp.global_position + (-lp.global_transform.basis.z) * 5.8 + Vector3(0.0, 0.25, 0.0)
-		yaw = lp.rotation.y
+		var ay: float = lp.get_aim_yaw()
+		var fwd := Vector3(-sin(ay), 0.0, -cos(ay))
+		pos = lp.global_position + fwd * 5.8 + Vector3(0.0, 0.15, 0.0)
+		yaw = ay
 	if not multiplayer.has_multiplayer_peer() or multiplayer.is_server():
 		_server_spawn_vehicle(pos, yaw, kind)
 	else:
@@ -1003,10 +1551,29 @@ func request_spawn_zombies(count: int) -> void:
 		_rpc_req_spawn_zombies.rpc_id(1, center, count)
 
 
+func request_clear_zombies() -> void:
+	if not multiplayer.has_multiplayer_peer() or multiplayer.is_server():
+		_rpc_clear_zombies.rpc()
+	else:
+		_rpc_req_clear_zombies.rpc_id(1)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_req_clear_zombies() -> void:
+	if multiplayer.is_server():
+		_rpc_clear_zombies.rpc()
+
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_clear_zombies() -> void:
+	for z in get_all_zombies():
+		z.queue_free()
+
+
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_req_spawn_zombies(center: Vector3, count: int) -> void:
 	if multiplayer.is_server():
-		_server_spawn_zombies(center, clampi(count, 1, 40))
+		_server_spawn_zombies(center, clampi(count, 1, 50))
 
 
 func _server_spawn_zombies(center: Vector3, count: int) -> void:
