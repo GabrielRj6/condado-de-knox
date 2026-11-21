@@ -1,44 +1,50 @@
-# Knox Survival 3D — Godot 4 (Forward+) + Radmin VPN
+# Knox Survival 3D — Godot 4 (Vulkan Forward+ GPU + CPU Multi-Core + Radmin VPN)
 
-Projeto completo em **Godot 4** (sem nenhum plugin externo, sem Asset Store, sem instalador pesado).
+Projeto pronto para abrir na Godot 4 e exportar direto para `.exe` (Jogo + Servidor Dedicado).
 
 ---
 
-## 1. Como abrir em menos de 1 minuto
+## 1. Como abrir AGORA na tela da Godot que já está aberta
 
-1. Baixe a **Godot 4 (Standard — ~60 MB, arquivo único `.exe`)** em: `https://godotengine.org/download/windows/`
-2. Dê `git pull` na sua pasta do projeto.
-3. Abra o executável da Godot 4 → clique em **Import (Importar)** → selecione o arquivo:
+1. Puxe os arquivos novos no **GitHub Desktop** (**Fetch origin → Pull origin**).
+2. Na tela inicial da Godot 4, clique em **`Import` (Import Existing Project)**.
+3. Clique em **Browse**, navegue até a pasta do seu repositório e selecione:
    `godot/KnoxSurvival3D/project.godot`
-4. Clique em **Edit** e aperte **F5** (Play)! **Já funciona imediatamente — sem baixar nenhum pacote extra!**
+4. Clique em **`Import & Edit`**.
+5. Assim que o editor abrir, aperte **`F5`** (Play) — o jogo já roda imediatamente!
 
 ---
 
-## 2. Como jogar online com amigos via Radmin VPN (UDP 7777)
+## 2. Como exportar para `.exe` (para mandar aos amigos no Radmin VPN)
 
-### Modo Host Rápido
-1. Conecte-se com seus amigos na mesma rede do **Radmin VPN**.
-2. Copie seu IP do Radmin (ex: `26.142.88.15`).
-3. No jogo (Menu `TAB`), clique em **CRIAR SERVIDOR (HOST UDP 7777)**.
-4. Seus amigos digitam seu IP `26.x.x.x` e clicam em **ENTRAR NO SERVIDOR**.
+Os dois presets de exportação já vêm configurados (`export_presets.cfg`):
+1. Na Godot 4, vá em **Editor → Manage Export Templates** → clique em **Download and Install** (baixa uma única vez).
+2. Vá em **Project → Export...**:
+   - **Windows Desktop (Jogo .exe)** → clique em **Export Project** para gerar `builds/KnoxSurvival3D.exe` (é só mandar esse `.exe` único para seus amigos!).
+   - **Windows Dedicated Server (.exe)** → clique em **Export Project** para gerar `builds/KnoxServer.exe` (para deixar o servidor rodando aberto via `START_DEDICATED_SERVER.bat` mesmo se você fechar seu jogo!).
 
-### Modo Servidor Dedicado (continua aberto se você fechar o jogo!)
-- Exporte o projeto para Windows (**Project → Export → Windows Desktop**) como `KnoxServer.exe` na pasta `godot/KnoxSurvival3D/` e dê dois cliques em **`START_DEDICATED_SERVER.bat`**.
-- Ou rode direto pela linha de comando do Godot sem precisar exportar:
-  `Godot_v4.x_win64.exe --headless --path "godot/KnoxSurvival3D" -- --dedicated --port 7777`
-- Você e seus amigos entram no seu IP do Radmin (`26.x.x.x`). Se você cair ou fechar seu jogo, a sala continua aberta e você reconecta normalmente!
+---
 
-### Liberar Porta UDP 7777 no Firewall do Windows (se necessário)
+## 3. Como jogar com amigos no Radmin VPN (UDP 7777)
+
+- Todos entram na mesma rede do **Radmin VPN**.
+- No jogo, aperte **`TAB`**:
+  - **Host**: clique em **CRIAR HOST (UDP 7777)** e passe seu IP do Radmin (`26.x.x.x`).
+  - **Amigos**: colam seu IP `26.x.x.x` e clicam em **ENTRAR (RADMIN IP)**.
+  - **Servidor Dedicado**: rode `START_DEDICATED_SERVER.bat` e todos (inclusive você) entram pelo seu IP do Radmin.
+
+### Liberar Porta UDP 7777 no Firewall do Windows (se um amigo não conectar)
 ```powershell
 New-NetFirewallRule -DisplayName "KnoxGodot UDP 7777" -Direction Inbound -Protocol UDP -LocalPort 7777 -Action Allow
 ```
 
 ---
 
-## 3. Controles
-- **WASD**: Andar / Dirigir · **Shift**: Correr · **Ctrl / C**: Agachar · **Espaço**: Pular / Freio de Mão & Drift
-- **Botão Esq.**: Atirar (som 3D direcional para todos!) · **V**: Alternar 1ª / 3ª Pessoa · **Q**: Trocar Ombro
-- **E**: Entrar / Sair de Carro ou Moto (`Shift + E` entra direto como Passageiro/Garupa)
-- **G**: Trocar de Assento (ex: Piloto ↔ Garupa) · **H**: Buzina 3D · **F**: Lanterna / Farol
-- **M**: Mapa Tático Completo (zoom `+`/`−`, marcadores, rota GPS no veículo e visibilidade **exclusiva para o mesmo time**)
-- **TAB**: Menu Radmin (Nome salvo, Time, IP, Horário Dia/Tarde/Noite, Carregar Cidade Real OSM, Spawnar Carro/Motos/Zumbis para todos)
+## 4. Controles
+- **`1` a `6` ou Scroll**: Trocar arma (Faca K-Bar, Pistola 9mm, Escopeta 12G, M4A1, AK-47, Sniper .50)
+- **Botão Esq.**: Atirar · **Botão Dir.**: Mira (ADS) · **`R`**: Recarregar · **`X`**: Silenciador
+- **`V`**: Alternar 1ª / 3ª Pessoa · **`Q`**: Trocar Ombro · **`F`**: Lanterna / Farol
+- **`E`**: Entrar / Sair de Carro ou Moto (`Shift + E` entra direto de Garupa/Passageiro)
+- **`G`**: Trocar Assento (Piloto ↔ Garupa) · **`H`**: Buzina 3D · **`Espaço`**: Pular / Drift
+- **`M`**: Mapa Tático Completo (zoom `+`/`−`, marcadores, rota GPS no veículo e visibilidade **só do mesmo time**)
+- **`TAB`**: Menu Radmin (Nome salvo, Time, IP, Distância de Visão, Horário Dia/Tarde/Noite, Buscar Cidade Real OSM, Spawn Carro/Motos/Zumbis)

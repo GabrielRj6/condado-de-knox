@@ -1,9 +1,11 @@
 extends Node3D
 class_name MainWorld
 
-## Cena principal Knox Survival 3D (Godot 4 + ENet UDP Radmin VPN + Servidor Dedicado).
-## Gerencia conexoes Radmin VPN (Host/Cliente/Dedicado), nome salvo do sobrevivente,
-## sincronizacao de horario do dia, spawn global de Carros, Motos e Zumbis, tiros 3D e HUD.
+## Cena principal Knox Survival 3D (Godot 4 Forward+ Vulkan GPU + CPU multi-core + Radmin VPN).
+## - Conexao Radmin VPN (Host, Cliente, Solo Teste, Servidor Dedicado --dedicated)
+## - Nome do sobrevivente, Time, IP e Draw Distance salvos automaticamente
+## - Busca de cidades reais pelo nome (OpenStreetMap Nominatim + Overpass) sincronizada para todos
+## - Arsenal 6 armas, Hitmarker, Carros/Motos (Piloto+Garupa), Zumbis no Servidor, Audio 3D e Mapa [M]
 
 const PROFILE_PATH: String = "user://knox_profile.cfg"
 
@@ -18,25 +20,34 @@ var zombies_root: Node3D
 var _sun: DirectionalLight3D
 var _world_env: WorldEnvironment
 var _sky_mat: ProceduralSkyMaterial
+var _geocode_http: HTTPRequest
 
 var local_nick: String = "Sobrevivente"
 var local_team: String = ""
 var target_ip: String = "127.0.0.1"
 var server_port: int = 7777
+var draw_distance: float = 550.0
 var is_dedicated: bool = false
 var time_hours: float = 11.5
 var storm_mode: bool = false
+var active_city_lat: float = -23.5614
+var active_city_lng: float = -46.6559
+var active_city_km2: float = 1.0
+var has_custom_city: bool = false
 
 var _menu_open: bool = true
 var _hud_layer: CanvasLayer
 var _menu_panel: PanelContainer
 var _status_lbl: Label
 var _hud_info_lbl: Label
+var _weapon_lbl: Label
+var _hitmarker: ColorRect
+var _hitmarker_t: float = 0.0
 var _nick_inp: LineEdit
 var _team_inp: LineEdit
 var _ip_inp: LineEdit
-var _lat_inp: LineEdit
-var _lng_inp: LineEdit
+var _city_inp: LineEdit
+var _draw_dist_lbl: Label
 
 var _veh_seq: int = 0
 var _z_seq: int = 0
@@ -67,6 +78,11 @@ func _ready() -> void:
 	map_loader.name = "RealWorldMapLoader"
 	add_child(map_loader)
 	map_loader.map_loaded.connect(func(msg: String) -> void: _set_status(msg))
+
+	_geocode_http = HTTPRequest.new()
+	_geocode_http.timeout = 12.0
+	add_child(_geocode_http)
+	_geocode_http.request_completed.connect(_on_geocode_completed)
 
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
@@ -99,6 +115,7 @@ func _load_profile() -> void:
 		local_nick = str(cfg.get_value("profile", "nick", "Sobrevivente"))
 		local_team = str(cfg.get_value("profile", "team", ""))
 		target_ip = str(cfg.get_value("profile", "ip", "127.0.0.1"))
+		draw_distance = clampf(float(cfg.get_value("profile", "draw_dist", 550.0)), 150.0, 1000.0)
 
 
 func _save_profile() -> void:
@@ -106,6 +123,7 @@ func _save_profile() -> void:
 	cfg.set_value("profile", "nick", local_nick)
 	cfg.set_value("profile", "team", local_team)
 	cfg.set_value("profile", "ip", target_ip)
+	cfg.set_value("profile", "draw_dist", draw_distance)
 	cfg.save(PROFILE_PATH)
 
 
@@ -119,6 +137,10 @@ func _build_environment_and_ground() -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.fog_enabled = true
+	env.fog_mode = Environment.FOG_MODE_DEPTH
+	env.fog_depth_begin = draw_distance * 0.45
+	env.fog_depth_end = draw_distance * 0.96
 	_world_env.environment = env
 	add_child(_world_env)
 
@@ -126,19 +148,18 @@ func _build_environment_and_ground() -> void:
 	_sun.shadow_enabled = true
 	add_child(_sun)
 
-	# Terreno base 1000x1000m com colisao StaticBody3D
 	var ground := StaticBody3D.new()
 	ground.name = "Ground"
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(1000.0, 1.0, 1000.0)
+	shape.size = Vector3(1400.0, 1.0, 1400.0)
 	col.shape = shape
 	col.position = Vector3(0.0, -0.5, 0.0)
 	ground.add_child(col)
 
 	var mesh := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
-	pm.size = Vector2(1000.0, 1000.0)
+	pm.size = Vector2(1400.0, 1400.0)
 	mesh.mesh = pm
 	var gmat := StandardMaterial3D.new()
 	gmat.albedo_color = Color(0.18, 0.24, 0.16)
@@ -152,10 +173,9 @@ func _build_ui() -> void:
 	_hud_layer = CanvasLayer.new()
 	add_child(_hud_layer)
 
-	# Mira central discreta
+	# Mira central
 	var cross := ColorRect.new()
-	cross.color = Color(1.0, 1.0, 1.0, 0.85)
-	cross.custom_minimum_size = Vector2(4, 4)
+	cross.color = Color(1.0, 1.0, 1.0, 0.88)
 	cross.set_anchors_preset(Control.PRESET_CENTER)
 	cross.offset_left = -2
 	cross.offset_top = -2
@@ -164,15 +184,38 @@ func _build_ui() -> void:
 	cross.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud_layer.add_child(cross)
 
-	# Barra de HUD inferior
+	# Hitmarker central (pisca vermelho em headshot/kill, branco no corpo)
+	_hitmarker = ColorRect.new()
+	_hitmarker.color = Color(1.0, 0.25, 0.20, 0.95)
+	_hitmarker.set_anchors_preset(Control.PRESET_CENTER)
+	_hitmarker.offset_left = -8
+	_hitmarker.offset_top = -8
+	_hitmarker.offset_right = 8
+	_hitmarker.offset_bottom = 8
+	_hitmarker.visible = false
+	_hitmarker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud_layer.add_child(_hitmarker)
+
+	# HUD inferior esquerdo (vida, veiculo e controles)
 	_hud_info_lbl = Label.new()
 	_hud_info_lbl.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_hud_info_lbl.offset_left = 18
-	_hud_info_lbl.offset_top = -38
+	_hud_info_lbl.offset_top = -42
 	_hud_info_lbl.offset_right = 920
 	_hud_info_lbl.offset_bottom = -10
-	_hud_info_lbl.text = "[TAB] Menu Radmin · [M] Mapa Tatico · [E] Entrar/Sair Veiculo · [G] Trocar Banco/Garupa · [H] Buzina · [V] 1P/3P"
+	_hud_info_lbl.text = "[TAB] Menu Radmin · [M] Mapa Tatico · [E] Carro/Moto · [G] Garupa · [1..6] Armas"
 	_hud_layer.add_child(_hud_info_lbl)
+
+	# HUD inferior direito (Arma ativa + Municao + Silenciador)
+	_weapon_lbl = Label.new()
+	_weapon_lbl.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_weapon_lbl.offset_left = -400
+	_weapon_lbl.offset_top = -46
+	_weapon_lbl.offset_right = -18
+	_weapon_lbl.offset_bottom = -10
+	_weapon_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_weapon_lbl.text = "RIFLE M4A1 [30/30] · [R] Recarregar · [X] Silenciador"
+	_hud_layer.add_child(_weapon_lbl)
 
 	# Mapa Tatico Completo [M]
 	tactical_map = TacticalMapOverlay.new()
@@ -181,17 +224,20 @@ func _build_ui() -> void:
 
 	# Menu Radmin / Multiplayer [TAB]
 	_menu_panel = PanelContainer.new()
-	_menu_panel.position = Vector2(20, 20)
-	_menu_panel.custom_minimum_size = Vector2(390, 520)
+	_menu_panel.position = Vector2(18, 18)
+	_menu_panel.custom_minimum_size = Vector2(420, 620)
 	_hud_layer.add_child(_menu_panel)
 
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
-	_menu_panel.add_child(vbox)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(408, 608)
+	_menu_panel.add_child(scroll)
 
-	var title := Label.new()
-	title.text = "KNOX SURVIVAL 3D — GODOT 4 (RADMIN VPN)"
-	vbox.add_child(title)
+	var vbox := VBoxContainer.new()
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.add_theme_constant_override("separation", 6)
+	scroll.add_child(vbox)
+
+	vbox.add_child(_mk_lbl("KNOX SURVIVAL 3D — GODOT 4 (GPU VULKAN + RADMIN VPN)"))
 
 	vbox.add_child(_mk_lbl("Nome do Sobrevivente (salvo automaticamente):"))
 	_nick_inp = LineEdit.new()
@@ -223,20 +269,42 @@ func _build_ui() -> void:
 	_ip_inp.text = target_ip
 	vbox.add_child(_ip_inp)
 
+	var conn_row := HBoxContainer.new()
+	vbox.add_child(conn_row)
 	var btn_host := Button.new()
-	btn_host.text = "CRIAR SERVIDOR (HOST UDP 7777)"
+	btn_host.text = "CRIAR HOST (UDP 7777)"
+	btn_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn_host.pressed.connect(start_host_game)
-	vbox.add_child(btn_host)
+	conn_row.add_child(btn_host)
 
 	var btn_join := Button.new()
-	btn_join.text = "ENTRAR NO SERVIDOR (RADMIN IP)"
+	btn_join.text = "ENTRAR (RADMIN IP)"
+	btn_join.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn_join.pressed.connect(func() -> void: start_client_game(_ip_inp.text))
-	vbox.add_child(btn_join)
+	conn_row.add_child(btn_join)
 
 	var btn_resume := Button.new()
 	btn_resume.text = "VOLTAR A PARTIDA [TAB]"
-	btn_resume.pressed.connect(func() -> void: toggle_menu(false))
+	btn_resume.pressed.connect(func() -> void:
+		if get_local_player() == null:
+			start_host_game()
+		else:
+			toggle_menu(false)
+	)
 	vbox.add_child(btn_resume)
+
+	# Distancia de Visao (GPU Frustum Culling global ja oculta tudo atras da camera!)
+	_draw_dist_lbl = _mk_lbl("Distancia de Visao (frente): %dm" % int(draw_distance))
+	vbox.add_child(_draw_dist_lbl)
+	var dd_slider := HSlider.new()
+	dd_slider.min_value = 150.0
+	dd_slider.max_value = 1000.0
+	dd_slider.step = 25.0
+	dd_slider.value = draw_distance
+	dd_slider.value_changed.connect(func(val: float) -> void:
+		_apply_draw_distance(val)
+	)
+	vbox.add_child(dd_slider)
 
 	# Horario do dia sincronizado para todos
 	vbox.add_child(_mk_lbl("Horario Global (sincronizado para TODOS):"))
@@ -245,6 +313,7 @@ func _build_ui() -> void:
 	for pair in [["Dia 11h", 11.5], ["Tarde 17h", 17.5], ["Noite 22h", 22.5]]:
 		var b := Button.new()
 		b.text = pair[0]
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var target_h: float = pair[1]
 		b.pressed.connect(func() -> void: request_set_time(target_h, storm_mode))
 		h_row.add_child(b)
@@ -256,6 +325,7 @@ func _build_ui() -> void:
 	for sp_item in [["+ Carro", 0], ["+ Moto Trail", 1], ["+ Moto Street", 2]]:
 		var b := Button.new()
 		b.text = sp_item[0]
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var k: int = sp_item[1]
 		b.pressed.connect(func() -> void: request_spawn_vehicle(k))
 		s_row.add_child(b)
@@ -265,24 +335,29 @@ func _build_ui() -> void:
 	btn_z.pressed.connect(func() -> void: request_spawn_zombies(10))
 	vbox.add_child(btn_z)
 
-	# Carregar cidade real via OpenStreetMap
-	vbox.add_child(_mk_lbl("Cidade Real OpenStreetMap (Lat / Lng):"))
-	var geo_row := HBoxContainer.new()
-	vbox.add_child(geo_row)
-	_lat_inp = LineEdit.new()
-	_lat_inp.text = "-23.5614"
-	_lat_inp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_lng_inp = LineEdit.new()
-	_lng_inp.text = "-46.6559"
-	_lng_inp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var btn_osm := Button.new()
-	btn_osm.text = "CARREGAR MAPA"
-	btn_osm.pressed.connect(func() -> void:
-		request_load_real_city(_lat_inp.text.to_float(), _lng_inp.text.to_float(), 1.0)
-	)
-	geo_row.add_child(_lat_inp)
-	geo_row.add_child(_lng_inp)
-	geo_row.add_child(btn_osm)
+	# Busca de cidade real pelo nome (OpenStreetMap)
+	vbox.add_child(_mk_lbl("Buscar Cidade / Bairro Real (OpenStreetMap):"))
+	var city_row := HBoxContainer.new()
+	vbox.add_child(city_row)
+	_city_inp = LineEdit.new()
+	_city_inp.placeholder_text = "Ex: Avenida Paulista, Sao Paulo"
+	_city_inp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var btn_search := Button.new()
+	btn_search.text = "BUSCAR"
+	btn_search.pressed.connect(_search_real_city_by_name)
+	city_row.add_child(_city_inp)
+	city_row.add_child(btn_search)
+
+	var preset_row := HBoxContainer.new()
+	vbox.add_child(preset_row)
+	for cp in [["Paulista SP", -23.5614, -46.6559], ["Copacabana RJ", -22.9711, -43.1822], ["Curitiba", -25.4284, -49.2733]]:
+		var b := Button.new()
+		b.text = cp[0]
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var plat: float = cp[1]
+		var plng: float = cp[2]
+		b.pressed.connect(func() -> void: request_load_real_city(plat, plng, 1.0))
+		preset_row.add_child(b)
 
 	var btn_disc := Button.new()
 	btn_disc.text = "SAIR / ENCERRAR CONEXAO"
@@ -291,7 +366,7 @@ func _build_ui() -> void:
 
 	_status_lbl = Label.new()
 	_status_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_status_lbl.text = "Pronto! Clique em CRIAR SERVIDOR (Host) ou digite o IP Radmin do amigo."
+	_status_lbl.text = "Pronto! Clique em CRIAR HOST (ou ENTRAR com IP do Radmin VPN)."
 	vbox.add_child(_status_lbl)
 
 
@@ -305,6 +380,45 @@ func _set_status(msg: String) -> void:
 	if _status_lbl != null:
 		_status_lbl.text = msg
 	print("[Knox] ", msg)
+
+
+func _apply_draw_distance(meters: float) -> void:
+	draw_distance = clampf(meters, 150.0, 1000.0)
+	_save_profile()
+	if _draw_dist_lbl != null:
+		_draw_dist_lbl.text = "Distancia de Visao (frente): %dm" % int(draw_distance)
+	if _world_env != null and _world_env.environment != null:
+		_world_env.environment.fog_depth_begin = draw_distance * 0.45
+		_world_env.environment.fog_depth_end = draw_distance * 0.96
+	var lp := get_local_player()
+	if lp != null:
+		lp.set_draw_distance(draw_distance)
+
+
+func _search_real_city_by_name() -> void:
+	var q: String = _city_inp.text.strip_edges() if _city_inp != null else ""
+	if q.length() < 2:
+		_set_status("Digite o nome de uma cidade ou rua para buscar.")
+		return
+	_set_status("Buscando '%s' no OpenStreetMap..." % q)
+	var url: String = "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + q.uri_encode()
+	var headers := PackedStringArray(["User-Agent: KnoxSurvival3D-Godot/1.0"])
+	_geocode_http.request(url, headers)
+
+
+func _on_geocode_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		_set_status("Erro ao buscar local — tente um dos botoes rapidos acima.")
+		return
+	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+	if typeof(parsed) != TYPE_ARRAY or (parsed as Array).is_empty():
+		_set_status("Local nao encontrado — tente incluir cidade e estado.")
+		return
+	var item: Dictionary = (parsed as Array)[0]
+	var lat: float = float(str(item.get("lat", "-23.5614")))
+	var lng: float = float(str(item.get("lon", "-46.6559")))
+	_set_status("Encontrado: %s" % str(item.get("display_name", "")).left(52))
+	request_load_real_city(lat, lng, 1.0)
 
 
 func is_ui_blocking() -> bool:
@@ -344,17 +458,33 @@ func _unhandled_input(event: InputEvent) -> void:
 			toggle_full_map(tactical_map != null and not tactical_map.visible)
 
 
-func _process(_delta: float) -> void:
-	if is_dedicated or _hud_info_lbl == null:
+func _process(delta: float) -> void:
+	if is_dedicated:
 		return
+	if _hitmarker_t > 0.0:
+		_hitmarker_t -= delta
+		if _hitmarker_t <= 0.0 and _hitmarker != null:
+			_hitmarker.visible = false
+
 	var lp := get_local_player()
 	if lp != null:
-		if lp.current_vehicle != null:
-			var kmh: int = int(roundf(absf(lp.current_vehicle.speed_mps) * 3.6))
-			var seat_name: String = "PILOTO" if (lp.current_vehicle.is_moto and lp.current_seat == 0) else ("GARUPA" if lp.current_vehicle.is_moto else ("MOTORISTA" if lp.current_seat == 0 else "PASSAGEIRO"))
-			_hud_info_lbl.text = "HP: %d/200  |  %s (%s) — %d km/h  |  [E] Sair · [G] Trocar Assento · [H] Buzina · [F] Farol · [M] Mapa GPS" % [lp.hp, lp.current_vehicle.label, seat_name, kmh]
-		else:
-			_hud_info_lbl.text = "HP: %d/200  |  Time: %s  |  [TAB] Menu Radmin · [M] Mapa · [E] Entrar Carro/Moto · [V] 1P/3P · [F] Lanterna" % [lp.hp, local_team if not local_team.is_empty() else "SOLO"]
+		if _hud_info_lbl != null:
+			if lp.current_vehicle != null:
+				var kmh: int = int(roundf(absf(lp.current_vehicle.speed_mps) * 3.6))
+				var seat_name: String = "PILOTO" if (lp.current_vehicle.is_moto and lp.current_seat == 0) else ("GARUPA" if lp.current_vehicle.is_moto else ("MOTORISTA" if lp.current_seat == 0 else "PASSAGEIRO"))
+				_hud_info_lbl.text = "HP: %d/200  |  %s (%s) — %d km/h  |  [E] Sair · [G] Trocar Assento · [H] Buzina · [F] Farol · [M] Mapa GPS" % [lp.hp, lp.current_vehicle.label, seat_name, kmh]
+			else:
+				_hud_info_lbl.text = "HP: %d/200  |  Time: %s  |  [TAB] Menu Radmin · [M] Mapa · [E] Carro/Moto · [V] 1P/3P · [F] Lanterna" % [lp.hp, local_team if not local_team.is_empty() else "SOLO"]
+
+		if _weapon_lbl != null:
+			var w: Dictionary = lp.get_active_weapon_def()
+			var sup_tag: String = " [SILENCIADOR]" if (lp.suppressed and not bool(w["melee"])) else ""
+			if bool(w["melee"]):
+				_weapon_lbl.text = "[%d] %s" % [lp.active_weapon_idx + 1, str(w["name"])]
+			elif lp.reloading:
+				_weapon_lbl.text = "[%d] %s — RECARREGANDO..." % [lp.active_weapon_idx + 1, str(w["name"])]
+			else:
+				_weapon_lbl.text = "[%d] %s%s  %d/%d  |  [R] Recarregar · [X] Silenc." % [lp.active_weapon_idx + 1, str(w["name"]), sup_tag, lp.get_active_mag(), int(w["mag_size"])]
 
 
 # ==============================================================================
@@ -412,19 +542,19 @@ func disconnect_network() -> void:
 
 
 func _spawn_starter_world_entities() -> void:
-	# Ja inicia com 1 Carro, 1 Moto Trail 450, 1 Moto Street 600 e 8 Zumbis sincronizados!
 	_server_spawn_vehicle(Vector3(6.5, 0.2, -6.0), 0.0, 0)
 	_server_spawn_vehicle(Vector3(-5.0, 0.2, -6.0), 0.4, 1)
 	_server_spawn_vehicle(Vector3(-8.5, 0.2, -6.0), -0.3, 2)
-	_server_spawn_zombies(Vector3(0.0, 0.0, -32.0), 8)
+	_server_spawn_zombies(Vector3(0.0, 0.0, -32.0), 10)
 
 
 func _on_peer_connected(id: int) -> void:
 	if not multiplayer.is_server():
 		return
 	print("[KnoxServer] Jogador conectado: peer ", id)
-	# Envia todo o estado atual da sala (jogadores, veiculos, zumbis, hora) para o recem-chegado!
 	_rpc_apply_time.rpc_id(id, time_hours, storm_mode)
+	if has_custom_city:
+		_rpc_load_real_city.rpc_id(id, active_city_lat, active_city_lng, active_city_km2)
 	for p in get_all_players():
 		_rpc_spawn_player.rpc_id(id, p.peer_id, p.global_position, p.nick, p.team_id)
 	for v in get_all_vehicles():
@@ -434,7 +564,6 @@ func _on_peer_connected(id: int) -> void:
 		if not z.is_dead:
 			_rpc_spawn_zombie.rpc_id(id, z.zombie_id, z.global_position, z.vocal_pitch)
 
-	# Cria o novo jogador para TODOS os clientes (inclusive ele mesmo!)
 	var spawn_pos := Vector3(randf_range(-4.0, 4.0), 0.5, randf_range(-4.0, 4.0))
 	_rpc_spawn_player.rpc(id, spawn_pos, "Sobrevivente", "")
 
@@ -471,6 +600,8 @@ func _spawn_player_local(pid: int, pos: Vector3, p_nick: String, p_team: String)
 	p.setup(pid, self, local_nick if is_me else p_nick, local_team if is_me else p_team)
 	players_root.add_child(p)
 	p.global_position = pos
+	if is_me:
+		p.set_draw_distance(draw_distance)
 	return p
 
 
@@ -520,6 +651,8 @@ func _apply_time_of_day() -> void:
 	if _sky_mat != null:
 		_sky_mat.sky_top_color = Color(0.03, 0.05, 0.11) if is_night else Color(0.24, 0.48, 0.82)
 		_sky_mat.sky_horizon_color = Color(0.07, 0.09, 0.16) if is_night else Color(0.66, 0.76, 0.86)
+	if _world_env != null and _world_env.environment != null:
+		_world_env.environment.fog_light_color = Color(0.05, 0.07, 0.12) if is_night else Color(0.64, 0.74, 0.84)
 	if map_loader != null:
 		map_loader.set_night_streetlights(is_night)
 
@@ -609,52 +742,79 @@ func _rpc_req_real_city(lat: float, lng: float, km2: float) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _rpc_load_real_city(lat: float, lng: float, km2: float) -> void:
+	active_city_lat = lat
+	active_city_lng = lng
+	active_city_km2 = km2
+	has_custom_city = true
 	_set_status("Baixando cidade real OSM (%.4f, %.4f)..." % [lat, lng])
 	map_loader.load_real_city(lat, lng, km2)
 
 
-func request_fire_shot(shooter_pid: int, muzzle_pos: Vector3, dir: Vector3, profile: String) -> void:
+func request_fire_shot(shooter_pid: int, muzzle_pos: Vector3, dir: Vector3, profile: String, dmg: float = 36.0, rng_m: float = 220.0, noise_r: float = 115.0, play_audio: bool = true) -> void:
 	if not multiplayer.has_multiplayer_peer() or multiplayer.is_server():
-		_server_process_shot(shooter_pid, muzzle_pos, dir, profile)
+		_server_process_shot(shooter_pid, muzzle_pos, dir, profile, dmg, rng_m, noise_r, play_audio)
 	else:
-		_rpc_req_shot.rpc_id(1, shooter_pid, muzzle_pos, dir, profile)
+		_rpc_req_shot.rpc_id(1, shooter_pid, muzzle_pos, dir, profile, dmg, rng_m, noise_r, play_audio)
 
 
 @rpc("any_peer", "call_local", "reliable")
-func _rpc_req_shot(shooter_pid: int, muzzle_pos: Vector3, dir: Vector3, profile: String) -> void:
+func _rpc_req_shot(shooter_pid: int, muzzle_pos: Vector3, dir: Vector3, profile: String, dmg: float, rng_m: float, noise_r: float, play_audio: bool) -> void:
 	if multiplayer.is_server():
-		_server_process_shot(shooter_pid, muzzle_pos, dir, profile)
+		_server_process_shot(shooter_pid, muzzle_pos, dir, profile, dmg, rng_m, noise_r, play_audio)
 
 
-func _server_process_shot(shooter_pid: int, muzzle_pos: Vector3, dir: Vector3, profile: String) -> void:
+func _server_process_shot(shooter_pid: int, muzzle_pos: Vector3, dir: Vector3, profile: String, dmg: float, rng_m: float, noise_r: float, play_audio: bool) -> void:
 	var n_dir: Vector3 = dir.normalized() if dir.length_squared() > 0.001 else Vector3.FORWARD
-	var end_pos: Vector3 = muzzle_pos + n_dir * 220.0
+	var end_pos: Vector3 = muzzle_pos + n_dir * clampf(rng_m, 2.0, 520.0)
 	var query := PhysicsRayQueryParameters3D.create(muzzle_pos, end_pos)
 	var shooter := get_player_by_peer(shooter_pid)
 	if shooter != null:
 		query.exclude = [shooter.get_rid()]
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+	var hit_confirm: int = 0 # 0=miss, 1=body, 2=head/kill
 	if not hit.is_empty():
 		end_pos = hit["position"]
 		var col: Object = hit["collider"]
 		if col is Zombie3D:
 			var z := col as Zombie3D
 			var is_head: bool = end_pos.y > z.global_position.y + 1.40
-			z.apply_server_damage(120.0 if is_head else 38.0)
+			var killed: bool = z.apply_server_damage(dmg * (3.2 if is_head else 1.0))
+			hit_confirm = 2 if (is_head or killed) else 1
 		elif col is SurvivorPlayer:
 			var tgt := col as SurvivorPlayer
 			var same_team: bool = shooter != null and TacticalMapOverlay.should_show_player_on_map(shooter.team_id, tgt.team_id)
 			if not same_team:
-				tgt.apply_damage(35)
+				tgt.apply_damage(int(dmg))
+				hit_confirm = 1
 
-	alert_zombies_in_radius(muzzle_pos, 26.0 if profile == "suppressed" else 115.0)
-	_rpc_play_shot.rpc(shooter_pid, profile, muzzle_pos, end_pos)
+	if play_audio:
+		var eff_noise: float = noise_r * (0.24 if profile == "suppressed" else 1.0)
+		alert_zombies_in_radius(muzzle_pos, eff_noise)
+	_rpc_play_shot.rpc(shooter_pid, profile, muzzle_pos, end_pos, play_audio)
+	if hit_confirm > 0:
+		if multiplayer.has_multiplayer_peer() and shooter_pid != 1:
+			_rpc_show_hitmarker.rpc_id(shooter_pid, hit_confirm == 2)
+		else:
+			_show_hitmarker(hit_confirm == 2)
+
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_show_hitmarker(is_crit: bool) -> void:
+	_show_hitmarker(is_crit)
+
+
+func _show_hitmarker(is_crit: bool) -> void:
+	if _hitmarker == null:
+		return
+	_hitmarker.color = Color(1.0, 0.22, 0.18, 0.95) if is_crit else Color(1.0, 1.0, 1.0, 0.92)
+	_hitmarker.visible = true
+	_hitmarker_t = 0.14
 
 
 @rpc("authority", "call_local", "unreliable")
-func _rpc_play_shot(shooter_pid: int, profile: String, muzzle_pos: Vector3, end_pos: Vector3) -> void:
+func _rpc_play_shot(shooter_pid: int, profile: String, muzzle_pos: Vector3, end_pos: Vector3, play_audio: bool) -> void:
 	var is_local: bool = (not multiplayer.has_multiplayer_peer()) or (shooter_pid == multiplayer.get_unique_id())
-	if audio_3d != null:
+	if play_audio and audio_3d != null:
 		audio_3d.play_gunshot_3d(profile, muzzle_pos, end_pos, is_local)
 	_spawn_tracer(muzzle_pos, end_pos)
 
