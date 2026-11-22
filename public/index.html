@@ -64,6 +64,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="/knox-persistence.js"></script>
 <style>
   :root {
     --bg:#090b08; --panel:rgba(13,15,12,0.94); --panel-soft:rgba(18,21,17,0.88);
@@ -694,7 +695,7 @@
   }
   /* === FASE 2: MODAL INTERATIVO DE ESCOLHA DE SPAWN + PRÉ-CARREGAMENTO DE CHUNKS === */
   #spawn-modal {
-    position:fixed; inset:0; z-index:42; display:none; align-items:center; justify-content:center;
+    position:fixed; inset:0; z-index:50; display:none; align-items:center; justify-content:center;
     background:rgba(7,9,7,0.92); padding:16px;
   }
   #spawn-modal.open { display:flex; }
@@ -1941,6 +1942,11 @@ import {
   selectContextualDeathStyle,
   computeBallisticDrop
 } from '/js/tactical-logic.js';
+
+const KP = globalThis.KnoxPersistence;
+const clientIdentity = KP ? KP.createClientIdentity({
+  profile: new URLSearchParams(location.search).get('profile')
+}) : null;
 
 /* ============================================================================
    0. FASE 0 — ARQUITETURA BASE (CONFIG, BALANCE, ZOMBIE_TYPES, PRNG, EVENTBUS, SETTINGS)
@@ -10378,6 +10384,12 @@ function recordChunkDiff(key, kind, val) {
   else if (kind === 'door_close') diff.openDoors.delete(String(val));
   else if (kind === 'win') diff.brokenWins.add(String(val));
   else if (kind === 'zombie') diff.deadZombies.add(String(val));
+
+  if (globalThis.knoxHostPersistence && globalThis.knoxHostPersistence.world) {
+    if (kind === 'loot') globalThis.knoxHostPersistence.world.itemTaken(key, String(val));
+    else if (kind === 'door_open') globalThis.knoxHostPersistence.world.setDoor(key, String(val), true);
+    else if (kind === 'door_close') globalThis.knoxHostPersistence.world.setDoor(key, String(val), false);
+  }
 }
 
 function exportChunkDiffsCompact() {
@@ -11957,6 +11969,7 @@ function compileRealWorldBlueprint(areaData) {
   } = areaData;
 
   const seed = Math.abs(Math.round((centerLat * 10000 + centerLng * 10000))) % 9000 + 1000;
+  const safeSeed = seed;
   const rng = mulberry32(seed * 9137);
 
   // 1. Filtra e preserva rodovias, avenidas, ruas, passagens e vias internas de condomínios (até 950 vias!)
@@ -12002,7 +12015,7 @@ function compileRealWorldBlueprint(areaData) {
   // Converte pontos de volta temporariamente para análise geométrica
   const roadsObj = roads.map(r => ({
     ...r,
-    pts: r.pts.map(([x, z]) => ({ x, z }))
+    pts: (r.pts || []).map(p => Array.isArray(p) ? ({ x: p[0], z: p[1] }) : ({ x: p.x, z: p.z }))
   }));
 
   // 2. Valida cruzamentos reais entre ruas e avenidas!
@@ -13498,7 +13511,7 @@ const _initNickInput = document.getElementById('inp-nickname');
 if (_initNickInput) _initNickInput.value = initialSurvivorNick;
 
 const player = {
-  id: 'local-' + Math.random().toString(36).slice(2, 8),
+  id: (clientIdentity && clientIdentity.playerId) ? clientIdentity.playerId : ('local-' + Math.random().toString(36).slice(2, 8)),
   nick: initialSurvivorNick,
   teamId: null,
   pos: new THREE.Vector3(0, 0.12, 150),
@@ -17063,6 +17076,17 @@ function updateVehicles(dt) {
 function pickupLootItem(item) {
   if (!item || item.taken) return;
 
+  if (globalThis.knoxHostPersistence && globalThis.knoxHostPersistence.ledger && typeof KP !== 'undefined') {
+    const cid = item._chunkKey || 'world';
+    const r = globalThis.knoxHostPersistence.ledger.move(item.uid, KP.LOC.world(cid), KP.LOC.player(player.id));
+    if (!r.ok) {
+      showToast('ESSE ITEM NÃO ESTÁ MAIS DISPONÍVEL');
+      return;
+    }
+    globalThis.knoxHostPersistence.world.itemTaken(cid, item.uid);
+    globalThis.knoxHostPersistence.markDirty(player.id);
+  }
+
   if (item.kind === 'weapon') {
     let targetSlot = !inventory.weapons[1] ? 1 : (!inventory.weapons[2] ? 2 : inventory.activeSlot);
     if (targetSlot === 0) targetSlot = 1; // Nunca substitui a faca do slot 0!
@@ -17104,6 +17128,9 @@ function pickupLootItem(item) {
   item.mesh.visible = false;
   if (item._chunkKey) recordChunkDiff(item._chunkKey, 'loot', item.uid);
   netBroadcast({ t: 'loot_take', uid: item.uid });
+  if (globalThis.knoxHostPersistence) {
+    globalThis.knoxHostPersistence.markDirty(player.id);
+  }
   if (inventoryOpen) renderDayZInventoryUI();
 }
 
@@ -17216,6 +17243,12 @@ function dropAllLootOnDeath() {
       const lz = player.pos.z + (Math.random() - 0.5) * 1.1;
       spawnLootObject(uid, 'weapon', w.id, WEAPON_DEFS[w.id].name, 1, lx, player.pos.y + 0.02, lz, { mag: w.mag, attachments: w.attachments });
       netBroadcast({ t: 'loot_spawn', uid, kind: 'weapon', subId: w.id, name: WEAPON_DEFS[w.id].name, qty: 1, x: lx, y: player.pos.y + 0.02, z: lz, extra: { mag: w.mag, attachments: w.attachments } });
+      if (globalThis.knoxHostPersistence && typeof KP !== 'undefined') {
+        const c = worldToChunk(lx, lz, (CONFIG.WORLD && CONFIG.WORLD.CHUNK_SIZE) || 64);
+        const cid = chunkKey(c.cx, c.cz);
+        globalThis.knoxHostPersistence.world.itemDropped(cid, { uid, kind: 'weapon', subId: w.id, name: WEAPON_DEFS[w.id].name, qty: 1, x: lx, y: player.pos.y + 0.02, z: lz, extra: { mag: w.mag, attachments: w.attachments } });
+        globalThis.knoxHostPersistence.ledger.move(uid, KP.LOC.player(player.id), KP.LOC.corpse('corpse-' + player.id));
+      }
     }
   }
   for (const aKey of Object.keys(inventory.ammo)) {
@@ -17227,7 +17260,17 @@ function dropAllLootOnDeath() {
       const nm = `${AMMO_TYPES[aKey].name} (x${q})`;
       spawnLootObject(uid, 'ammo', aKey, nm, q, lx, player.pos.y + 0.02, lz);
       netBroadcast({ t: 'loot_spawn', uid, kind: 'ammo', subId: aKey, name: nm, qty: q, x: lx, y: player.pos.y + 0.02, z: lz });
+      if (globalThis.knoxHostPersistence && typeof KP !== 'undefined') {
+        const c = worldToChunk(lx, lz, (CONFIG.WORLD && CONFIG.WORLD.CHUNK_SIZE) || 64);
+        const cid = chunkKey(c.cx, c.cz);
+        globalThis.knoxHostPersistence.world.itemDropped(cid, { uid, kind: 'ammo', subId: aKey, name: nm, qty: q, x: lx, y: player.pos.y + 0.02, z: lz });
+        globalThis.knoxHostPersistence.ledger.move(uid, KP.LOC.player(player.id), KP.LOC.corpse('corpse-' + player.id));
+      }
     }
+  }
+  if (globalThis.knoxHostPersistence) {
+    globalThis.knoxHostPersistence.onPlayerDied(player.id, { by: 'death', at: { x: player.pos.x, y: player.pos.y, z: player.pos.z } });
+    globalThis.knoxHostPersistence.saveNow(player.id);
   }
 }
 
@@ -17363,6 +17406,13 @@ function renderDayZInventoryUI() {
           const uid = 'drop-' + Math.random().toString(36).slice(2, 8);
           spawnLootObject(uid, 'weapon', w.id, def.name, 1, player.pos.x + 0.3, player.pos.y + 0.02, player.pos.z, { mag: w.mag, attachments: w.attachments });
           netBroadcast({ t: 'loot_spawn', uid, kind: 'weapon', subId: w.id, name: def.name, qty: 1, x: player.pos.x + 0.3, y: player.pos.y + 0.02, z: player.pos.z, extra: { mag: w.mag, attachments: w.attachments } });
+          if (globalThis.knoxHostPersistence && typeof KP !== 'undefined') {
+            const c = worldToChunk(player.pos.x + 0.3, player.pos.z, (CONFIG.WORLD && CONFIG.WORLD.CHUNK_SIZE) || 64);
+            const cid = chunkKey(c.cx, c.cz);
+            globalThis.knoxHostPersistence.world.itemDropped(cid, { uid, kind: 'weapon', subId: w.id, name: def.name, qty: 1, x: player.pos.x + 0.3, y: player.pos.y + 0.02, z: player.pos.z, extra: { mag: w.mag, attachments: w.attachments } });
+            globalThis.knoxHostPersistence.ledger.move(uid, KP.LOC.player(player.id), KP.LOC.world(cid));
+            globalThis.knoxHostPersistence.markDirty(player.id);
+          }
           inventory.weapons[idx] = null;
           if (inventory.activeSlot === idx) equipSlot(0);
           updateWeaponHUD();
@@ -18533,10 +18583,29 @@ function handleNetworkPacket(pkt, fromConn = null) {
     }
   } else if (pkt.t === 'loot_take') {
     const it = lootItems.find(x => x.uid === pkt.uid);
-    if (it) { it.taken = true; it.mesh.visible = false; }
+    if (it) {
+      it.taken = true;
+      it.mesh.visible = false;
+      if (it._chunkKey) recordChunkDiff(it._chunkKey, 'loot', it.uid);
+    }
+    if (netState.isHost && globalThis.knoxHostPersistence && typeof KP !== 'undefined') {
+      const cid = (it && it._chunkKey) || 'world';
+      const pid = fromConn ? (globalThis.knoxHostPersistence.playerIdOf(fromConn.peer) || fromConn.playerId) : player.id;
+      if (pid) {
+        globalThis.knoxHostPersistence.ledger.move(pkt.uid, KP.LOC.world(cid), KP.LOC.player(pid));
+        globalThis.knoxHostPersistence.world.itemTaken(cid, pkt.uid);
+        globalThis.knoxHostPersistence.markDirty(pid);
+      }
+    }
   } else if (pkt.t === 'loot_spawn') {
     if (!lootItems.some(x => x.uid === pkt.uid)) {
-      spawnLootObject(pkt.uid, pkt.kind, pkt.subId, pkt.name, pkt.qty, pkt.x, pkt.y, pkt.z, pkt.extra);
+      const item = spawnLootObject(pkt.uid, pkt.kind, pkt.subId, pkt.name, pkt.qty, pkt.x, pkt.y, pkt.z, pkt.extra);
+      if (netState.isHost && globalThis.knoxHostPersistence && typeof KP !== 'undefined') {
+        const c = worldToChunk(pkt.x, pkt.z, (CONFIG.WORLD && CONFIG.WORLD.CHUNK_SIZE) || 64);
+        const cid = chunkKey(c.cx, c.cz);
+        if (item) item._chunkKey = cid;
+        globalThis.knoxHostPersistence.world.itemDropped(cid, pkt);
+      }
     }
   } else if (pkt.t === 'env_sync') {
     if (pkt.senderId && pkt.senderId === player.id) return;
@@ -18817,13 +18886,374 @@ function schedulePeerSignalingReconnect(p) {
   }, 1500);
 }
 
+function applyWorldDiffSnapshot(worldSnap) {
+  if (!worldSnap || !worldSnap.diffs) return;
+  for (const [cid, cd] of Object.entries(worldSnap.diffs)) {
+    if (Array.isArray(cd.itemsTaken)) {
+      for (const uid of cd.itemsTaken) {
+        recordChunkDiff(cid, 'loot', uid);
+        const it = lootItems.find(i => i.uid === uid);
+        if (it) {
+          it.taken = true;
+          it.mesh.visible = false;
+        }
+      }
+    }
+    if (cd.doors) {
+      for (const [did, open] of Object.entries(cd.doors)) {
+        recordChunkDiff(cid, open ? 'door_open' : 'door_close', did);
+      }
+    }
+  }
+}
+
+function applyResumeOnPlayer(m) {
+  if (!m || !m.save) return;
+  const s = m.save;
+  if (s.pos && Number.isFinite(s.pos.x) && Number.isFinite(s.pos.z)) {
+    const sy = Number.isFinite(s.pos.y) ? s.pos.y : (getSurfaceHeight(s.pos.x, s.pos.z) + 0.16);
+    player.pos.set(s.pos.x, sy, s.pos.z);
+    player.vel.set(0, 0, 0);
+  }
+  if (Number.isFinite(s.hp)) {
+    player.hp = s.hp;
+    player.dead = !!s.dead;
+  }
+  if (s.inventory) {
+    if (s.inventory.weapons) inventory.weapons = JSON.parse(JSON.stringify(s.inventory.weapons));
+    if (s.inventory.ammo) inventory.ammo = JSON.parse(JSON.stringify(s.inventory.ammo));
+    if (Array.isArray(s.inventory.bagItems)) inventory.bagItems = JSON.parse(JSON.stringify(s.inventory.bagItems));
+    if (s.inventory.activeSlot) equipSlot(s.inventory.activeSlot);
+  }
+  updateHealthBarUI();
+  updateWeaponHUD();
+  if (typeof renderDayZInventoryUI === 'function' && inventoryOpen) renderDayZInventoryUI();
+  
+  const menuOverlay = document.getElementById('menu-overlay');
+  if (menuOverlay) menuOverlay.classList.add('hidden');
+  const hudEl = document.getElementById('hud');
+  if (hudEl) hudEl.style.opacity = '1';
+  isPlaying = true;
+  chunkWorldState.hasChosenSpawn = true;
+  try { canvas.requestPointerLock(); } catch (_) {}
+}
+
+async function preloadChunksAndEnter(save, onComplete) {
+  const sx = (save && save.pos && Number.isFinite(save.pos.x)) ? save.pos.x : 0;
+  const sz = (save && save.pos && Number.isFinite(save.pos.z)) ? save.pos.z : 0;
+  
+  const preloadEl = document.getElementById('spawn-preload-overlay');
+  const stepEl = document.getElementById('spawn-preload-step');
+  const fillEl = document.getElementById('spawn-preload-fill');
+  if (preloadEl) preloadEl.classList.add('visible');
+  if (fillEl) fillEl.style.width = '10%';
+  if (stepEl) stepEl.textContent = 'Carregando chunks ao redor do sobrevivente...';
+
+  if (chunkWorldState.active && chunkWorldState.macroMap) {
+    const mm = chunkWorldState.macroMap;
+    const { cx: scx, cz: scz } = worldToChunk(sx, sz, mm.chunkSize);
+    const rad = Math.max(2, Math.min(3, Math.ceil((currentDrawDistance || 220) / 120)));
+
+    for (const [k, rec] of Array.from(chunkWorldState.loadedChunks.entries())) {
+      if (Math.abs(rec.cx - scx) > rad + 1 || Math.abs(rec.cz - scz) > rad + 1) {
+        unloadChunk(k);
+      }
+    }
+    chunkWorldState.pendingQueue.length = 0;
+    chunkWorldState.pendingSet.clear();
+
+    const halfC = Math.floor((mm.chunksPerAxis || 128) / 2);
+    const coords = [];
+    for (let dz = -rad; dz <= rad; dz++) {
+      for (let dx = -rad; dx <= rad; dx++) {
+        const ncx = scx + dx, ncz = scz + dz;
+        if (ncx < -halfC || ncx >= halfC || ncz < -halfC || ncz >= halfC) continue;
+        coords.push({ cx: ncx, cz: ncz, d2: dx * dx + dz * dz });
+      }
+    }
+    coords.sort((a, b) => a.d2 - b.d2);
+
+    for (let i = 0; i < coords.length; i++) {
+      const c = coords[i];
+      loadChunk(c.cx, c.cz);
+      const pct = Math.round(((i + 1) / Math.max(1, coords.length)) * 96);
+      if (fillEl) fillEl.style.width = `${pct}%`;
+      if (stepEl) stepEl.textContent = `Carregando setor [${c.cx}, ${c.cz}] (${i + 1}/${coords.length} chunks)...`;
+      if (i % 3 === 2) await new Promise((r) => requestAnimationFrame(r));
+    }
+    syncProceduralMinimapFromChunks();
+    rebuildRaycastSpatialIndex();
+    chunkWorldState.lastCenterKey = chunkKey(scx, scz);
+    updateChunkWorldLobbyUI();
+  } else {
+    if (fillEl) fillEl.style.width = '100%';
+    await new Promise((r) => setTimeout(r, 60));
+  }
+
+  if (fillEl) fillEl.style.width = '100%';
+  if (stepEl) stepEl.textContent = 'Pronto!';
+  if (preloadEl) preloadEl.classList.remove('visible');
+
+  if (typeof onComplete === 'function') onComplete();
+}
+
+function initHostPersistence(worldSeed, roomId) {
+  if (typeof KP === 'undefined') return;
+  if (globalThis.knoxHostPersistence) {
+    try { globalThis.knoxHostPersistence.stop(); } catch (_) {}
+  }
+  const world = new KP.WorldDiffStore({ worldSeed });
+  const ledger = new KP.ItemLedger();
+  const persist = new KP.HostPersistence({
+    roomId,
+    worldSeed,
+    world,
+    ledger,
+    localConnId: 'local',
+    hooks: {
+      send: (connId, msg) => {
+        if (connId === 'local') {
+          if (globalThis.knoxLocalSession) {
+            globalThis.knoxLocalSession.receive(JSON.parse(JSON.stringify(msg)));
+          }
+          return;
+        }
+        const conn = netState.clientConns.get(connId);
+        if (conn && conn.open) {
+          try { conn.send(msg); } catch (e) { console.warn('persist send error:', e); }
+        }
+      },
+      close: (connId) => {
+        if (connId === 'local') return;
+        const conn = netState.clientConns.get(connId);
+        if (conn) {
+          try { conn.close(); } catch (e) { console.warn('persist close error:', e); }
+        }
+      },
+      snapshotPlayer: (playerId) => {
+        if (playerId === player.id) {
+          return {
+            id: player.id,
+            nick: player.nick,
+            pos: { x: +player.pos.x.toFixed(2), y: +player.pos.y.toFixed(2), z: +player.pos.z.toFixed(2) },
+            rot: { x: 0, y: +camera.rotation.y.toFixed(3), z: 0 },
+            hp: player.hp,
+            dead: !!player.dead,
+            inventory: {
+              weapons: JSON.parse(JSON.stringify(inventory.weapons || {})),
+              ammo: JSON.parse(JSON.stringify(inventory.ammo || {})),
+              bagItems: JSON.parse(JSON.stringify(inventory.bagItems || [])),
+              activeSlot: inventory.activeSlot
+            },
+            savedAt: Date.now()
+          };
+        }
+        const rp = remotePlayers.get(playerId);
+        if (rp) {
+          return {
+            id: rp.id,
+            nick: rp.nick,
+            pos: { x: +rp.pos.x.toFixed(2), y: +rp.pos.y.toFixed(2), z: +rp.pos.z.toFixed(2) },
+            rot: { x: 0, y: +(rp.yaw || 0).toFixed(3), z: 0 },
+            hp: rp.hp !== undefined ? rp.hp : 100,
+            dead: !!rp.dead,
+            inventory: rp.inventory || {
+              weapons: { 1: { id: rp.weaponId || 'knife', mag: 30, attachments: {} } },
+              ammo: {},
+              bagItems: [],
+              activeSlot: 1
+            },
+            savedAt: Date.now()
+          };
+        }
+        return null;
+      },
+      chunksNear: (pos) => {
+        if (!pos) return [];
+        const c = worldToChunk(pos.x, pos.z, (CONFIG.WORLD && CONFIG.WORLD.CHUNK_SIZE) || 64);
+        const out = [];
+        for (let dz = -2; dz <= 2; dz++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            out.push(chunkKey(c.cx + dx, c.cz + dz));
+          }
+        }
+        return out;
+      },
+      validatePosition: (pos) => {
+        if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.z)) return { x: 0, y: 1, z: 0 };
+        const y = getSurfaceHeight(pos.x, pos.z) + 0.16;
+        return { x: pos.x, y, z: pos.z };
+      },
+      exitVehicle: (playerId) => {
+        if (Array.isArray(vehicles)) {
+          for (const v of vehicles) {
+            if (v.driverId === playerId) {
+              v.driverId = null;
+              return { x: v.pos.x + 2, y: getSurfaceHeight(v.pos.x + 2, v.pos.z) + 0.16, z: v.pos.z };
+            }
+            if (Array.isArray(v.passengers)) {
+              const idx = v.passengers.indexOf(playerId);
+              if (idx !== -1) {
+                v.passengers.splice(idx, 1);
+                return { x: v.pos.x - 2, y: getSurfaceHeight(v.pos.x - 2, v.pos.z) + 0.16, z: v.pos.z };
+              }
+            }
+          }
+        }
+        return null;
+      },
+      removeBody: (playerId, save) => {
+        if (playerId !== player.id) {
+          removeRemotePlayer(playerId);
+          netBroadcast({ t: 'leave', id: playerId });
+        }
+      },
+      spawnBody: (playerId, save) => {
+        if (playerId === player.id) {
+          applyResumeOnPlayer({ save });
+        } else {
+          const rp = getOrCreateRemotePlayer(playerId, (save && save.nick) || 'Sobrevivente');
+          if (save && save.pos) {
+            rp.pos.set(save.pos.x, save.pos.y, save.pos.z);
+            rp.targetPos.set(save.pos.x, save.pos.y, save.pos.z);
+            rp.hasFirstPos = true;
+          }
+        }
+      },
+      reattachBody: (playerId, connId) => {
+        const conn = netState.clientConns.get(connId);
+        if (conn) conn.playerId = playerId;
+      }
+    }
+  });
+  persist.start();
+  globalThis.knoxHostPersistence = persist;
+
+  if (clientIdentity) {
+    if (globalThis.knoxLocalSession) {
+      try { globalThis.knoxLocalSession.stop(); } catch (_) {}
+    }
+    globalThis.knoxLocalSession = KP.createClientSession({
+      identity: clientIdentity,
+      nick: () => player.nick,
+      send: (msg) => {
+        if (globalThis.knoxHostPersistence) {
+          globalThis.knoxHostPersistence.handleMessage('local', msg);
+        }
+      },
+      handlers: {
+        onResumeOk(m) {
+          if (m.world) applyWorldDiffSnapshot(m.world);
+          if (m.instant) {
+            applyResumeOnPlayer(m);
+            showToast('SESSÃO LOCAL RETOMADA');
+          } else {
+            preloadChunksAndEnter(m.save, () => {
+              applyResumeOnPlayer(m);
+              if (globalThis.knoxLocalSession) globalThis.knoxLocalSession.sendReady();
+            });
+          }
+        },
+        onNewCharacter(m) {
+          if (m.diedWhileOffline) {
+            showToast('VOCÊ MORREU ENQUANTO ESTAVA FORA');
+          }
+          if (!chunkWorldState.hasChosenSpawn && typeof openSpawnModal === 'function') {
+            openSpawnModal({ isRespawn: false });
+          }
+        },
+        onDenied(m) {
+          showToast('NÃO FOI POSSÍVEL RETOMAR: ' + (m.reason || 'recusado'));
+        },
+        onKicked() {
+          showToast('SUA CONTA ENTROU EM OUTRA ABA');
+        },
+        onServerClosed() {
+          showToast('SERVIDOR ENCERRADO');
+        },
+        onTimeout() {}
+      }
+    });
+    globalThis.knoxLocalSession.start();
+  }
+}
+
+function initClientPersistenceSession(conn) {
+  if (typeof KP === 'undefined' || !clientIdentity) return;
+  if (globalThis.knoxClientSession) {
+    try { globalThis.knoxClientSession.stop(); } catch (_) {}
+  }
+  globalThis.knoxClientSession = KP.createClientSession({
+    identity: clientIdentity,
+    nick: () => player.nick,
+    send: (msg) => {
+      if (conn && conn.open) {
+        try { conn.send(msg); } catch (e) { console.warn('client persist send error:', e); }
+      }
+    },
+    handlers: {
+      onResumeOk(m) {
+        if (m.world) applyWorldDiffSnapshot(m.world);
+        if (m.instant) {
+          applyResumeOnPlayer(m);
+          showToast('SESSÃO RETOMADA COM SUCESSO!');
+        } else {
+          preloadChunksAndEnter(m.save, () => {
+            applyResumeOnPlayer(m);
+            if (globalThis.knoxClientSession) globalThis.knoxClientSession.sendReady();
+          });
+        }
+      },
+      onNewCharacter(m) {
+        if (m.diedWhileOffline) {
+          const deathScreen = document.getElementById('death-screen');
+          if (deathScreen) {
+            deathScreen.classList.add('active');
+            const causeEl = document.getElementById('death-cause-text');
+            if (causeEl) causeEl.textContent = 'VOCÊ MORREU ENQUANTO ESTAVA FORA // SEU CORPO FICOU PARA OS ZUMBIS';
+          }
+          showToast('VOCÊ MORREU ENQUANTO ESTAVA FORA');
+        } else if (m.reason === 'world_reset') {
+          showToast('O MUNDO FOI REINICIADO');
+        }
+        if (typeof openSpawnModal === 'function') {
+          openSpawnModal({ isRespawn: false });
+        }
+      },
+      onDenied(m) {
+        showToast('NÃO FOI POSSÍVEL ENTRAR: ' + (m.reason || 'recusado'));
+        disconnectSession({ keepServerAlive: true });
+      },
+      onKicked() {
+        showToast('SUA CONTA ENTROU EM OUTRA ABA');
+        disconnectSession({ keepServerAlive: true });
+      },
+      onServerClosed() {
+        showToast('SERVIDOR ENCERRADO');
+        disconnectSession({ keepServerAlive: false });
+      },
+      onTimeout() {
+        showToast('CONEXÃO PERDIDA COM O HOST');
+      }
+    }
+  });
+  globalThis.knoxClientSession.start();
+}
+
 function attachHostPeerListeners(p) {
   p.on('disconnected', () => schedulePeerSignalingReconnect(p));
   p.on('connection', (conn) => {
+    netState.clientConns.set(conn.peer, conn);
     conn.on('error', () => {});
     conn.on('data', (data) => {
+      if (data && data.playerId) conn.playerId = data.playerId;
+      if (globalThis.knoxHostPersistence && globalThis.knoxHostPersistence.handleMessage(conn.peer, data)) {
+        return;
+      }
+      if (globalThis.knoxHostPersistence && globalThis.knoxHostPersistence.playerIdOf(conn.peer) === null) {
+        if (data && data.t !== 'ping_info') return;
+      }
       if (data && data.t === 'join_hello') {
-        netState.clientConns.set(conn.peer, conn);
         conn.playerId = data.playerId;
         if (!conn._welcomed) {
           conn._welcomed = true;
@@ -18842,10 +19272,15 @@ function attachHostPeerListeners(p) {
       handleNetworkPacket(data, conn);
     });
     conn.on('close', () => {
+      if (globalThis.knoxHostPersistence) {
+        globalThis.knoxHostPersistence.onConnectionLost(conn.peer);
+      }
       netState.clientConns.delete(conn.peer);
       if (conn.playerId) {
-        removeRemotePlayer(conn.playerId);
-        netBroadcast({ t: 'leave', id: conn.playerId });
+        if (!globalThis.knoxHostPersistence) {
+          removeRemotePlayer(conn.playerId);
+          netBroadcast({ t: 'leave', id: conn.playerId });
+        }
       }
       broadcastRoomMeta();
       postVercelServerHeartbeat('upsert');
@@ -18879,6 +19314,7 @@ function bindAsHostForRoom(desiredId, opts = {}) {
       netState.isClient = false;
       netState.migrating = false;
       netState.roomCode = id;
+      initHostPersistence(currentSeed, id);
       netState.serverName = serverName;
       netState.ownerId = ownerId || (isOwnerOfRoom(id, ownerId) ? LOCAL_OWNER_ID : '');
       netState.ownerName = ownerName;
@@ -18968,6 +19404,7 @@ function createOnlineServer() {
       netState.isClient = false;
       netState.migrating = false;
       netState.roomCode = id;
+      initHostPersistence(currentSeed, id);
       netState.serverName = desiredName;
       netState.ownerId = LOCAL_OWNER_ID;
       netState.ownerName = player.nick;
@@ -19140,6 +19577,7 @@ function joinOnlineServer(roomPeerId, opts = {}) {
       opened = true;
       if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
       if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+      initClientPersistenceSession(conn);
       conn.send({ t: 'join_hello', playerId: player.id, nick: player.nick });
       if (isCurrentRoomOwner()) {
         conn.send({ t: 'owner_sync', ownerId: LOCAL_OWNER_ID, ownerName: player.nick });
@@ -19151,8 +19589,14 @@ function joinOnlineServer(roomPeerId, opts = {}) {
         showToast(`RECONECTADO À SALA ${targetId}!`);
       }
     });
-    conn.on('data', (data) => handleNetworkPacket(data, null));
+    conn.on('data', (data) => {
+      if (globalThis.knoxClientSession && globalThis.knoxClientSession.receive(data)) return;
+      handleNetworkPacket(data, null);
+    });
     conn.on('close', () => {
+      if (globalThis.knoxClientSession) {
+        try { globalThis.knoxClientSession.stop(); } catch (_) {}
+      }
       if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
       if (netState.hostConn !== conn) return;
       if (netState.closedByOwner || netState.intentionalLeave) {
@@ -20389,6 +20833,9 @@ function damageLocalPlayer(amount, cause = 'COMBATE', zone = 'torso') {
     mouseDownLeft = false; mouseDownRight = false;
     player.adsFirstPersonToggle = false;
     dropAllLootOnDeath();
+    if (globalThis.knoxHostPersistence) {
+      globalThis.knoxHostPersistence.onPlayerDied(player.id, { by: cause, at: { x: player.pos.x, y: player.pos.y, z: player.pos.z } });
+    }
     showToast(`VOCÊ MORREU // SE FUDEU OTARIO`);
 
     // Ativa a tela de morte cinematográfica "SE FUDEU OTARIO"
@@ -22112,13 +22559,21 @@ window.addEventListener('keydown', (e) => {
 
   // Fechar Modal de Spawn no ESC
   if (e.code === 'Escape' && typeof spawnModalOpen !== 'undefined' && spawnModalOpen) {
-    closeSpawnModal();
+    if (player.dead) {
+      closeSpawnModal();
+      const deathScreen = document.getElementById('death-screen');
+      if (deathScreen) deathScreen.classList.add('active');
+    } else {
+      closeSpawnModal();
+    }
     return;
   }
 
   // Se estiver morto na tela cinematográfica, apertar Espaço ou Enter abre o Seletor de Spawn para renascer!
   if (player.dead && (e.code === 'Space' || e.code === 'Enter') && !e.repeat) {
     sfx.init();
+    const deathScreen = document.getElementById('death-screen');
+    if (deathScreen) deathScreen.classList.remove('active');
     if (typeof openSpawnModal === 'function') {
       openSpawnModal({ isRespawn: true });
     } else {
@@ -22130,8 +22585,17 @@ window.addEventListener('keydown', (e) => {
 
   // Tecla [N] — Gera nova Seed determinística de Mundo Virtual (Solo ou Host) e abre escolha de Spawn!
   if (e.code === 'KeyN' && !e.repeat && !netState.isClient && !realWorldMeta.active && !inventoryOpen && !partyOpen && !fullMapOpen && !devState.panelOpen) {
+    if (!confirm('Isso apaga o progresso de todos os jogadores.')) return;
     sfx.init();
     const newSeed = Math.floor(1000 + Math.random() * 89999);
+    if (globalThis.knoxHostPersistence) {
+      globalThis.knoxHostPersistence.invalidateAll(newSeed);
+    }
+    for (const conn of netState.clientConns.values()) {
+      if (conn && conn.open) {
+        try { conn.send({ t: 'new_character', reason: 'world_reset', diedWhileOffline: false }); } catch (_) {}
+      }
+    }
     generateProceduralMap(newSeed, chunkWorldState.sizeKey);
     showToast(`NOVA SEED GERADA: #${newSeed} (${(WORLD_SIZE_PRESETS[chunkWorldState.sizeKey] || WORLD_SIZE_PRESETS.medium).label})`);
     if (typeof openSpawnModal === 'function') openSpawnModal({ isRespawn: false });
@@ -22520,6 +22984,8 @@ document.getElementById('btn-play').onclick = startOrResumePlay;
 document.getElementById('btn-play-resume').onclick = startOrResumePlay;
 document.getElementById('btn-respawn-now').onclick = () => {
   sfx.init();
+  const deathScreen = document.getElementById('death-screen');
+  if (deathScreen) deathScreen.classList.remove('active');
   openSpawnModal({ isRespawn: true });
 };
 
@@ -22883,6 +23349,8 @@ function renderSpawnMap() {
 function openSpawnModal(opts = {}) {
   const modal = document.getElementById('spawn-modal');
   if (!modal) return;
+  const deathScreen = document.getElementById('death-screen');
+  if (deathScreen) deathScreen.classList.remove('active');
   spawnUiState.isRespawn = !!opts.isRespawn;
   spawnUiState.isPreloading = false;
   spawnModalOpen = true;
@@ -22921,6 +23389,10 @@ function closeSpawnModal() {
   const modal = document.getElementById('spawn-modal');
   if (modal) modal.classList.remove('open');
   spawnModalOpen = false;
+  if (player.dead) {
+    const deathScreen = document.getElementById('death-screen');
+    if (deathScreen) deathScreen.classList.add('active');
+  }
 }
 
 async function confirmSelectedSpawnAndEnter() {
@@ -22991,6 +23463,10 @@ async function confirmSelectedSpawnAndEnter() {
   player.pos.set(sx, sy, sz);
   player.vel.set(0, 0, 0);
   chunkWorldState.hasChosenSpawn = true;
+
+  if (globalThis.knoxHostPersistence) {
+    globalThis.knoxHostPersistence.onCharacterSpawned(player.id);
+  }
 
   // Envia seleção de spawn para o Host / sala multiplayer
   const ch = worldToChunk(sx, sz, CONFIG.WORLD.CHUNK_SIZE || 64);
@@ -23900,6 +24376,9 @@ document.getElementById('btn-gmaps-generate').onclick = async () => {
       gmapsPickerState.provider
     );
     generateRealWorldMap(areaData);
+    if (typeof openSpawnModal === 'function') {
+      openSpawnModal({ isRespawn: false });
+    }
   } catch (err) {
     setGmapsProgress(false);
     checkAndDispatchQuotaError(err, 'generate');
@@ -24591,6 +25070,9 @@ window.addEventListener('resize', () => {
 });
 
 window.addEventListener('beforeunload', () => {
+  if (globalThis.knoxHostPersistence && netState.isHost) {
+    globalThis.knoxHostPersistence.closeServer();
+  }
   if (isCurrentRoomOwner()) saveOwnedServerMeta();
   if (netState.peer) {
     try { netState.peer.destroy(); } catch (_) {}
@@ -24601,6 +25083,9 @@ window.addEventListener('beforeunload', () => {
    17. INICIALIZAÇÃO DO MUNDO & LOOP PRINCIPAL (MODELOS 100% PROCEDURAIS)
    ============================================================================ */
 generateProceduralMap(4242, 'medium');
+if (typeof initHostPersistence === 'function') {
+  initHostPersistence(currentSeed, 'solo');
+}
 syncServerControlButtonsUI();
 setTimeout(() => refreshServerListUI(), 500);
 
@@ -24788,9 +25273,12 @@ function animate(nowMs) {
       checkContextualInteraction(dt);
     } else {
       updateVehicles(dt);
+      updateLocalPlayer(dt);
       updateRemotePlayersAndNet(dt);
       updateCameraAndWeaponViewmodel(dt);
       updateWorldFXAndHUD(dt);
+      updateZombies(dt);
+      checkContextualInteraction(dt);
       if (fullMapOpen) {
         const nowFm = performance.now();
         if (nowFm - tacticalMapState.lastRenderAt > 85) {
