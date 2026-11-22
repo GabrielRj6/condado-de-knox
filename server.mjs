@@ -257,7 +257,7 @@ async function fetchOverpassMapData(sq, centerLat, centerLng) {
     const bbox = `${sq.south.toFixed(6)},${sq.west.toFixed(6)},${sq.north.toFixed(6)},${sq.east.toFixed(6)}`;
     const query = `[out:json][timeout:16];
 (
-  way["highway"~"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service)$"](${bbox});
+  way["highway"~"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|pedestrian|track)$"](${bbox});
   way["building"](${bbox});
   relation["building"](${bbox});
   way["shop"~"^(mall|department_store|supermarket|convenience)$"](${bbox});
@@ -328,7 +328,7 @@ out skel qt;`;
     'motorway', 'motorway_link', 'trunk', 'trunk_link',
     'primary', 'primary_link', 'secondary', 'secondary_link',
     'tertiary', 'tertiary_link', 'unclassified', 'residential',
-    'living_street', 'service'
+    'living_street', 'service', 'pedestrian', 'track'
   ]);
   const VALID_POI_AMENITIES = new Set([
     'hospital', 'clinic', 'pharmacy', 'police', 'fire_station',
@@ -502,7 +502,7 @@ out skel qt;`;
     if (el.type === 'way' && tags.highway && Array.isArray(el.nodes) && el.nodes.length >= 2) {
       const hw = String(tags.highway);
       if (!DRIVABLE_HIGHWAYS.has(hw)) continue;
-      if (hw === 'service' && (tags.service === 'parking_aisle' || tags.service === 'driveway')) continue;
+      if (hw === 'service' && tags.service === 'parking_aisle') continue;
 
       const nmLow = String(tags.name || tags.ref || '').toLowerCase();
       const rawOneway = String(tags.oneway || '').toLowerCase();
@@ -524,7 +524,7 @@ out skel qt;`;
 
       const isHighwayName = /\b(rod\.?|rodovia|br[-\s]?\d+|sp[-\s]?\d+|pa[-\s]?\d+|mg[-\s]?\d+|rj[-\s]?\d+|estrada|via expressa|marginal|anel vi[aá]rio|freeway|highway)\b/i.test(nmLow);
       const isAvenueName = /^(av\.?|avenida|alameda|boulevard|blvd|perimetral)\b/i.test(nmLow);
-      const isPassageName = /^(passagem|pass\.?|beco|viela|servid[aã]o|vila\s)\b/i.test(nmLow);
+      const isPassageName = /^(passagem|pass\.?|beco|viela|servid[aã]o|vila\s|condom[ií]nio|alameda\s+interna)\b/i.test(nmLow);
 
       if (hw === 'motorway' || hw === 'motorway_link' || hw === 'trunk' || hw === 'trunk_link' || isHighwayName) {
         roadClass = 'highway';
@@ -534,9 +534,9 @@ out skel qt;`;
         roadClass = 'avenue';
         width = oneway ? 9.8 : 12.4;
         if (parsedLanes >= 2) width = Math.max(9.2, Math.min(15.2, parsedLanes * 3.25 + 1.2));
-      } else if (hw === 'service' || isPassageName || (parsedLanes === 1 && (hw === 'residential' || hw === 'unclassified' || hw === 'living_street'))) {
+      } else if (hw === 'service' || hw === 'pedestrian' || hw === 'track' || isPassageName || (parsedLanes === 1 && (hw === 'residential' || hw === 'unclassified' || hw === 'living_street'))) {
         roadClass = 'passage';
-        width = oneway ? 5.2 : 5.8;
+        width = oneway ? 5.4 : 6.0;
       } else {
         roadClass = 'street';
         width = oneway ? 6.8 : 8.2;
