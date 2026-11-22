@@ -1,0 +1,22 @@
+# Originais pesados (nunca publicar no deploy)
+ANIMAÇÕES NOVAS E PERSONAGENS/
+Personagens Novos e Animações/
+PERSONAGEM PRINCIPAL MODELO/
+assets/
+_audit/
+backups/
+tools/
+tests/
+public/assets/aistudio/
+
+# Formatos fonte / temporários / OS
+*.zip
+*.rar
+*.7z
+*.blend
+*.blend1
+*.psd
+*.fbx
+*.mp4
+*.DS_Store
+Thumbs.db

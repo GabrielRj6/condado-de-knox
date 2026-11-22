@@ -23,6 +23,8 @@ const MIME = {
   '.ico': 'image/x-icon',
   '.fbx': 'application/octet-stream',
   '.obj': 'text/plain; charset=utf-8',
+  '.mtl': 'text/plain; charset=utf-8',
+  '.webp': 'image/webp',
   '.txt': 'text/plain; charset=utf-8'
 };
 

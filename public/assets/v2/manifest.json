@@ -1,0 +1,1453 @@
+{
+  "version": 2,
+  "generatedAt": "2026-11-22T16:59:44.028Z",
+  "notes": {
+    "sourcePackCharacters": "Quaternius Ultimate Modular Men (62 ossos, 24 clips integrados)",
+    "sourcePackWeapons": "Quaternius Ultimate Gun Pack (OBJ+MTL com +X = cano, +Y = cima)",
+    "sourcePackZombieNote": "Zombie by @Quaternius continha apenas OBJ estático sem rig/clips; variantes zumbis v2 usam o esqueleto Quaternius 62-ossos zumbificado para animação esquelética completa."
+  },
+  "characters": [
+    {
+      "id": "swat",
+      "name": "Operador SWAT",
+      "role": "Tático",
+      "accent": "#3b82f6",
+      "file": "characters/swat.glb",
+      "scale": 0.96,
+      "yawOffset": 3.141592653589793,
+      "boneNormalize": true,
+      "rightHandBone": "Wrist.R",
+      "headBone": "Head",
+      "weaponOffset": {
+        "pos": [
+          0.02,
+          0.08,
+          0.04
+        ],
+        "rot": [
+          1.5707963267948966,
+          0,
+          -1.5707963267948966
+        ],
+        "scale": 0.95
+      },
+      "clips": {
+        "idle": "Idle",
+        "idleNeutral": "Idle_Neutral",
+        "idleGun": "Idle_Gun",
+        "idleGunAim": "Idle_Gun_Pointing",
+        "idleGunShoot": "Idle_Gun_Shoot",
+        "idleMelee": "Idle_Sword",
+        "walk": "Walk",
+        "run": "Run",
+        "runBack": "Run_Back",
+        "runLeft": "Run_Left",
+        "runRight": "Run_Right",
+        "runShoot": "Run_Shoot",
+        "crouchIdle": null,
+        "crouchWalk": null,
+        "prone": null,
+        "jump": null,
+        "roll": "Roll",
+        "shoot": "Gun_Shoot",
+        "melee": "Sword_Slash",
+        "punch": [
+          "Punch_Left",
+          "Punch_Right"
+        ],
+        "interact": "Interact",
+        "hit": [
+          "HitRecieve",
+          "HitRecieve_2"
+        ],
+        "death": [
+          "Death"
+        ]
+      }
+    },
+    {
+      "id": "adventurer",
+      "name": "Explorador",
+      "role": "Sobrevivente",
+      "accent": "#d97706",
+      "file": "characters/adventurer.glb",
+      "scale": 0.96,
+      "yawOffset": 3.141592653589793,
+      "boneNormalize": true,
+      "rightHandBone": "Wrist.R",
+      "headBone": "Head",
+      "weaponOffset": {
+        "pos": [
+          0.02,
+          0.08,
+          0.04
+        ],
+        "rot": [
+          1.5707963267948966,
+          0,
+          -1.5707963267948966
+        ],
+        "scale": 0.95
+      },
+      "clips": {
+        "idle": "Idle",
+        "idleNeutral": "Idle_Neutral",
+        "idleGun": "Idle_Gun",
+        "idleGunAim": "Idle_Gun_Pointing",
+        "idleGunShoot": "Idle_Gun_Shoot",
+        "idleMelee": "Idle_Sword",
+        "walk": "Walk",
+        "run": "Run",
+        "runBack": "Run_Back",
+        "runLeft": "Run_Left",
+        "runRight": "Run_Right",
+        "runShoot": "Run_Shoot",
+        "crouchIdle": null,
+        "crouchWalk": null,
+        "prone": null,
+        "jump": null,
+        "roll": "Roll",
+        "shoot": "Gun_Shoot",
+        "melee": "Sword_Slash",
+        "punch": [
+          "Punch_Left",
+          "Punch_Right"
+        ],
+        "interact": "Interact",
+        "hit": [
+          "HitRecieve",
+          "HitRecieve_2"
+        ],
+        "death": [
+          "Death"
+        ]
+      }
+    },
+    {
+      "id": "casual_hoodie",
+      "name": "Sobrevivente",
+      "role": "Urbano",
+      "accent": "#a855f7",
+      "file": "characters/casual_hoodie.glb",
+      "scale": 0.96,
+      "yawOffset": 3.141592653589793,
+      "boneNormalize": true,
+      "rightHandBone": "Wrist.R",
+      "headBone": "Head",
+      "weaponOffset": {
+        "pos": [
+          0.02,
+          0.08,
+          0.04
+        ],
+        "rot": [
+          1.5707963267948966,
+          0,
+          -1.5707963267948966
+        ],
+        "scale": 0.95
+      },
+      "clips": {
+        "idle": "Idle",
+        "idleNeutral": "Idle_Neutral",
+        "idleGun": "Idle_Gun",
+        "idleGunAim": "Idle_Gun_Pointing",
+        "idleGunShoot": "Idle_Gun_Shoot",
+        "idleMelee": "Idle_Sword",
+        "walk": "Walk",
+        "run": "Run",
+        "runBack": "Run_Back",
+        "runLeft": "Run_Left",
+        "runRight": "Run_Right",
+        "runShoot": "Run_Shoot",
+        "crouchIdle": null,
+        "crouchWalk": null,
+        "prone": null,
+        "jump": null,
+        "roll": "Roll",
+        "shoot": "Gun_Shoot",
+        "melee": "Sword_Slash",
+        "punch": [
+          "Punch_Left",
+          "Punch_Right"
+        ],
+        "interact": "Interact",
+        "hit": [
+          "HitRecieve",
+          "HitRecieve_2"
+        ],
+        "death": [
+          "Death"
+        ]
+      }
+    },
+    {
+      "id": "casual_2",
+      "name": "Civil",
+      "role": "Bairro",
+      "accent": "#ef4444",
+      "file": "characters/casual_2.glb",
+      "scale": 0.96,
+      "yawOffset": 3.141592653589793,
+      "boneNormalize": true,
+      "rightHandBone": "Wrist.R",
+      "headBone": "Head",
+      "weaponOffset": {
+        "pos": [
+          0.02,
+          0.08,
+          0.04
+        ],
+        "rot": [
+          1.5707963267948966,
+          0,
+          -1.5707963267948966
+        ],
+        "scale": 0.95
+      },
+      "clips": {
+        "idle": "Idle",
+        "idleNeutral": "Idle_Neutral",
+        "idleGun": "Idle_Gun",
+        "idleGunAim": "Idle_Gun_Pointing",
+        "idleGunShoot": "Idle_Gun_Shoot",
+        "idleMelee": "Idle_Sword",
+        "walk": "Walk",
+        "run": "Run",
+        "runBack": "Run_Back",
+        "runLeft": "Run_Left",
+        "runRight": "Run_Right",
+        "runShoot": "Run_Shoot",
+        "crouchIdle": null,
+        "crouchWalk": null,
+        "prone": null,
+        "jump": null,
+        "roll": "Roll",
+        "shoot": "Gun_Shoot",
+        "melee": "Sword_Slash",
+        "punch": [
+          "Punch_Left",
+          "Punch_Right"
+        ],
+        "interact": "Interact",
+        "hit": [
+          "HitRecieve",
+          "HitRecieve_2"
+        ],
+        "death": [
+          "Death"
+        ]
+      }
+    },
+    {
+      "id": "farmer",
+      "name": "Fazendeiro",
+      "role": "Rural",
+      "accent": "#22c55e",
+      "file": "characters/farmer.glb",
+      "scale": 0.96,
+      "yawOffset": 3.141592653589793,
+      "boneNormalize": true,
+      "rightHandBone": "Wrist.R",
+      "headBone": "Head",
+      "weaponOffset": {
+        "pos": [
+          0.02,
+          0.08,
+          0.04
+        ],
+        "rot": [
+          1.5707963267948966,
+          0,
+          -1.5707963267948966
+        ],
+        "scale": 0.95
+      },
+      "clips": {
+        "idle": "Idle",
+        "idleNeutral": "Idle_Neutral",
+        "idleGun": "Idle_Gun",
+        "idleGunAim": "Idle_Gun_Pointing",
+        "idleGunShoot": "Idle_Gun_Shoot",
+        "idleMelee": "Idle_Sword",
+        "walk": "Walk",
+        "run": "Run",
+        "runBack": "Run_Back",
+        "runLeft": "Run_Left",
+        "runRight": "Run_Right",
+        "runShoot": "Run_Shoot",
+        "crouchIdle": null,
+        "crouchWalk": null,
+        "prone": null,
+        "jump": null,
+        "roll": "Roll",
+        "shoot": "Gun_Shoot",
+        "melee": "Sword_Slash",
+        "punch": [
+          "Punch_Left",
+          "Punch_Right"
+        ],
+        "interact": "Interact",
+        "hit": [
+          "HitRecieve",
+          "HitRecieve_2"
+        ],
+        "death": [
+          "Death"
+        ]
+      }
+    },
+    {
+      "id": "worker",
+      "name": "Operário",
+      "role": "Industrial",
+      "accent": "#eab308",
+      "file": "characters/worker.glb",
+      "scale": 0.96,
+      "yawOffset": 3.141592653589793,
+      "boneNormalize": true,
+      "rightHandBone": "Wrist.R",
+      "headBone": "Head",
+      "weaponOffset": {
+        "pos": [
+          0.02,
+          0.08,
+          0.04
+        ],
+        "rot": [
+          1.5707963267948966,
+          0,
+          -1.5707963267948966
+        ],
+        "scale": 0.95
+      },
+      "clips": {
+        "idle": "Idle",
+        "idleNeutral": "Idle_Neutral",
+        "idleGun": "Idle_Gun",
+        "idleGunAim": "Idle_Gun_Pointing",
+        "idleGunShoot": "Idle_Gun_Shoot",
+        "idleMelee": "Idle_Sword",
+        "walk": "Walk",
+        "run": "Run",
+        "runBack": "Run_Back",
+        "runLeft": "Run_Left",
+        "runRight": "Run_Right",
+        "runShoot": "Run_Shoot",
+        "crouchIdle": null,
+        "crouchWalk": null,
+        "prone": null,
+        "jump": null,
+        "roll": "Roll",
+        "shoot": "Gun_Shoot",
+        "melee": "Sword_Slash",
+        "punch": [
+          "Punch_Left",
+          "Punch_Right"
+        ],
+        "interact": "Interact",
+        "hit": [
+          "HitRecieve",
+          "HitRecieve_2"
+        ],
+        "death": [
+          "Death"
+        ]
+      }
+    },
+    {
+      "id": "suit",
+      "name": "Executivo",
+      "role": "Centro",
+      "accent": "#64748b",
+      "file": "characters/suit.glb",
+      "scale": 0.96,
+      "yawOffset": 3.141592653589793,
+      "boneNormalize": true,
+      "rightHandBone": "Wrist.R",
+      "headBone": "Head",
+      "weaponOffset": {
+        "pos": [
+          0.02,
+          0.08,
+          0.04
+        ],
+        "rot": [
+          1.5707963267948966,
+          0,
+          -1.5707963267948966
+        ],
+        "scale": 0.95
+      },
+      "clips": {
+        "idle": "Idle",
+        "idleNeutral": "Idle_Neutral",
+        "idleGun": "Idle_Gun",
+        "idleGunAim": "Idle_Gun_Pointing",
+        "idleGunShoot": "Idle_Gun_Shoot",
+        "idleMelee": "Idle_Sword",
+        "walk": "Walk",
+        "run": "Run",
+        "runBack": "Run_Back",
+        "runLeft": "Run_Left",
+        "runRight": "Run_Right",
+        "runShoot": "Run_Shoot",
+        "crouchIdle": null,
+        "crouchWalk": null,
+        "prone": null,
+        "jump": null,
+        "roll": "Roll",
+        "shoot": "Gun_Shoot",
+        "melee": "Sword_Slash",
+        "punch": [
+          "Punch_Left",
+          "Punch_Right"
+        ],
+        "interact": "Interact",
+        "hit": [
+          "HitRecieve",
+          "HitRecieve_2"
+        ],
+        "death": [
+          "Death"
+        ]
+      }
+    },
+    {
+      "id": "punk",
+      "name": "Punk",
+      "role": "Rua",
+      "accent": "#ec4899",
+      "file": "characters/punk.glb",
+      "scale": 0.96,
+      "yawOffset": 3.141592653589793,
+      "boneNormalize": true,
+      "rightHandBone": "Wrist.R",
+      "headBone": "Head",
+      "weaponOffset": {
+        "pos": [
+          0.02,
+          0.08,
+          0.04
+        ],
+        "rot": [
+          1.5707963267948966,
+          0,
+          -1.5707963267948966
+        ],
+        "scale": 0.95
+      },
+      "clips": {
+        "idle": "Idle",
+        "idleNeutral": "Idle_Neutral",
+        "idleGun": "Idle_Gun",
+        "idleGunAim": "Idle_Gun_Pointing",
+        "idleGunShoot": "Idle_Gun_Shoot",
+        "idleMelee": "Idle_Sword",
+        "walk": "Walk",
+        "run": "Run",
+        "runBack": "Run_Back",
+        "runLeft": "Run_Left",
+        "runRight": "Run_Right",
+        "runShoot": "Run_Shoot",
+        "crouchIdle": null,
+        "crouchWalk": null,
+        "prone": null,
+        "jump": null,
+        "roll": "Roll",
+        "shoot": "Gun_Shoot",
+        "melee": "Sword_Slash",
+        "punch": [
+          "Punch_Left",
+          "Punch_Right"
+        ],
+        "interact": "Interact",
+        "hit": [
+          "HitRecieve",
+          "HitRecieve_2"
+        ],
+        "death": [
+          "Death"
+        ]
+      }
+    },
+    {
+      "id": "beach",
+      "name": "Turista",
+      "role": "Costa",
+      "accent": "#06b6d4",
+      "file": "characters/beach.glb",
+      "scale": 0.96,
+      "yawOffset": 3.141592653589793,
+      "boneNormalize": true,
+      "rightHandBone": "Wrist.R",
+      "headBone": "Head",
+      "weaponOffset": {
+        "pos": [
+          0.02,
+          0.08,
+          0.04
+        ],
+        "rot": [
+          1.5707963267948966,
+          0,
+          -1.5707963267948966
+        ],
+        "scale": 0.95
+      },
+      "clips": {
+        "idle": "Idle",
+        "idleNeutral": "Idle_Neutral",
+        "idleGun": "Idle_Gun",
+        "idleGunAim": "Idle_Gun_Pointing",
+        "idleGunShoot": "Idle_Gun_Shoot",
+        "idleMelee": "Idle_Sword",
+        "walk": "Walk",
+        "run": "Run",
+        "runBack": "Run_Back",
+        "runLeft": "Run_Left",
+        "runRight": "Run_Right",
+        "runShoot": "Run_Shoot",
+        "crouchIdle": null,
+        "crouchWalk": null,
+        "prone": null,
+        "jump": null,
+        "roll": "Roll",
+        "shoot": "Gun_Shoot",
+        "melee": "Sword_Slash",
+        "punch": [
+          "Punch_Left",
+          "Punch_Right"
+        ],
+        "interact": "Interact",
+        "hit": [
+          "HitRecieve",
+          "HitRecieve_2"
+        ],
+        "death": [
+          "Death"
+        ]
+      }
+    },
+    {
+      "id": "spacesuit",
+      "name": "Traje Hazmat",
+      "role": "Quarentena",
+      "accent": "#f97316",
+      "file": "characters/spacesuit.glb",
+      "scale": 0.96,
+      "yawOffset": 3.141592653589793,
+      "boneNormalize": true,
+      "rightHandBone": "Wrist.R",
+      "headBone": "Head",
+      "weaponOffset": {
+        "pos": [
+          0.02,
+          0.08,
+          0.04
+        ],
+        "rot": [
+          1.5707963267948966,
+          0,
+          -1.5707963267948966
+        ],
+        "scale": 0.95
+      },
+      "clips": {
+        "idle": "Idle",
+        "idleNeutral": "Idle_Neutral",
+        "idleGun": "Idle_Gun",
+        "idleGunAim": "Idle_Gun_Pointing",
+        "idleGunShoot": "Idle_Gun_Shoot",
+        "idleMelee": "Idle_Sword",
+        "walk": "Walk",
+        "run": "Run",
+        "runBack": "Run_Back",
+        "runLeft": "Run_Left",
+        "runRight": "Run_Right",
+        "runShoot": "Run_Shoot",
+        "crouchIdle": null,
+        "crouchWalk": null,
+        "prone": null,
+        "jump": null,
+        "roll": "Roll",
+        "shoot": "Gun_Shoot",
+        "melee": "Sword_Slash",
+        "punch": [
+          "Punch_Left",
+          "Punch_Right"
+        ],
+        "interact": "Interact",
+        "hit": [
+          "HitRecieve",
+          "HitRecieve_2"
+        ],
+        "death": [
+          "Death"
+        ]
+      }
+    },
+    {
+      "id": "king",
+      "name": "Rei de Knox",
+      "role": "Lendário",
+      "accent": "#facc15",
+      "file": "characters/king.glb",
+      "scale": 0.96,
+      "yawOffset": 3.141592653589793,
+      "boneNormalize": true,
+      "rightHandBone": "Wrist.R",
+      "headBone": "Head",
+      "weaponOffset": {
+        "pos": [
+          0.02,
+          0.08,
+          0.04
+        ],
+        "rot": [
+          1.5707963267948966,
+          0,
+          -1.5707963267948966
+        ],
+        "scale": 0.95
+      },
+      "clips": {
+        "idle": "Idle",
+        "idleNeutral": "Idle_Neutral",
+        "idleGun": "Idle_Gun",
+        "idleGunAim": "Idle_Gun_Pointing",
+        "idleGunShoot": "Idle_Gun_Shoot",
+        "idleMelee": "Idle_Sword",
+        "walk": "Walk",
+        "run": "Run",
+        "runBack": "Run_Back",
+        "runLeft": "Run_Left",
+        "runRight": "Run_Right",
+        "runShoot": "Run_Shoot",
+        "crouchIdle": null,
+        "crouchWalk": null,
+        "prone": null,
+        "jump": null,
+        "roll": "Roll",
+        "shoot": "Gun_Shoot",
+        "melee": "Sword_Slash",
+        "punch": [
+          "Punch_Left",
+          "Punch_Right"
+        ],
+        "interact": "Interact",
+        "hit": [
+          "HitRecieve",
+          "HitRecieve_2"
+        ],
+        "death": [
+          "Death"
+        ]
+      }
+    }
+  ],
+  "zombies": [
+    {
+      "id": "zombie_walker",
+      "name": "Infectado Andarilho",
+      "file": "zombies/zombie_walker.glb",
+      "scale": 0.95,
+      "yawOffset": 3.141592653589793,
+      "boneNormalize": true,
+      "maxAnimatedCount": 40,
+      "clips": {
+        "idle": "Idle_Neutral",
+        "walk": "Walk",
+        "run": "Run",
+        "attack": [
+          "Punch_Left",
+          "Punch_Right"
+        ],
+        "hit": [
+          "HitRecieve",
+          "HitRecieve_2"
+        ],
+        "crawl": null,
+        "death": [
+          "Death"
+        ]
+      }
+    },
+    {
+      "id": "zombie_runner",
+      "name": "Infectado Corredor",
+      "file": "zombies/zombie_runner.glb",
+      "scale": 0.94,
+      "yawOffset": 3.141592653589793,
+      "boneNormalize": true,
+      "maxAnimatedCount": 40,
+      "clips": {
+        "idle": "Idle_Neutral",
+        "walk": "Walk",
+        "run": "Run",
+        "attack": [
+          "Punch_Left",
+          "Punch_Right"
+        ],
+        "hit": [
+          "HitRecieve",
+          "HitRecieve_2"
+        ],
+        "crawl": null,
+        "death": [
+          "Death"
+        ]
+      }
+    },
+    {
+      "id": "zombie_brute",
+      "name": "Infectado Operário",
+      "file": "zombies/zombie_brute.glb",
+      "scale": 1.04,
+      "yawOffset": 3.141592653589793,
+      "boneNormalize": true,
+      "maxAnimatedCount": 40,
+      "clips": {
+        "idle": "Idle_Neutral",
+        "walk": "Walk",
+        "run": "Run",
+        "attack": [
+          "Punch_Left",
+          "Punch_Right"
+        ],
+        "hit": [
+          "HitRecieve",
+          "HitRecieve_2"
+        ],
+        "crawl": null,
+        "death": [
+          "Death"
+        ]
+      }
+    }
+  ],
+  "weapons": {
+    "assault_rifle": {
+      "id": "assault_rifle",
+      "file": "weapons/AssaultRifle_2.obj",
+      "mtl": "weapons/AssaultRifle_2.mtl",
+      "sourceName": "AssaultRifle_2",
+      "sockets": {
+        "muzzle": [
+          3.817,
+          -0.069,
+          0
+        ],
+        "grip": [
+          -0.249,
+          -0.297,
+          0
+        ],
+        "ejection": [
+          0.672,
+          0.059,
+          0.093
+        ],
+        "optic": [
+          0.347,
+          0.825,
+          0
+        ],
+        "side": [
+          2.299,
+          -0.069,
+          0.1
+        ],
+        "under": [
+          1.919,
+          -0.325,
+          0
+        ]
+      },
+      "clips": {
+        "fire": null,
+        "reload": null,
+        "draw": null
+      }
+    },
+    "ak_rifle": {
+      "id": "ak_rifle",
+      "file": "weapons/AssaultRifle_5.obj",
+      "mtl": "weapons/AssaultRifle_5.mtl",
+      "sourceName": "AssaultRifle_5",
+      "sockets": {
+        "muzzle": [
+          3.822,
+          -0.049,
+          0
+        ],
+        "grip": [
+          -0.244,
+          -0.289,
+          0
+        ],
+        "ejection": [
+          0.677,
+          0.079,
+          0.093
+        ],
+        "optic": [
+          0.352,
+          0.845,
+          0
+        ],
+        "side": [
+          2.304,
+          -0.049,
+          0.1
+        ],
+        "under": [
+          1.924,
+          -0.305,
+          0
+        ]
+      },
+      "clips": {
+        "fire": null,
+        "reload": null,
+        "draw": null
+      }
+    },
+    "dmr_m110": {
+      "id": "dmr_m110",
+      "file": "weapons/AssaultRifle2_3.obj",
+      "mtl": "weapons/AssaultRifle2_3.mtl",
+      "sourceName": "AssaultRifle2_3",
+      "sockets": {
+        "muzzle": [
+          3.468,
+          0.24,
+          0
+        ],
+        "grip": [
+          0.653,
+          -0.166,
+          0
+        ],
+        "ejection": [
+          1.291,
+          0.357,
+          0.166
+        ],
+        "optic": [
+          1.066,
+          1,
+          0
+        ],
+        "side": [
+          2.417,
+          0.24,
+          0.178
+        ],
+        "under": [
+          2.154,
+          -0.037,
+          0
+        ]
+      },
+      "clips": {
+        "fire": null,
+        "reload": null,
+        "draw": null
+      }
+    },
+    "mdr_rifle": {
+      "id": "mdr_rifle",
+      "file": "weapons/Bullpup_1.obj",
+      "mtl": "weapons/Bullpup_1.mtl",
+      "sourceName": "Bullpup_1",
+      "sockets": {
+        "muzzle": [
+          2.719,
+          0.288,
+          0
+        ],
+        "grip": [
+          -1.217,
+          -0.168,
+          0
+        ],
+        "ejection": [
+          -0.325,
+          0.411,
+          0.147
+        ],
+        "optic": [
+          -0.64,
+          1.075,
+          0
+        ],
+        "side": [
+          1.25,
+          0.288,
+          0.158
+        ],
+        "under": [
+          0.882,
+          -0.02,
+          0
+        ]
+      },
+      "clips": {
+        "fire": null,
+        "reload": null,
+        "draw": null
+      }
+    },
+    "sniper_rifle": {
+      "id": "sniper_rifle",
+      "file": "weapons/SniperRifle_4.obj",
+      "mtl": "weapons/SniperRifle_4.mtl",
+      "sourceName": "SniperRifle_4",
+      "sockets": {
+        "muzzle": [
+          4.958,
+          -0.107,
+          0
+        ],
+        "grip": [
+          0.206,
+          -0.285,
+          0
+        ],
+        "ejection": [
+          1.283,
+          0.001,
+          0.289
+        ],
+        "optic": [
+          0.903,
+          0.609,
+          0
+        ],
+        "side": [
+          3.184,
+          -0.107,
+          0.31
+        ],
+        "under": [
+          2.741,
+          -0.363,
+          0
+        ]
+      },
+      "clips": {
+        "fire": null,
+        "reload": null,
+        "draw": null
+      }
+    },
+    "heavy_sniper": {
+      "id": "heavy_sniper",
+      "file": "weapons/SniperRifle_6.obj",
+      "mtl": "weapons/SniperRifle_6.mtl",
+      "sourceName": "SniperRifle_6",
+      "sockets": {
+        "muzzle": [
+          5.247,
+          -0.06,
+          0
+        ],
+        "grip": [
+          -0.158,
+          -0.303,
+          0
+        ],
+        "ejection": [
+          1.067,
+          0.061,
+          0.289
+        ],
+        "optic": [
+          0.635,
+          0.729,
+          0
+        ],
+        "side": [
+          3.229,
+          -0.06,
+          0.31
+        ],
+        "under": [
+          2.725,
+          -0.364,
+          0
+        ]
+      },
+      "clips": {
+        "fire": null,
+        "reload": null,
+        "draw": null
+      }
+    },
+    "tactical_pistol": {
+      "id": "tactical_pistol",
+      "file": "weapons/Pistol_2.obj",
+      "mtl": "weapons/Pistol_2.mtl",
+      "sourceName": "Pistol_2",
+      "sockets": {
+        "muzzle": [
+          1.471,
+          0.308,
+          0
+        ],
+        "grip": [
+          0.106,
+          -0.165,
+          0
+        ],
+        "ejection": [
+          0.415,
+          0.401,
+          0.154
+        ],
+        "optic": [
+          0.306,
+          0.719,
+          0
+        ],
+        "side": [
+          0.961,
+          0.308,
+          0.165
+        ],
+        "under": [
+          0.834,
+          -0.11,
+          0
+        ]
+      },
+      "clips": {
+        "fire": null,
+        "reload": null,
+        "draw": null
+      }
+    },
+    "revolver_magnum": {
+      "id": "revolver_magnum",
+      "file": "weapons/Revolver_3.obj",
+      "mtl": "weapons/Revolver_3.mtl",
+      "sourceName": "Revolver_3",
+      "sockets": {
+        "muzzle": [
+          1.772,
+          0.274,
+          0
+        ],
+        "grip": [
+          0.283,
+          -0.134,
+          0
+        ],
+        "ejection": [
+          0.621,
+          0.353,
+          0.14
+        ],
+        "optic": [
+          0.501,
+          0.621,
+          0
+        ],
+        "side": [
+          1.216,
+          0.274,
+          0.15
+        ],
+        "under": [
+          1.077,
+          -0.08,
+          0
+        ]
+      },
+      "clips": {
+        "fire": null,
+        "reload": null,
+        "draw": null
+      }
+    },
+    "combat_shotgun": {
+      "id": "combat_shotgun",
+      "file": "weapons/Shotgun_3.obj",
+      "mtl": "weapons/Shotgun_3.mtl",
+      "sourceName": "Shotgun_3",
+      "sockets": {
+        "muzzle": [
+          4.308,
+          -0.035,
+          0
+        ],
+        "grip": [
+          -0.031,
+          -0.225,
+          0
+        ],
+        "ejection": [
+          0.953,
+          0.04,
+          0.117
+        ],
+        "optic": [
+          0.605,
+          0.364,
+          0
+        ],
+        "side": [
+          2.688,
+          -0.035,
+          0.126
+        ],
+        "under": [
+          2.283,
+          -0.318,
+          0
+        ]
+      },
+      "clips": {
+        "fire": null,
+        "reload": null,
+        "draw": null
+      }
+    },
+    "double_barrel": {
+      "id": "double_barrel",
+      "file": "weapons/Shotgun_SawedOff.obj",
+      "mtl": "weapons/Shotgun_SawedOff.mtl",
+      "sourceName": "Shotgun_SawedOff",
+      "sockets": {
+        "muzzle": [
+          3.285,
+          0.116,
+          0
+        ],
+        "grip": [
+          0.519,
+          -0.182,
+          0
+        ],
+        "ejection": [
+          1.146,
+          0.198,
+          0.201
+        ],
+        "optic": [
+          0.925,
+          0.542,
+          0
+        ],
+        "side": [
+          2.253,
+          0.116,
+          0.215
+        ],
+        "under": [
+          1.994,
+          -0.19,
+          0
+        ]
+      },
+      "clips": {
+        "fire": null,
+        "reload": null,
+        "draw": null
+      }
+    },
+    "compact_smg": {
+      "id": "compact_smg",
+      "file": "weapons/SubmachineGun_4.obj",
+      "mtl": "weapons/SubmachineGun_4.mtl",
+      "sourceName": "SubmachineGun_4",
+      "sockets": {
+        "muzzle": [
+          2.184,
+          -0.008,
+          0
+        ],
+        "grip": [
+          0.272,
+          -0.318,
+          0
+        ],
+        "ejection": [
+          0.705,
+          0.123,
+          0.151
+        ],
+        "optic": [
+          0.552,
+          0.81,
+          0
+        ],
+        "side": [
+          1.47,
+          -0.008,
+          0.162
+        ],
+        "under": [
+          1.291,
+          -0.368,
+          0
+        ]
+      },
+      "clips": {
+        "fire": null,
+        "reload": null,
+        "draw": null
+      }
+    },
+    "heavy_lmg": {
+      "id": "heavy_lmg",
+      "file": "weapons/AssaultRifle2_4.obj",
+      "mtl": "weapons/AssaultRifle2_4.mtl",
+      "sourceName": "AssaultRifle2_4",
+      "sockets": {
+        "muzzle": [
+          1.911,
+          0.239,
+          0
+        ],
+        "grip": [
+          -0.307,
+          -0.203,
+          0
+        ],
+        "ejection": [
+          0.196,
+          0.363,
+          0.116
+        ],
+        "optic": [
+          0.018,
+          1.005,
+          0
+        ],
+        "side": [
+          1.083,
+          0.239,
+          0.125
+        ],
+        "under": [
+          0.876,
+          -0.103,
+          0
+        ]
+      },
+      "clips": {
+        "fire": null,
+        "reload": null,
+        "draw": null
+      }
+    },
+    "plasma_rifle": {
+      "id": "plasma_rifle",
+      "file": "weapons/Bullpup_3.obj",
+      "mtl": "weapons/Bullpup_3.mtl",
+      "sourceName": "Bullpup_3",
+      "sockets": {
+        "muzzle": [
+          2.679,
+          0.246,
+          0
+        ],
+        "grip": [
+          -0.55,
+          -0.208,
+          0
+        ],
+        "ejection": [
+          0.182,
+          0.374,
+          0.148
+        ],
+        "optic": [
+          -0.077,
+          1.033,
+          0
+        ],
+        "side": [
+          1.473,
+          0.246,
+          0.159
+        ],
+        "under": [
+          1.172,
+          -0.105,
+          0
+        ]
+      },
+      "clips": {
+        "fire": null,
+        "reload": null,
+        "draw": null
+      }
+    },
+    "combat_knife": {
+      "id": "combat_knife",
+      "file": "weapons/Bayonet.obj",
+      "mtl": "weapons/Bayonet.mtl",
+      "sourceName": "Bayonet",
+      "sockets": {
+        "muzzle": [
+          0.954,
+          -0.022,
+          0
+        ],
+        "grip": [
+          0.079,
+          -0.056,
+          0
+        ],
+        "ejection": [
+          0.277,
+          -0.003,
+          0.063
+        ],
+        "optic": [
+          0.207,
+          0.092,
+          0
+        ],
+        "side": [
+          0.627,
+          -0.022,
+          0.067
+        ],
+        "under": [
+          0.545,
+          -0.078,
+          0
+        ]
+      },
+      "clips": {
+        "fire": null,
+        "reload": null,
+        "draw": null
+      }
+    },
+    "tactical_katana": {
+      "id": "tactical_katana",
+      "file": "weapons/Bayonet_2.obj",
+      "mtl": "weapons/Bayonet_2.mtl",
+      "sourceName": "Bayonet_2",
+      "sockets": {
+        "muzzle": [
+          0.955,
+          -0.022,
+          0
+        ],
+        "grip": [
+          0.079,
+          -0.056,
+          0
+        ],
+        "ejection": [
+          0.277,
+          -0.003,
+          0.063
+        ],
+        "optic": [
+          0.207,
+          0.092,
+          0
+        ],
+        "side": [
+          0.628,
+          -0.022,
+          0.067
+        ],
+        "under": [
+          0.546,
+          -0.078,
+          0
+        ]
+      },
+      "clips": {
+        "fire": null,
+        "reload": null,
+        "draw": null
+      }
+    },
+    "rocket_launcher": {
+      "id": "rocket_launcher",
+      "fallbackV1": true,
+      "note": "Sem equivalente no Ultimate Gun Pack; mantém modelo 3D v1 até novo asset específico."
+    },
+    "frag_grenade": {
+      "id": "frag_grenade",
+      "fallbackV1": true,
+      "note": "Sem equivalente no Ultimate Gun Pack; mantém modelo 3D v1 até novo asset específico."
+    },
+    "tactical_crossbow": {
+      "id": "tactical_crossbow",
+      "fallbackV1": true,
+      "note": "Sem equivalente no Ultimate Gun Pack; mantém modelo 3D v1 até novo asset específico."
+    }
+  },
+  "accessories": {
+    "reddot": {
+      "file": "accessories/Scope_1.obj",
+      "mtl": "accessories/Scope_1.mtl",
+      "sourceName": "Scope_1"
+    },
+    "holo": {
+      "file": "accessories/Scope_1.obj",
+      "mtl": "accessories/Scope_1.mtl",
+      "sourceName": "Scope_1"
+    },
+    "acog4x": {
+      "file": "accessories/Scope_2.obj",
+      "mtl": "accessories/Scope_2.mtl",
+      "sourceName": "Scope_2"
+    },
+    "scope8x": {
+      "file": "accessories/Scope_3.obj",
+      "mtl": "accessories/Scope_3.mtl",
+      "sourceName": "Scope_3"
+    },
+    "scope12x": {
+      "file": "accessories/Scope_3.obj",
+      "mtl": "accessories/Scope_3.mtl",
+      "sourceName": "Scope_3"
+    },
+    "suppressor": {
+      "file": "accessories/Silencer_long.obj",
+      "mtl": "accessories/Silencer_long.mtl",
+      "sourceName": "Silencer_long"
+    },
+    "compensator": {
+      "file": "accessories/Silencer_Short.obj",
+      "mtl": "accessories/Silencer_Short.mtl",
+      "sourceName": "Silencer_Short"
+    },
+    "muzzlebrake": {
+      "file": "accessories/Silencer_1.obj",
+      "mtl": "accessories/Silencer_1.mtl",
+      "sourceName": "Silencer_1"
+    },
+    "taclight": {
+      "file": "accessories/Flashlight.obj",
+      "mtl": "accessories/Flashlight.mtl",
+      "sourceName": "Flashlight"
+    },
+    "laser": {
+      "file": "accessories/Flashlight.obj",
+      "mtl": "accessories/Flashlight.mtl",
+      "sourceName": "Flashlight"
+    },
+    "foregrip": {
+      "file": "accessories/Grip.obj",
+      "mtl": "accessories/Grip.mtl",
+      "sourceName": "Grip"
+    },
+    "bipod": {
+      "file": "accessories/Bipod.obj",
+      "mtl": "accessories/Bipod.mtl",
+      "sourceName": "Bipod"
+    }
+  }
+}

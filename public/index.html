@@ -742,6 +742,23 @@
   .spawn-prog-fill {
     height:100%; width:0%; background:linear-gradient(90deg, #68a84a, #e2a44c); transition:width 0.08s linear;
   }
+  .spawn-char-grid {
+    display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:5px;
+    margin-top:6px; max-height:132px; overflow-y:auto; padding-right:2px;
+  }
+  .spawn-char-btn {
+    border:1px solid var(--bd); border-left:3px solid #6b7280;
+    background:rgba(18,22,17,0.92); color:var(--txt);
+    padding:5px 6px; text-align:left; cursor:pointer;
+    font-family:'JetBrains Mono',monospace; transition:0.12s;
+  }
+  .spawn-char-btn:hover { border-color:var(--amb); background:rgba(32,40,28,0.95); }
+  .spawn-char-btn.active {
+    border-color:#8fd66c; background:rgba(42,66,34,0.96); color:#ecffe0;
+    box-shadow:inset 0 0 0 1px rgba(143,214,108,0.35);
+  }
+  .spawn-char-name { font-size:9.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .spawn-char-role { font-size:8px; color:var(--dim); letter-spacing:0.4px; text-transform:uppercase; }
   @media (max-width: 840px) {
     .spawn-body { grid-template-columns:1fr; grid-template-rows:auto 1fr; }
     .spawn-sidebar { max-height:240px; border-right:none; border-bottom:1px solid var(--bd); }
@@ -1853,6 +1870,14 @@
 
         <div class="spawn-card">
           <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:9.5px;color:var(--amb);letter-spacing:1px;">PERSONAGEM // SKIN DE SPAWN</span>
+            <span style="font-size:8.5px;color:#9cc986;" id="spawn-asset-mode">ASSETS V2</span>
+          </div>
+          <div class="spawn-char-grid" id="spawn-char-grid"></div>
+        </div>
+
+        <div class="spawn-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
             <span style="font-size:9.5px;color:var(--txt);letter-spacing:1px;">REGIÕES &amp; CIDADES</span>
             <span style="font-size:9px;color:var(--dim);" id="spawn-world-summary">8×8 km · Seed #4242</span>
           </div>
@@ -1942,6 +1967,7 @@ import {
   selectContextualDeathStyle,
   computeBallisticDrop
 } from '/js/tactical-logic.js';
+import { assetLibrary, getAssetVersion } from '/js/asset-library.js';
 
 const KP = globalThis.KnoxPersistence;
 const clientIdentity = KP ? KP.createClientIdentity({
@@ -4299,8 +4325,63 @@ function buildOmniCharacter(jacketTint = null) {
   return {
     root, pelvis, spine, torsoVisuals, headPivot, headMesh,
     leftArm, rightArm,
-    leftLeg: buildLeg(-1), rightLeg: buildLeg(1)
+    leftLeg: buildLeg(-1), rightLeg: buildLeg(1),
+    v2: null, v2CharId: null, _v2ReqSeq: 0, _v2Dead: false
   };
+}
+
+const INVISIBLE_HITBOX_MAT = new THREE.MeshBasicMaterial({ visible: false });
+
+function setLegacyRigVisualsVisible(rig, visible) {
+  if (!rig || !rig.pelvis) return;
+  rig.pelvis.traverse((obj) => {
+    if (!obj.isMesh) return;
+    if (obj.userData && (obj.userData.remotePlayer || obj.userData.hitZone)) return;
+    obj.visible = visible;
+  });
+}
+
+function attachV2CharacterRig(rig, charId, weaponMap = null, flashMesh = null) {
+  if (!rig) return;
+  const reqSeq = (rig._v2ReqSeq = (rig._v2ReqSeq || 0) + 1);
+  if (!assetLibrary.isV2()) {
+    if (weaponMap) {
+      for (const k of Object.keys(weaponMap)) {
+        if (weaponMap[k]?.root) rig.rightArm.weaponMount.add(weaponMap[k].root);
+      }
+    }
+    if (flashMesh) rig.rightArm.weaponMount.add(flashMesh);
+    if (rig.v2) {
+      assetLibrary.disposeInstance(rig.v2);
+      rig.v2 = null;
+      rig.v2CharId = null;
+    }
+    setLegacyRigVisualsVisible(rig, true);
+    return;
+  }
+
+  assetLibrary.spawnCharacterInstance(charId || 'swat').then((inst) => {
+    if (!inst) return;
+    if (reqSeq !== rig._v2ReqSeq || !rig.root.parent) {
+      assetLibrary.disposeInstance(inst);
+      return;
+    }
+    if (weaponMap) {
+      for (const k of Object.keys(weaponMap)) {
+        if (weaponMap[k]?.root) inst.weaponMount.add(weaponMap[k].root);
+      }
+    }
+    if (flashMesh) inst.weaponMount.add(flashMesh);
+    if (rig.v2) {
+      assetLibrary.disposeInstance(rig.v2);
+    }
+    rig.v2 = inst;
+    rig.v2CharId = inst.id;
+    rig._v2Dead = false;
+    rig.root.add(inst.group);
+    setLegacyRigVisualsVisible(rig, false);
+    inst.play('idle', { fade: 0.05 });
+  });
 }
 
 /* ============================================================================
@@ -4356,6 +4437,11 @@ function spawnZombieFromSpec(spec) {
 function clearAllZombies(broadcast = true) {
   for (const z of zombies) {
     z.dead = true;
+    z._disposed = true;
+    if (z.v2) {
+      assetLibrary.disposeInstance(z.v2);
+      z.v2 = null;
+    }
     worldGroup.remove(z.root);
   }
   zombies.length = 0;
@@ -4908,14 +4994,68 @@ function loadWeaponTemplate(wId) {
 
   const def = WEAPON_DEFS[wId];
   if (!def) return Promise.resolve(null);
-  const url = `${WEAPONS_BASE_URL}${def.folder}/${def.objFile}`;
 
-  const p = fetch(url)
-    .then((res) => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.text();
-    })
-    .then((rawObjText) => {
+  const loadV1Obj = () => {
+    const url = `${WEAPONS_BASE_URL}${def.folder}/${def.objFile}`;
+    return fetch(url)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.text();
+      });
+  };
+
+  const p = (async () => {
+    // Pipeline v2 (Quaternius Ultimate Gun Pack OBJ+MTL) quando ?assets=v2 (padrão) e arma não marcada com fallbackV1
+    if (assetLibrary.isV2()) {
+      await assetLibrary.loadManifest();
+      const v2Meta = assetLibrary.getWeaponMeta(wId);
+      if (v2Meta) {
+        const loaded = await assetLibrary.loadWeaponObjMtl(wId);
+        if (loaded && loaded.obj) {
+          const obj = loaded.obj.clone(true);
+          const rawBox = new THREE.Box3().setFromObject(obj);
+          const rawSize = rawBox.getSize(new THREE.Vector3());
+          const maxAxis = Math.max(rawSize.x, rawSize.y, 0.001);
+          const scale = (def.targetLenM || (def.lengthCm / 100)) / maxAxis;
+          const sock = v2Meta.sockets || {};
+          const sGrp = sock.grip || [0, 0, 0];
+          const sMuz = sock.muzzle || [rawBox.max.x, 0, 0];
+          const sOpt = sock.optic || [0, rawBox.max.y, 0];
+          const sSide = sock.side || null;
+          const sUnder = sock.under || null;
+          const gx = sGrp[0], gy = sGrp[1], gz = sGrp[2] || 0;
+          const objToGame = (ox, oy, oz = gz) => new THREE.Vector3((oz - gz) * scale, (oy - gy) * scale, -(ox - gx) * scale);
+          const muzzlePos = objToGame(sMuz[0], sMuz[1], sMuz[2] || 0);
+          const opticPos = objToGame(sOpt[0], sOpt[1], sOpt[2] || 0);
+          const sidePos = sSide ? objToGame(sSide[0], sSide[1], sSide[2] || 0) : null;
+          const underPos = sUnder ? objToGame(sUnder[0], sUnder[1], sUnder[2] || 0) : null;
+          const baseSightY = Math.max(0.03, opticPos.y + 0.012);
+          const baseRotX = wId === 'combat_knife' ? 0.35 : (wId === 'tactical_katana' ? 0.22 : 0);
+
+          const metrics = {
+            scale, gx, gy, gz, baseRotX,
+            muzzleZ: muzzlePos.z,
+            muzzleY: muzzlePos.y,
+            muzzlePos,
+            opticZ: opticPos.z,
+            baseSightY,
+            builtInSightY: baseSightY,
+            opticPos,
+            sidePos,
+            underPos
+          };
+          const entry = { template: obj, metrics, isV2: true };
+          weaponTemplateCache.set(wId, entry);
+          const waiters = weaponPendingAssemblies.get(wId);
+          if (waiters) {
+            for (const asm of waiters) hydrateWeaponAssembly(asm, wId, entry);
+            waiters.clear();
+          }
+          return entry;
+        }
+      }
+    }
+    return loadV1Obj().then((rawObjText) => {
       // Garante nomes únicos para linhas 'o ' vazias para que o OBJLoader nunca mescle sub-malhas (lentes, retículos, trilhos)
       let unnamedSeq = 0;
       const patchedObjText = rawObjText.replace(/^o[ \t]*$/gm, () => `o __part_${unnamedSeq++}`);
@@ -5069,12 +5209,12 @@ function loadWeaponTemplate(wId) {
         waiters.clear();
       }
       return entry;
-    })
-    .catch((err) => {
-      console.warn(`[Forja 3D] Falha ao carregar ${url}:`, err);
-      weaponLoadPromises.delete(wId);
-      return null;
     });
+  })().catch((err) => {
+    console.warn(`[Forja 3D] Falha ao carregar arma '${wId}':`, err);
+    weaponLoadPromises.delete(wId);
+    return null;
+  });
 
   weaponLoadPromises.set(wId, p);
   return p;
@@ -5237,11 +5377,36 @@ function rebuildAttachmentVisuals(assembly, gunType, attachments) {
   assembly.laserBeam = null;
   assembly.tacCone = null;
 
+  const attSeq = (assembly._attSeq = (assembly._attSeq || 0) + 1);
   while (assembly.attachGroup.children.length) {
     assembly.attachGroup.remove(assembly.attachGroup.children[0]);
   }
   const def = WEAPON_DEFS[gunType] || WEAPON_DEFS[DEFAULT_MELEE_WEAPON];
   const { optic, muzzle, side, under } = safeAtts;
+
+  // Substitui malha procedural por acessório v2 (OBJ+MTL) quando disponível sem perder retículos/lasers/feixes
+  const mountV2Accessory = (attId, posVec, targetLenM, replaceMeshes = []) => {
+    if (!assetLibrary.isV2() || !assetLibrary.getAccessoryMeta(attId)) return;
+    assetLibrary.loadAccessoryObjMtl(attId).then((tpl) => {
+      if (!tpl || assembly._attSeq !== attSeq) return;
+      const clone = tpl.clone(true);
+      const box = new THREE.Box3().setFromObject(clone);
+      const sz = box.getSize(new THREE.Vector3());
+      const ctr = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(sz.x, sz.y, sz.z, 0.001);
+      const sc = targetLenM / maxDim;
+      clone.position.set(-ctr.x, -ctr.y, -ctr.z);
+      const wrap = new THREE.Group();
+      wrap.position.copy(posVec);
+      wrap.rotation.y = Math.PI * 0.5;
+      wrap.scale.setScalar(sc);
+      wrap.add(clone);
+      for (const rm of replaceMeshes) {
+        if (rm && rm.parent) rm.parent.remove(rm);
+      }
+      assembly.attachGroup.add(wrap);
+    });
+  };
 
   // Na SR-76 e M82, a luneta nativa do modelo OBJ substitui a procedural quando 8x/12x (evita duas lunetas empilhadas!)
   const useNativeSniperScope = ((gunType === 'sniper_rifle' || gunType === 'heavy_sniper') && (!optic || optic === 'scope8x' || optic === 'scope12x'));
@@ -5313,6 +5478,7 @@ function rebuildAttachmentVisuals(assembly, gunType, attachments) {
     const ring2 = ring1.clone();
     ring2.position.z = assembly.opticZ + len * 0.22;
     assembly.attachGroup.add(tube, frontBell, frontGlass, ring1, ring2);
+    mountV2Accessory(optic, new THREE.Vector3(0, oy, assembly.opticZ), len, [tube, frontBell, ring1, ring2]);
   }
 
   // 2. BICO / CANO (socket_muzzle — Supressor Tático, Compensador e Freio de Boca)
@@ -5327,14 +5493,17 @@ function rebuildAttachmentVisuals(assembly, gunType, attachments) {
     collar.rotation.x = Math.PI * 0.5;
     collar.position.set(0, my, assembly.muzzleZ - 0.008);
     assembly.attachGroup.add(sup, collar);
+    mountV2Accessory('suppressor', new THREE.Vector3(0, my, assembly.muzzleZ - supLen * 0.45), supLen, [sup, collar]);
   } else if (muzzle === 'compensator') {
     const comp = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.020, 0.052), Mats.gunSilver);
     comp.position.set(0, my, assembly.muzzleZ - 0.022);
     assembly.attachGroup.add(comp);
+    mountV2Accessory('compensator', new THREE.Vector3(0, my, assembly.muzzleZ - 0.024), 0.06, [comp]);
   } else if (muzzle === 'muzzlebrake') {
     const mb = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.022, 0.068), Mats.gunSteel);
     mb.position.set(0, my, assembly.muzzleZ - 0.032);
     assembly.attachGroup.add(mb);
+    mountV2Accessory('muzzlebrake', new THREE.Vector3(0, my, assembly.muzzleZ - 0.032), 0.075, [mb]);
   }
 
   // 3. TRILHO LATERAL (socket_side_rail — Mira Laser Tática do pacote!)
@@ -5385,6 +5554,7 @@ function rebuildAttachmentVisuals(assembly, gunType, attachments) {
     const rail = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.012, 0.040), Mats.gunSteel);
     rail.position.set(up.x, up.y - 0.002, up.z);
     assembly.attachGroup.add(grip, rail);
+    mountV2Accessory('foregrip', new THREE.Vector3(up.x, up.y - 0.045, up.z), 0.10, [grip, rail]);
   } else if (under === 'bipod' && def.twoHand) {
     const hub = new THREE.Mesh(new THREE.BoxGeometry(0.030, 0.018, 0.038), Mats.gunSteel);
     hub.position.set(up.x, up.y - 0.008, up.z - 0.05);
@@ -5395,6 +5565,7 @@ function rebuildAttachmentVisuals(assembly, gunType, attachments) {
     legR.position.x = up.x + 0.036;
     legR.rotation.z = -0.28;
     assembly.attachGroup.add(hub, legL, legR);
+    mountV2Accessory('bipod', new THREE.Vector3(up.x, up.y - 0.055, up.z - 0.06), 0.16, [hub, legL, legR]);
   } else if (under === 'extmag' && !def.melee) {
     const collar = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.055, 0.042), Mats.gunBlack);
     collar.position.set(0, -0.105, -0.095);
@@ -5944,6 +6115,40 @@ function buildZombieEntity(id, x, z, rng) {
   const legR = buildZLeg(1);
 
   zObj.parts = { pelvis, spine, head, armL, armR, legL, legR };
+  zObj.v2 = null;
+  zObj._disposed = false;
+  zObj._v2DeathPlayed = false;
+
+  if (assetLibrary.isV2()) {
+    assetLibrary.spawnZombieInstance(archetype).then((inst) => {
+      if (!inst) return;
+      if (zObj._disposed || !zObj.root.parent) {
+        assetLibrary.disposeInstance(inst);
+        return;
+      }
+      zObj.v2 = inst;
+      zObj.root.add(inst.group);
+      // Mantém hitboxes originais ativos para raycasting de tiro/headshot, mas invisíveis visualmente
+      pelvis.traverse((obj) => {
+        if (!obj.isMesh) return;
+        if (obj.userData && obj.userData.zombie) {
+          obj.material = INVISIBLE_HITBOX_MAT;
+          obj.castShadow = false;
+          obj.receiveShadow = false;
+        } else {
+          obj.visible = false;
+        }
+      });
+      if (zObj.dead) {
+        zObj._v2DeathPlayed = true;
+        inst.play('death', { fade: 0.02, loop: THREE.LoopOnce, clampWhenFinished: true });
+        inst.update(2.0);
+      } else {
+        inst.play('idle', { fade: 0.08 });
+      }
+    });
+  }
+
   return zObj;
 }
 
@@ -10889,6 +11094,17 @@ function unloadChunk(key) {
   camCollideMeshes = filterOut(camCollideMeshes, rec.camCollides);
   roofZones = filterOut(roofZones, rec.roofZones);
   lootItems = filterOut(lootItems, rec.loot);
+  if (rec.zombies && rec.zombies.length) {
+    for (let i = 0; i < rec.zombies.length; i++) {
+      const z = rec.zombies[i];
+      if (!z) continue;
+      z._disposed = true;
+      if (z.v2) {
+        assetLibrary.disposeInstance(z.v2);
+        z.v2 = null;
+      }
+    }
+  }
   zombies = filterOut(zombies, rec.zombies);
   vehicles = vehicles.filter((v) => !rec.vehicles.includes(v) || preservedVehicleIds.has(v.id));
   if (rec.lamps && rec.lamps.length) {
@@ -13510,9 +13726,13 @@ const initialSurvivorNick = loadSavedSurvivorNick();
 const _initNickInput = document.getElementById('inp-nickname');
 if (_initNickInput) _initNickInput.value = initialSurvivorNick;
 
+let initialCharId = 'swat';
+try { initialCharId = (localStorage.getItem('knox.characterId') || 'swat').trim() || 'swat'; } catch (_) {}
+
 const player = {
   id: (clientIdentity && clientIdentity.playerId) ? clientIdentity.playerId : ('local-' + Math.random().toString(36).slice(2, 8)),
   nick: initialSurvivorNick,
+  characterId: initialCharId,
   teamId: null,
   pos: new THREE.Vector3(0, 0.12, 150),
   vel: new THREE.Vector3(),
@@ -13920,6 +14140,72 @@ function resolveCircleWorldCollisions(pos, radius, minY, maxY, stepH, ignoreVehi
   }
 }
 
+function updateV2CharacterAnimation(rig, state, dt) {
+  const v2 = rig && rig.v2;
+  if (!v2 || v2.disposed) return;
+
+  if (state.isDying) {
+    v2.group.position.set(0, 0, 0);
+    v2.group.rotation.set(0, 0, 0);
+    if (!rig._v2Dead) {
+      rig._v2Dead = true;
+      v2.play('death', { fade: 0.12, loop: THREE.LoopOnce, clampWhenFinished: true, timeScale: 1.15 });
+    }
+    if ((state.deathT || 0) < 1) v2.update(dt);
+    return;
+  }
+  rig._v2Dead = false;
+
+  if (state.inVehicle) {
+    v2.group.position.set(0, state.isMoto ? -0.26 : -0.44, 0);
+    v2.group.rotation.set(0, 0, 0);
+    v2.play((state.carLeanAlpha || 0) > 0.15 ? 'idleGunAim' : 'idleNeutral', { fade: 0.15 });
+    v2.update(dt);
+    return;
+  }
+
+  const proneA = THREE.MathUtils.clamp(state.proneAlpha || 0, 0, 1);
+  const crouchA = THREE.MathUtils.clamp(state.crouchAlpha || 0, 0, 1);
+  const leanA = THREE.MathUtils.clamp(state.leanAlpha || 0, -1, 1);
+  v2.group.position.set(leanA * 0.12, -crouchA * 0.24 - proneA * 0.72, 0);
+  v2.group.rotation.set(-proneA * 1.38, 0, -leanA * 0.22);
+
+  const wDef = WEAPON_DEFS[state.weaponId] || WEAPON_DEFS[DEFAULT_MELEE_WEAPON];
+  const isMelee = !!wDef.melee;
+  const hSpd = state.hSpeed || 0;
+  const isMoving = hSpd > 0.22;
+  const isSprinting = !!(state.sprinting && hSpd > 1.2);
+  const isShooting = !isMelee && ((state.recoilKick || 0) > 0.04);
+
+  if (state.isVaulting) {
+    v2.play('roll', { fade: 0.08, timeScale: 1.35 });
+  } else if (isMelee && (state.meleeSwingT || 0) > 0) {
+    v2.play('melee', { fade: 0.06, timeScale: 1.6 });
+  } else if (isShooting && isMoving) {
+    v2.play('runShoot', { fade: 0.08, timeScale: 1.15 });
+  } else if (isShooting) {
+    v2.play('idleGunShoot', { fade: 0.05, timeScale: 1.4 });
+  } else if (isMoving) {
+    const fwd = state.localFwdVel || 0;
+    const str = state.localStrVel || 0;
+    if (fwd < -0.6) {
+      v2.play('runBack', { fade: 0.14, timeScale: THREE.MathUtils.clamp(hSpd / 3.2, 0.7, 1.4) });
+    } else if (Math.abs(str) > Math.abs(fwd) * 1.15 && Math.abs(str) > 0.5) {
+      v2.play(str > 0 ? 'runRight' : 'runLeft', { fade: 0.14, timeScale: THREE.MathUtils.clamp(hSpd / 3.4, 0.7, 1.4) });
+    } else if (isSprinting) {
+      v2.play('run', { fade: 0.14, timeScale: THREE.MathUtils.clamp(hSpd / 4.8, 0.9, 1.55) });
+    } else {
+      v2.play('walk', { fade: 0.16, timeScale: THREE.MathUtils.clamp(hSpd / 2.6, 0.65, 1.45) });
+    }
+  } else {
+    if (isMelee) v2.play('idleMelee', { fade: 0.18, timeScale: 1.0 });
+    else if (state.inCombat) v2.play('idleGunAim', { fade: 0.14, timeScale: 1.0 });
+    else v2.play('idleGun', { fade: 0.18, timeScale: 1.0 });
+  }
+
+  v2.update(dt);
+}
+
 /* Anima qualquer boneco estilo Omni com IK 2-Ossos Exato, Respiração, Ferimentos e Morte Completa! */
 function animateCharacterRig(rig, state, dt) {
   const {
@@ -13931,6 +14217,7 @@ function animateCharacterRig(rig, state, dt) {
 
   rig.root.position.copy(pos);
   rig.root.rotation.set(0, bodyYaw, state.isDying ? 0 : (state.turnLeanZ || 0));
+  if (rig.v2) updateV2CharacterAnimation(rig, state, dt);
 
   // === ANIMAÇÃO DE MORTE CONTEXTUAL (6 ESTILOS: Frontal, Costas, Lateral, Explosão, Headshot, Crítico) ===
   if (state.isDying) {
@@ -14290,8 +14577,8 @@ function animateCharacterRig(rig, state, dt) {
   const moveFactor = THREE.MathUtils.clamp(hSpeed / 4.6, 0, 1.45);
 
   let pelvisBobY = breath, pelvisSwayX = 0, pelvisRollZ = 0, pelvisTwistY = 0;
-  let lFootTarget = new THREE.Vector3(-0.098, SOLE_H, 0);
-  let rFootTarget = new THREE.Vector3( 0.098, SOLE_H, 0);
+  const lFootTarget = (animateCharacterRig._lFoot || (animateCharacterRig._lFoot = new THREE.Vector3())).set(-0.098, SOLE_H, 0);
+  const rFootTarget = (animateCharacterRig._rFoot || (animateCharacterRig._rFoot = new THREE.Vector3())).set( 0.098, SOLE_H, 0);
   let lFootPitch = 0, rFootPitch = 0;
 
   if (!onGround) {
@@ -14374,8 +14661,8 @@ function animateCharacterRig(rig, state, dt) {
   );
 
   // Resolve IK Analítico 2-Ossos das duas pernas (GARANTIA MATEMÁTICA: sola >= 0.00m!)
-  const hipLPos = new THREE.Vector3(-0.095 + rig.pelvis.position.x, rig.pelvis.position.y - 0.04, 0);
-  const hipRPos = new THREE.Vector3( 0.095 + rig.pelvis.position.x, rig.pelvis.position.y - 0.04, 0);
+  const hipLPos = (animateCharacterRig._hipL || (animateCharacterRig._hipL = new THREE.Vector3())).set(-0.095 + rig.pelvis.position.x, rig.pelvis.position.y - 0.04, 0);
+  const hipRPos = (animateCharacterRig._hipR || (animateCharacterRig._hipR = new THREE.Vector3())).set( 0.095 + rig.pelvis.position.x, rig.pelvis.position.y - 0.04, 0);
   solveLegIK(rig.leftLeg,  hipLPos, lFootTarget, lFootPitch);
   solveLegIK(rig.rightLeg, hipRPos, rFootTarget, rFootPitch);
 
@@ -18135,11 +18422,15 @@ async function applyWorldSyncOnClient(pkt) {
   }
 }
 
-function getOrCreateRemotePlayer(id, nick = 'Sobrevivente') {
+function getOrCreateRemotePlayer(id, nick = 'Sobrevivente', charId = 'swat') {
   if (id === player.id) return null;
   if (remotePlayers.has(id)) {
     const existing = remotePlayers.get(id);
     if (nick) existing.nick = nick;
+    if (charId && charId !== existing.characterId) {
+      existing.characterId = charId;
+      attachV2CharacterRig(existing.rig, charId, existing.remWeapons);
+    }
     return existing;
   }
 
@@ -18157,7 +18448,7 @@ function getOrCreateRemotePlayer(id, nick = 'Sobrevivente') {
   // Hitboxes para PvP (Cabeça, Tronco e Pernas!)
   const hitboxes = [];
   const mkHB = (parent, w, h, d, py, zone) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ visible: false }));
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), INVISIBLE_HITBOX_MAT);
     m.position.y = py;
     parent.add(m);
     hitboxes.push(m);
@@ -18170,7 +18461,7 @@ function getOrCreateRemotePlayer(id, nick = 'Sobrevivente') {
   document.getElementById('world-labels').appendChild(tagEl);
 
   const rp = {
-    id, nick, teamId: null, hp: 100, dead: false, deathT: 0, deathStyle: 0,
+    id, nick, characterId: charId || 'swat', teamId: null, hp: 100, dead: false, deathT: 0, deathStyle: 0,
     pos: new THREE.Vector3(0, 0.12, 150),
     targetPos: new THREE.Vector3(0, 0.12, 150),
     netVel: new THREE.Vector3(),
@@ -18187,6 +18478,7 @@ function getOrCreateRemotePlayer(id, nick = 'Sobrevivente') {
   const hbLegs = mkHB(rig.pelvis, 0.36, 0.86, 0.26, -0.45, 'limb');
   [hbHead, hbTorso, hbLegs].forEach(h => { h.userData.remotePlayer = rp; h.userData.hitZone = h === hbHead ? 'head' : (h === hbTorso ? 'torso' : 'limb'); });
 
+  attachV2CharacterRig(rig, rp.characterId, remWeapons);
   remotePlayers.set(id, rp);
   return rp;
 }
@@ -18201,6 +18493,10 @@ function removeRemotePlayer(id) {
     } else if (v.driverId === id) {
       v.driverId = null;
     }
+  }
+  if (rp.rig && rp.rig.v2) {
+    assetLibrary.disposeInstance(rp.rig.v2);
+    rp.rig.v2 = null;
   }
   scene.remove(rp.rig.root);
   if (rp.tagEl && rp.tagEl.parentNode) rp.tagEl.parentNode.removeChild(rp.tagEl);
@@ -18331,7 +18627,7 @@ function handleNetworkPacket(pkt, fromConn = null) {
   }
 
   if (pkt.t === 'spawn_select') {
-    const rp = pkt.id ? getOrCreateRemotePlayer(pkt.id, pkt.nick || 'Sobrevivente') : null;
+    const rp = pkt.id ? getOrCreateRemotePlayer(pkt.id, pkt.nick || 'Sobrevivente', pkt.charId || 'swat') : null;
     if (rp && Number.isFinite(pkt.x) && Number.isFinite(pkt.z)) {
       const sy = Number.isFinite(pkt.y) ? pkt.y : getSurfaceHeight(pkt.x, pkt.z) + 0.14;
       rp.pos.set(pkt.x, sy, pkt.z);
@@ -18495,7 +18791,7 @@ function handleNetworkPacket(pkt, fromConn = null) {
 
   if (pkt.t === 'p') {
     if (pkt.id === player.id) return;
-    const rp = getOrCreateRemotePlayer(pkt.id, pkt.n);
+    const rp = getOrCreateRemotePlayer(pkt.id, pkt.n, pkt.ch || undefined);
     if (!rp) return;
     // Ignora pacotes antigos / fora de ordem (impede flick/puxão para trás no multiplayer!)
     if (typeof pkt.seq === 'number' && rp.lastSeq >= 0 && pkt.seq <= rp.lastSeq && (rp.lastSeq - pkt.seq) < 600) {
@@ -18503,16 +18799,17 @@ function handleNetworkPacket(pkt, fromConn = null) {
     }
     if (typeof pkt.seq === 'number') rp.lastSeq = pkt.seq;
 
+    if (!Number.isFinite(pkt.x) || !Number.isFinite(pkt.y) || !Number.isFinite(pkt.z)) return;
     rp.nick = pkt.n || rp.nick;
     rp.teamId = pkt.tm || null;
-    rp.hp = pkt.hp ?? 100;
+    rp.hp = Number.isFinite(pkt.hp) ? pkt.hp : rp.hp;
     rp.dead = !!pkt.dd;
     rp.targetPos.set(pkt.x, pkt.y, pkt.z);
-    rp.netVel.set(pkt.vx || 0, 0, pkt.vz || 0);
+    rp.netVel.set(Number.isFinite(pkt.vx) ? pkt.vx : 0, 0, Number.isFinite(pkt.vz) ? pkt.vz : 0);
     rp.lastPktAt = performance.now();
-    rp.targetYaw = pkt.yw;
-    rp.targetBodyYaw = typeof pkt.by === 'number' ? pkt.by : pkt.yw;
-    rp.targetPitch = pkt.pt;
+    rp.targetYaw = Number.isFinite(pkt.yw) ? pkt.yw : rp.targetYaw;
+    rp.targetBodyYaw = Number.isFinite(pkt.by) ? pkt.by : rp.targetYaw;
+    rp.targetPitch = Number.isFinite(pkt.pt) ? pkt.pt : rp.targetPitch;
     if (!rp.hasFirstPos || rp.pos.distanceTo(rp.targetPos) > 14) {
       rp.pos.copy(rp.targetPos);
       rp.yaw = rp.targetYaw;
@@ -18887,24 +19184,44 @@ function schedulePeerSignalingReconnect(p) {
 }
 
 function applyWorldDiffSnapshot(worldSnap) {
-  if (!worldSnap || !worldSnap.diffs) return;
-  for (const [cid, cd] of Object.entries(worldSnap.diffs)) {
-    if (Array.isArray(cd.itemsTaken)) {
-      for (const uid of cd.itemsTaken) {
-        recordChunkDiff(cid, 'loot', uid);
-        const it = lootItems.find(i => i.uid === uid);
-        if (it) {
-          it.taken = true;
-          it.mesh.visible = false;
-        }
+  if (!worldSnap) return;
+  const chunkMap = worldSnap.chunks || worldSnap.diffs;
+  if (!chunkMap || typeof chunkMap !== 'object') return;
+  for (const [cid, cd] of Object.entries(chunkMap)) {
+    if (!cd) continue;
+    const takenList = Array.isArray(cd.removed) ? cd.removed : (Array.isArray(cd.itemsTaken) ? cd.itemsTaken : []);
+    for (const uid of takenList) {
+      recordChunkDiff(cid, 'loot', uid);
+      const it = lootItems.find(i => i.uid === uid);
+      if (it) {
+        it.taken = true;
+        if (it.mesh) it.mesh.visible = false;
       }
     }
-    if (cd.doors) {
+    if (Array.isArray(cd.doors)) {
+      for (const entry of cd.doors) {
+        if (!Array.isArray(entry)) continue;
+        const [did, state] = entry;
+        const isOpen = (state === true || (state && state.open === true));
+        recordChunkDiff(cid, isOpen ? 'door_open' : 'door_close', did);
+      }
+    } else if (cd.doors && typeof cd.doors === 'object') {
       for (const [did, open] of Object.entries(cd.doors)) {
-        recordChunkDiff(cid, open ? 'door_open' : 'door_close', did);
+        const isOpen = (open === true || (open && open.open === true));
+        recordChunkDiff(cid, isOpen ? 'door_open' : 'door_close', did);
       }
     }
   }
+}
+
+function selectPlayableCharacter(charId, persistLocal = true) {
+  const safeId = (typeof charId === 'string' && /^[\w.-]{1,48}$/.test(charId.trim())) ? charId.trim() : 'swat';
+  player.characterId = safeId;
+  if (persistLocal) {
+    try { localStorage.setItem('knox.characterId', safeId); } catch (_) {}
+  }
+  attachV2CharacterRig(omni, safeId, tpWeaponMeshes, tpFlashMesh);
+  if (typeof netMetrics !== 'undefined') netMetrics.lastSentSig = '';
 }
 
 function applyResumeOnPlayer(m) {
@@ -18915,20 +19232,64 @@ function applyResumeOnPlayer(m) {
     player.pos.set(s.pos.x, sy, s.pos.z);
     player.vel.set(0, 0, 0);
   }
-  if (Number.isFinite(s.hp)) {
-    player.hp = s.hp;
-    player.dead = !!s.dead;
+  if (Number.isFinite(s.yaw)) {
+    player.yaw = s.yaw;
+    player.bodyYaw = s.yaw;
   }
-  if (s.inventory) {
+  if (s.appearance && typeof s.appearance.characterId === 'string' && s.appearance.characterId) {
+    selectPlayableCharacter(s.appearance.characterId, true);
+  }
+  const savedHp = (s.stats && Number.isFinite(s.stats.hp)) ? s.stats.hp : (Number.isFinite(s.hp) ? s.hp : null);
+  if (savedHp !== null) {
+    player.hp = savedHp;
+    player.dead = (s.alive === false) || !!s.dead;
+  }
+  if (s.stats && Number.isFinite(s.stats.stamina)) {
+    player.stamina = s.stats.stamina;
+  }
+  if (s.items && typeof s.items === 'object' && Object.keys(s.items).length > 0) {
+    const restoredWeapons = [
+      { id: DEFAULT_MELEE_WEAPON, mag: 0, attachments: { optic: null, muzzle: null, side: null, under: null } },
+      null,
+      null
+    ];
+    const restoredAmmo = {};
+    const restoredBag = [];
+    for (const [uid, it] of Object.entries(s.items)) {
+      if (!it || typeof it !== 'object') continue;
+      if (it.type === 'weapon' && Number.isInteger(it.slot) && it.slot >= 0 && it.slot < 3 && WEAPON_DEFS[it.weaponId]) {
+        const atts = it.attachments || {};
+        restoredWeapons[it.slot] = {
+          id: it.weaponId,
+          mag: Number.isFinite(it.ammoInMag) ? it.ammoInMag : 0,
+          attachments: {
+            optic: atts.optic || null,
+            muzzle: atts.muzzle || null,
+            side: atts.side || null,
+            under: atts.under || null
+          }
+        };
+      } else if (it.type === 'ammo' && it.caliber && Number.isFinite(it.qty)) {
+        restoredAmmo[it.caliber] = it.qty;
+      } else if (it.type === 'bag' && it.kind) {
+        restoredBag.push({ kind: it.kind, subId: it.subId || '', name: it.name || it.subId || it.kind, qty: it.qty || 1 });
+      }
+    }
+    inventory.weapons = restoredWeapons;
+    if (Object.keys(restoredAmmo).length > 0) inventory.ammo = Object.assign({}, inventory.ammo, restoredAmmo);
+    inventory.bagItems = restoredBag;
+    const slotToEquip = (s.stats && Number.isFinite(s.stats.activeSlot)) ? Math.floor(s.stats.activeSlot) : 0;
+    equipSlot(slotToEquip);
+  } else if (s.inventory) {
     if (s.inventory.weapons) inventory.weapons = JSON.parse(JSON.stringify(s.inventory.weapons));
     if (s.inventory.ammo) inventory.ammo = JSON.parse(JSON.stringify(s.inventory.ammo));
     if (Array.isArray(s.inventory.bagItems)) inventory.bagItems = JSON.parse(JSON.stringify(s.inventory.bagItems));
-    if (s.inventory.activeSlot) equipSlot(s.inventory.activeSlot);
+    if (s.inventory.activeSlot !== undefined) equipSlot(s.inventory.activeSlot);
   }
   updateHealthBarUI();
   updateWeaponHUD();
   if (typeof renderDayZInventoryUI === 'function' && inventoryOpen) renderDayZInventoryUI();
-  
+
   const menuOverlay = document.getElementById('menu-overlay');
   if (menuOverlay) menuOverlay.classList.add('hidden');
   const hudEl = document.getElementById('hud');
@@ -19032,38 +19393,72 @@ function initHostPersistence(worldSeed, roomId) {
       },
       snapshotPlayer: (playerId) => {
         if (playerId === player.id) {
+          const items = {};
+          const equipment = {};
+          const wList = Array.isArray(inventory.weapons) ? inventory.weapons : [];
+          for (let i = 0; i < wList.length; i++) {
+            const w = wList[i];
+            if (!w || !w.id) continue;
+            const uid = `w_${i}`;
+            const cleanAtt = {};
+            if (w.attachments) {
+              for (const ak of ['optic', 'muzzle', 'side', 'under']) {
+                if (typeof w.attachments[ak] === 'string' && w.attachments[ak]) cleanAtt[ak] = w.attachments[ak];
+              }
+            }
+            items[uid] = { type: 'weapon', slot: i, weaponId: w.id, ammoInMag: Math.max(0, Math.floor(w.mag || 0)), attachments: cleanAtt };
+            equipment[`slot_${i}`] = uid;
+          }
+          if (inventory.ammo && typeof inventory.ammo === 'object') {
+            for (const [cal, qty] of Object.entries(inventory.ammo)) {
+              if (Number.isFinite(qty) && qty > 0) {
+                const safeCal = String(cal).replace(/[^\w.-]/g, '_');
+                items[`ammo_${safeCal}`] = { type: 'ammo', caliber: cal, qty: Math.floor(qty) };
+              }
+            }
+          }
+          if (Array.isArray(inventory.bagItems)) {
+            for (let i = 0; i < inventory.bagItems.length; i++) {
+              const bi = inventory.bagItems[i];
+              if (!bi || !bi.kind) continue;
+              items[`bag_${i}`] = { type: 'bag', kind: String(bi.kind), subId: String(bi.subId || ''), name: String(bi.name || ''), qty: Math.max(1, Math.floor(bi.qty || 1)) };
+            }
+          }
           return {
-            id: player.id,
+            v: 1,
+            playerId: player.id,
+            worldSeed: String(worldSeed),
             nick: player.nick,
+            alive: !player.dead,
             pos: { x: +player.pos.x.toFixed(2), y: +player.pos.y.toFixed(2), z: +player.pos.z.toFixed(2) },
-            rot: { x: 0, y: +camera.rotation.y.toFixed(3), z: 0 },
-            hp: player.hp,
-            dead: !!player.dead,
-            inventory: {
-              weapons: JSON.parse(JSON.stringify(inventory.weapons || {})),
-              ammo: JSON.parse(JSON.stringify(inventory.ammo || {})),
-              bagItems: JSON.parse(JSON.stringify(inventory.bagItems || [])),
-              activeSlot: inventory.activeSlot
-            },
-            savedAt: Date.now()
+            yaw: +(player.yaw || 0).toFixed(3),
+            stance: player.prone ? 'prone' : (player.crouching ? 'crouch' : 'stand'),
+            stats: { hp: player.hp, stamina: Math.round(player.stamina || 100), activeSlot: inventory.activeSlot || 0 },
+            equipment,
+            items,
+            appearance: { characterId: player.characterId || 'swat' },
+            lastSeen: Date.now()
           };
         }
         const rp = remotePlayers.get(playerId);
         if (rp) {
+          const items = {
+            w_0: { type: 'weapon', slot: 0, weaponId: rp.weaponId || DEFAULT_MELEE_WEAPON, ammoInMag: 0, attachments: {} }
+          };
           return {
-            id: rp.id,
+            v: 1,
+            playerId: rp.id,
+            worldSeed: String(worldSeed),
             nick: rp.nick,
+            alive: !rp.dead,
             pos: { x: +rp.pos.x.toFixed(2), y: +rp.pos.y.toFixed(2), z: +rp.pos.z.toFixed(2) },
-            rot: { x: 0, y: +(rp.yaw || 0).toFixed(3), z: 0 },
-            hp: rp.hp !== undefined ? rp.hp : 100,
-            dead: !!rp.dead,
-            inventory: rp.inventory || {
-              weapons: { 1: { id: rp.weaponId || 'knife', mag: 30, attachments: {} } },
-              ammo: {},
-              bagItems: [],
-              activeSlot: 1
-            },
-            savedAt: Date.now()
+            yaw: +(rp.yaw || 0).toFixed(3),
+            stance: rp.crouch > 0.3 ? 'crouch' : 'stand',
+            stats: { hp: rp.hp !== undefined ? rp.hp : 100, stamina: 100, activeSlot: 0 },
+            equipment: { slot_0: 'w_0' },
+            items,
+            appearance: { characterId: rp.characterId || 'swat' },
+            lastSeen: Date.now()
           };
         }
         return null;
@@ -20035,7 +20430,7 @@ function updateRemotePlayersAndNet(dt) {
     const targetInterval = isMovingOrActive ? 0.055 : 0.22;
     if (netState.syncAcc >= targetInterval) {
       const wInst = getActiveWeaponObj();
-      const sig = `${Math.round(player.pos.x * 10)},${Math.round(player.pos.y * 10)},${Math.round(player.pos.z * 10)},${Math.round(player.yaw * 20)},${Math.round(player.pitch * 20)},${player.crouchAlpha > 0.2 ? 1 : 0},${player.prone ? 1 : 0},${Math.round((player.leanAlpha || 0) * 10)},${player.hp},${player.dead ? 1 : 0},${wInst.id},${player.drivingCar ? player.drivingCar.id : ''},${player.carSeat},${player.carLeanAlpha > 0.1 ? 1 : 0}`;
+      const sig = `${Math.round(player.pos.x * 10)},${Math.round(player.pos.y * 10)},${Math.round(player.pos.z * 10)},${Math.round(player.yaw * 20)},${Math.round(player.pitch * 20)},${player.crouchAlpha > 0.2 ? 1 : 0},${player.prone ? 1 : 0},${Math.round((player.leanAlpha || 0) * 10)},${player.hp},${player.dead ? 1 : 0},${wInst.id},${player.characterId || 'swat'},${player.drivingCar ? player.drivingCar.id : ''},${player.carSeat},${player.carLeanAlpha > 0.1 ? 1 : 0}`;
       const nowMsSend = performance.now();
       const changed = sig !== netMetrics.lastSentSig || (nowMsSend - netMetrics.lastSentAt) >= 450;
       if (changed) {
@@ -20048,6 +20443,7 @@ function updateRemotePlayersAndNet(dt) {
           seq: netState.seq,
           id: player.id,
           n: player.nick,
+          ch: player.characterId || 'swat',
           tm: player.teamId,
           hp: player.hp,
           dd: player.dead,
@@ -20426,13 +20822,21 @@ function updateZombies(dt) {
     }
   }
 
+  let v2ZombieAnimBudget = 40;
   for (let i = 0; i < zombies.length; i++) {
     const z = zombies[i];
     const zp = z.root.position;
     const p = z.parts;
 
-    // === ANIMAÇÃO DE MORTE COMPLETA DO ZUMBI (3 ESTILOS ARTICULADOS + RECUO DE IMPACTO) ===
+    // === ANIMAÇÃO DE MORTE COMPLETA DO ZUMBI (3 ESTILOS ARTICULADOS + RECUO DE IMPACTO + CLIP V2) ===
     if (z.dead) {
+      if (z.v2 && !z.v2.disposed) {
+        if (!z._v2DeathPlayed) {
+          z._v2DeathPlayed = true;
+          z.v2.play('death', { fade: 0.10, loop: THREE.LoopOnce, clampWhenFinished: true, timeScale: 1.15 });
+        }
+        if (z.deathT < 1) z.v2.update(dt);
+      }
       if (z.deathT < 1) {
         const prevT = z.deathT;
         z.deathT = Math.min(1, z.deathT + dt * 1.75);
@@ -20652,6 +21056,25 @@ function updateZombies(dt) {
       if (z._animAcc < minStep) continue;
       animDt = Math.min(0.15, z._animAcc);
       z._animAcc = 0;
+    }
+
+    if (z.v2 && !z.v2.disposed) {
+      if (v2ZombieAnimBudget > 0) {
+        v2ZombieAnimBudget--;
+        if (z.atkAnimT > 0) {
+          z.v2.play('attack', { fade: 0.08, timeScale: 1.25, variantIndex: z.variantIdx });
+        } else if (z.stagger > 0) {
+          z.v2.play('hit', { fade: 0.06, timeScale: 1.3, variantIndex: z.variantIdx });
+        } else if (moveSpd > 0.25 && isChasing) {
+          const useRun = z.archetype === 2 || moveSpd > 2.0;
+          z.v2.play(useRun ? 'run' : 'walk', { fade: 0.16, timeScale: THREE.MathUtils.clamp(moveSpd / (useRun ? 2.4 : 1.35), 0.75, 1.85) });
+        } else if (moveSpd > 0.12) {
+          z.v2.play('walk', { fade: 0.18, timeScale: THREE.MathUtils.clamp(moveSpd / 1.25, 0.55, 1.35) });
+        } else {
+          z.v2.play('idle', { fade: 0.22, timeScale: 1.0 });
+        }
+        z.v2.update(animDt);
+      }
     }
 
     const cycleRate = z.legHit ? (moveSpd * 2.8 + 0.9) : (moveSpd * 3.9 + 1.1);
@@ -23346,6 +23769,37 @@ function renderSpawnMap() {
   ctx.restore();
 }
 
+async function rebuildSpawnCharacterGridUI() {
+  const grid = document.getElementById('spawn-char-grid');
+  const badge = document.getElementById('spawn-asset-mode');
+  if (!grid) return;
+  const ver = getAssetVersion();
+  if (badge) badge.textContent = ver === 'v2' ? 'ASSETS V2 · 11 SKINS' : 'ASSETS V1 (LEGADO)';
+  if (!assetLibrary.isV2()) {
+    grid.innerHTML = '<div style="grid-column:1/-1;font-size:9.5px;color:var(--dim);padding:4px 0;">Modo legado (?assets=v1) ativo. Remova o parâmetro da URL para selecionar skins 3D v2.</div>';
+    return;
+  }
+  await assetLibrary.loadManifest();
+  const chars = assetLibrary.getCharacters();
+  grid.innerHTML = '';
+  for (const ch of chars) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'spawn-char-btn' + (player.characterId === ch.id ? ' active' : '');
+    btn.style.borderLeftColor = ch.accent || '#6b7280';
+    btn.innerHTML = `<div class="spawn-char-name"></div><div class="spawn-char-role"></div>`;
+    btn.querySelector('.spawn-char-name').textContent = ch.name;
+    btn.querySelector('.spawn-char-role').textContent = ch.role || 'Sobrevivente';
+    btn.onclick = () => {
+      sfx.init();
+      sfx.playClick(1700, 0.08);
+      selectPlayableCharacter(ch.id, true);
+      grid.querySelectorAll('.spawn-char-btn').forEach((el) => el.classList.toggle('active', el === btn));
+    };
+    grid.appendChild(btn);
+  }
+}
+
 function openSpawnModal(opts = {}) {
   const modal = document.getElementById('spawn-modal');
   if (!modal) return;
@@ -23371,6 +23825,7 @@ function openSpawnModal(opts = {}) {
   spawnUiState.centerX = 0;
   spawnUiState.centerZ = 0;
   modal.classList.add('open');
+  rebuildSpawnCharacterGridUI();
   rebuildSpawnRegionListUI();
 
   // Ponto inicial sugerido: primeira cidade (chunk world) ou primarySpawn (mapa real)
@@ -23474,6 +23929,7 @@ async function confirmSelectedSpawnAndEnter() {
     t: 'spawn_select',
     id: player.id,
     nick: player.nick,
+    charId: player.characterId || 'swat',
     x: +sx.toFixed(2),
     y: +sy.toFixed(2),
     z: +sz.toFixed(2),
@@ -25344,6 +25800,12 @@ function animate(nowMs) {
   updateDynamicResolution(dt);
   renderer.render(scene, camera);
   scheduleNextFrame();
+}
+
+if (assetLibrary.isV2()) {
+  assetLibrary.preloadCoreAssets(player.characterId).then(() => {
+    attachV2CharacterRig(omni, player.characterId, tpWeaponMeshes, tpFlashMesh);
+  });
 }
 
 animate();
