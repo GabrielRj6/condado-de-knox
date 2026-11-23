@@ -76,14 +76,40 @@ function upgradeObjMaterials(obj) {
       const col = m.color ? m.color.clone() : new THREE.Color(0x3a3e44);
       const nm = String(m.name || '').toLowerCase();
       const isWood = nm.includes('wood');
-      const isDarkMetal = nm.includes('metal') || nm.includes('black') || nm.includes('grey') || nm.includes('gray');
+      const isGlass = nm.includes('glass') || nm.includes('lens') || nm.includes('optic');
+      const isDarkMetal = nm.includes('metal') || nm.includes('black') || nm.includes('grey') || nm.includes('gray') || nm.includes('main');
       const isGreen = nm.includes('green') || nm.includes('olive') || nm.includes('tan');
-      const std = new THREE.MeshStandardMaterial({
-        name: m.name || 'quaternius_gun',
-        color: col,
-        roughness: isWood ? 0.72 : (isGreen ? 0.62 : (isDarkMetal ? 0.38 : 0.52)),
-        metalness: isWood ? 0.06 : (isGreen ? 0.25 : (isDarkMetal ? 0.72 : 0.40))
-      });
+      // MTLs do Quaternius exportados em linear-RGB têm Kd muito baixo (ex.: 0.016); converte para gama legível sem virar silhueta preta!
+      if (!isGlass) {
+        const maxC = Math.max(col.r, col.g, col.b);
+        if (maxC > 0.0005 && maxC < 0.25) {
+          col.setRGB(
+            Math.min(1, Math.pow(col.r, 1 / 2.2)),
+            Math.min(1, Math.pow(col.g, 1 / 2.2)),
+            Math.min(1, Math.pow(col.b, 1 / 2.2))
+          );
+        }
+        const floorVal = isWood ? 0.12 : 0.14;
+        col.r = Math.max(floorVal, col.r);
+        col.g = Math.max(floorVal, col.g);
+        col.b = Math.max(floorVal, col.b);
+      }
+      const std = isGlass
+        ? new THREE.MeshStandardMaterial({
+            name: m.name || 'quaternius_glass',
+            color: new THREE.Color(0x58c4e8),
+            roughness: 0.08,
+            metalness: 0.12,
+            transparent: true,
+            opacity: 0.22,
+            depthWrite: false
+          })
+        : new THREE.MeshStandardMaterial({
+            name: m.name || 'quaternius_gun',
+            color: col,
+            roughness: isWood ? 0.68 : (isGreen ? 0.58 : (isDarkMetal ? 0.44 : 0.50)),
+            metalness: isWood ? 0.06 : (isGreen ? 0.16 : (isDarkMetal ? 0.26 : 0.22))
+          });
       matCache.set(key, std);
       return std;
     };
@@ -95,15 +121,34 @@ function upgradeObjMaterials(obj) {
   });
 }
 
+const _postureAxis = new THREE.Vector3();
+const _postureQ1 = new THREE.Quaternion();
+const _postureQ2 = new THREE.Quaternion();
+const _postureQ3 = new THREE.Quaternion();
+const _postureQLoc = new THREE.Quaternion();
+
 function findBone(root, candidates) {
-  let found = null;
-  const lowered = candidates.map((c) => c.toLowerCase());
+  const byExact = new Map();
+  const byNorm = new Map();
   root.traverse((obj) => {
-    if (found || !obj.name) return;
-    const nm = obj.name.toLowerCase();
-    if (lowered.includes(nm)) found = obj;
+    if (!obj.name) return;
+    const low = obj.name.toLowerCase();
+    const norm = normBoneName(obj.name);
+    if (!byExact.has(low) || (obj.isBone && !byExact.get(low).isBone)) {
+      byExact.set(low, obj);
+    }
+    if (norm && (!byNorm.has(norm) || (obj.isBone && !byNorm.get(norm).isBone))) {
+      byNorm.set(norm, obj);
+    }
   });
-  return found;
+  for (const cand of candidates) {
+    if (!cand) continue;
+    const low = String(cand).toLowerCase();
+    if (byExact.has(low)) return byExact.get(low);
+    const norm = normBoneName(cand);
+    if (norm && byNorm.has(norm)) return byNorm.get(norm);
+  }
+  return null;
 }
 
 class RigController {
@@ -119,39 +164,169 @@ class RigController {
     this.activeAction = null;
     this.activeClipName = null;
     this.disposed = false;
+    this._savedBonePoses = new Map();
 
     this.bones = {
+      body: findBone(model, ['Body', 'Hips', 'Pelvis']),
       hips: findBone(model, ['Hips', 'Pelvis', 'Body']),
+      abdomen: findBone(model, ['Abdomen', 'Spine']),
+      torso: findBone(model, ['Torso', 'Spine1', 'Spine']),
+      chest: findBone(model, ['Chest', 'Spine2', 'UpperChest']),
       spine: findBone(model, ['Torso', 'Chest', 'Abdomen', 'Spine']),
       head: findBone(model, ['Head']),
       neck: findBone(model, ['Neck']),
+      upperLegL: findBone(model, ['UpperLeg.L', 'LeftUpLeg', 'Thigh.L']),
+      lowerLegL: findBone(model, ['LowerLeg.L', 'LeftLeg', 'Shin.L']),
+      upperLegR: findBone(model, ['UpperLeg.R', 'RightUpLeg', 'Thigh.R']),
+      lowerLegR: findBone(model, ['LowerLeg.R', 'RightLeg', 'Shin.R']),
       rightHand: findBone(model, [meta.rightHandBone || 'Wrist.R', 'Hand.R', 'RightHand', 'LowerArm.R']),
       leftHand: findBone(model, ['Wrist.L', 'Hand.L', 'LeftHand', 'LowerArm.L']),
+      shoulderL: findBone(model, ['Shoulder.L', 'LeftShoulder']),
+      shoulderR: findBone(model, ['Shoulder.R', 'RightShoulder']),
       upperArmL: findBone(model, ['UpperArm.L', 'LeftArm']),
-      upperArmR: findBone(model, ['UpperArm.R', 'RightArm'])
+      lowerArmL: findBone(model, ['LowerArm.L', 'LeftForeArm']),
+      upperArmR: findBone(model, ['UpperArm.R', 'RightArm']),
+      lowerArmR: findBone(model, ['LowerArm.R', 'RightForeArm'])
     };
 
-    // Montagem de arma acoplada ao osso da mão direita
+    // Montagem de arma acoplada ao osso da mão direita (suporta modo 'gun' e 'melee')
     this.weaponMount = new THREE.Group();
     this.weaponMount.name = 'v2_weapon_mount';
-    const wOff = meta.weaponOffset || { pos: [0.02, 0.08, 0.04], rot: [Math.PI * 0.5, 0, -Math.PI * 0.5], scale: 0.95 };
-    this.weaponMount.position.set(wOff.pos[0], wOff.pos[1], wOff.pos[2]);
-    this.weaponMount.rotation.set(wOff.rot[0], wOff.rot[1], wOff.rot[2]);
-    this.weaponMount.scale.setScalar(wOff.scale || 0.95);
+    this._gunOffset = meta.weaponOffset || { pos: [0.0, 0.085, -0.015], rot: [Math.PI * 0.5, 0, Math.PI * 0.5], scale: 0.95 };
+    this._meleeOffset = meta.meleeOffset || { pos: [0.0, 0.085, -0.01], rot: [0, Math.PI * 0.5, Math.PI], scale: 0.95 };
+    this._weaponHoldMode = null;
+    this.setWeaponHoldMode('gun');
     if (this.bones.rightHand) {
       this.bones.rightHand.add(this.weaponMount);
     } else {
       group.add(this.weaponMount);
     }
 
-    // Configura sombras e desativa frustumCulled em SkinnedMeshes (evita sumir quando osso sai da AABB original)
+    // Configura sombras, desativa frustumCulled em SkinnedMeshes e oculta armas embutidas nos GLBs (ex.: Pistol / Pistol_1..3 em swat/suit)
+    const BAKED_WEAPON_RE = /^(pistol|gun|rifle|sword|knife|weapon|dagger|shotgun)([._\-\s]\d+)?$/i;
     model.traverse((obj) => {
+      const cleanName = String(obj.name || '').trim();
+      if (BAKED_WEAPON_RE.test(cleanName)) {
+        obj.visible = false;
+        obj.traverse((sub) => {
+          sub.visible = false;
+          if (sub.isMesh || sub.isSkinnedMesh) {
+            sub.castShadow = false;
+            sub.receiveShadow = false;
+          }
+        });
+        return;
+      }
       if (obj.isSkinnedMesh || obj.isMesh) {
+        let p = obj.parent;
+        while (p && p !== model) {
+          if (BAKED_WEAPON_RE.test(String(p.name || '').trim())) {
+            obj.visible = false;
+            obj.castShadow = false;
+            obj.receiveShadow = false;
+            return;
+          }
+          p = p.parent;
+        }
         obj.castShadow = true;
         obj.receiveShadow = true;
-        if (obj.isSkinnedMesh) obj.frustumCulled = false;
+        obj.frustumCulled = false;
       }
     });
+  }
+
+  _restorePostureOverrides() {
+    if (this._savedBonePoses.size === 0) return;
+    for (const [bone, saved] of this._savedBonePoses) {
+      bone.position.copy(saved.pos);
+      bone.quaternion.copy(saved.quat);
+    }
+    this._savedBonePoses.clear();
+  }
+
+  _saveBonePose(bone) {
+    if (!bone || this._savedBonePoses.has(bone)) return;
+    this._savedBonePoses.set(bone, {
+      pos: bone.position.clone(),
+      quat: bone.quaternion.clone()
+    });
+  }
+
+  _rotateBoneModelAxis(bone, ax, ay, az, angleRad) {
+    if (!bone || !bone.parent || !Number.isFinite(angleRad) || Math.abs(angleRad) < 1e-4) return;
+    this._saveBonePose(bone);
+    this.model.getWorldQuaternion(_postureQ1);
+    bone.parent.getWorldQuaternion(_postureQ2);
+    _postureQ3.copy(_postureQ2).invert().multiply(_postureQ1);
+    _postureAxis.set(ax, ay, az).applyQuaternion(_postureQ3).normalize();
+    _postureQLoc.setFromAxisAngle(_postureAxis, angleRad);
+    bone.quaternion.premultiply(_postureQLoc);
+    bone.updateMatrixWorld(true);
+  }
+
+  applyStancePosture({ crouchAlpha = 0, proneAlpha = 0, isMoving = false, isMelee = false, isTwoHand = false, crawlPhase = 0 } = {}) {
+    if (this.disposed || this.isZombie) return;
+    const p = THREE.MathUtils.clamp(proneAlpha || 0, 0, 1);
+    const c = THREE.MathUtils.clamp(crouchAlpha || 0, 0, 1) * (1 - p);
+    const twoHandSupport = (!isMelee && isTwoHand && p < 0.5) ? (1 - p * 2) : 0;
+    if (c < 0.005 && p < 0.005 && twoHandSupport < 0.01) return;
+
+    const b = this.bones;
+    this.model.updateMatrixWorld(true);
+
+    if (c >= 0.005) {
+      if (b.body) {
+        this._saveBonePose(b.body);
+        b.body.position.y -= 0.34 * c;
+        b.body.position.z -= 0.05 * c;
+        b.body.updateMatrixWorld(true);
+      }
+      // Dobra real de quadril e joelhos mantendo os pés plantados no chão (y = 0)
+      this._rotateBoneModelAxis(b.upperLegL, 1, 0, 0, -0.98 * c);
+      this._rotateBoneModelAxis(b.lowerLegL, 1, 0, 0, 1.58 * c);
+      this._rotateBoneModelAxis(b.upperLegR, 1, 0, 0, -0.98 * c);
+      this._rotateBoneModelAxis(b.lowerLegR, 1, 0, 0, 1.58 * c);
+      this._rotateBoneModelAxis(b.torso, 1, 0, 0, 0.26 * c);
+      this._rotateBoneModelAxis(b.head, 1, 0, 0, -0.22 * c);
+      if (!isMelee) {
+        this._rotateBoneModelAxis(b.upperArmR, 1, 0, 0, -0.18 * c);
+      }
+    }
+
+    // Armas longas 2-mãos em 3ª pessoa: ergue o braço esquerdo para apoiar o guarda-mão do fuzil em vez de ficar solto ao lado do corpo
+    if (twoHandSupport >= 0.01) {
+      this._rotateBoneModelAxis(b.shoulderL, 0, 1, 0, -0.26 * twoHandSupport);
+      this._rotateBoneModelAxis(b.upperArmL, 1, 0, 0, -1.26 * twoHandSupport);
+      this._rotateBoneModelAxis(b.upperArmL, 0, 1, 0, -0.44 * twoHandSupport);
+      this._rotateBoneModelAxis(b.lowerArmL, 0, 1, 0, -0.26 * twoHandSupport);
+    }
+
+    if (p >= 0.005) {
+      const wave = isMoving ? Math.sin(crawlPhase || 0) : 0;
+      // Ergue tórax e cabeça para olhar e mirar à frente deitado (sem enfiar o rosto/arma no asfalto)
+      this._rotateBoneModelAxis(b.torso, 1, 0, 0, -0.22 * p);
+      this._rotateBoneModelAxis(b.chest, 1, 0, 0, -0.20 * p);
+      this._rotateBoneModelAxis(b.neck, 1, 0, 0, -0.34 * p);
+      this._rotateBoneModelAxis(b.head, 1, 0, 0, -0.34 * p);
+      this._rotateBoneModelAxis(b.upperArmR, 1, 0, 0, (-0.98 + wave * 0.14) * p);
+      this._rotateBoneModelAxis(b.upperArmL, 1, 0, 0, (-1.05 - wave * 0.18) * p);
+      this._rotateBoneModelAxis(b.upperLegL, 0, 0, 1, -0.14 * p);
+      this._rotateBoneModelAxis(b.upperLegR, 0, 0, 1, 0.14 * p);
+      if (isMoving) {
+        this._rotateBoneModelAxis(b.lowerLegL, 1, 0, 0, (0.18 + Math.max(0, wave) * 0.34) * p);
+        this._rotateBoneModelAxis(b.lowerLegR, 1, 0, 0, (0.18 + Math.max(0, -wave) * 0.34) * p);
+      }
+    }
+  }
+
+  setWeaponHoldMode(mode = 'gun') {
+    const nextMode = mode === 'melee' ? 'melee' : 'gun';
+    if (this._weaponHoldMode === nextMode) return;
+    this._weaponHoldMode = nextMode;
+    const off = nextMode === 'melee' ? this._meleeOffset : this._gunOffset;
+    this.weaponMount.position.set(off.pos[0], off.pos[1], off.pos[2]);
+    this.weaponMount.rotation.set(off.rot[0], off.rot[1], off.rot[2]);
+    this.weaponMount.scale.setScalar(off.scale || 0.95);
   }
 
   _resolveClipName(key) {
@@ -243,6 +418,7 @@ class RigController {
 
   update(dt) {
     if (this.disposed || !this.mixer) return;
+    this._restorePostureOverrides();
     if (Number.isFinite(dt) && dt > 0) {
       this.mixer.update(Math.min(0.12, dt));
     }
@@ -251,6 +427,7 @@ class RigController {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this._savedBonePoses.clear();
     try {
       this.mixer.stopAllAction();
       this.mixer.uncacheRoot(this.model);
