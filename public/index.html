@@ -61,9 +61,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<link rel="stylesheet" href="/vendor/leaflet/dist/leaflet.css" />
+<script src="/vendor/leaflet/dist/leaflet.js"></script>
+<script src="/vendor/peerjs/dist/peerjs.min.js"></script>
 <script src="/knox-persistence.js"></script>
 <style>
   :root {
@@ -767,8 +767,8 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    "three": "/vendor/three/build/three.module.js",
+    "three/addons/": "/vendor/three/examples/jsm/"
   }
 }
 </script>
@@ -18081,7 +18081,7 @@ function renderDayZInventoryUI() {
 }
 
 /* ============================================================================
-   14. MULTIPLAYER ONLINE (VERCEL + WEBRTC PEERJS) & SISTEMA DE TIME [P]
+   14. MULTIPLAYER ONLINE (NODE + WEBRTC PEERJS) & SISTEMA DE TIME [P]
    ============================================================================ */
 const PUBLIC_SLOTS = ['knox-br-room-1', 'knox-br-room-2', 'knox-br-room-3', 'knox-br-room-4', 'knox-br-room-5', 'knox-br-room-6'];
 const remotePlayers = new Map(); // peerOrPlayerId -> { id, nick, teamId, hp, dead, pos, targetPos, yaw, pitch, crouch, sprint, weaponId, inCarId, rig, tagEl, hitboxes }
@@ -18501,7 +18501,7 @@ async function sendBlueprintChunksOverPeer(conn, metaPkt) {
 async function syncHostWorldToNetwork() {
   if (!netState.isHost) return;
   await uploadHostWorldBlueprint();
-  postVercelServerHeartbeat('upsert');
+  postServerHeartbeat('upsert');
   const payload = { t: 'world_change', ...buildWorldWelcomePayload() };
   netBroadcast(payload);
 }
@@ -18933,7 +18933,7 @@ function handleNetworkPacket(pkt, fromConn = null) {
       netState.ownerId = String(pkt.ownerId).slice(0, 48);
       if (pkt.ownerName) netState.ownerName = String(pkt.ownerName).slice(0, 24);
       broadcastRoomMeta();
-      postVercelServerHeartbeat('upsert');
+      postServerHeartbeat('upsert');
     }
     return;
   }
@@ -18947,7 +18947,7 @@ function handleNetworkPacket(pkt, fromConn = null) {
       const closeRoom = netState.roomCode;
       netState.closedByOwner = true;
       netBroadcast({ t: 'server_closed', reason: 'O criador fechou o servidor.' });
-      postVercelServerHeartbeat('remove', {
+      postServerHeartbeat('remove', {
         peerId: closeRoom,
         ownerKey: pkt.ownerKey || '',
         ownerId: pkt.ownerId || ''
@@ -19379,7 +19379,7 @@ function handleNetworkPacket(pkt, fromConn = null) {
   }
 }
 
-async function postVercelServerHeartbeat(action = 'upsert', override = null) {
+async function postServerHeartbeat(action = 'upsert', override = null) {
   const peerId = (override && override.peerId) || netState.roomCode;
   if (action !== 'remove' && (!netState.isHost || !peerId)) return;
   if (!peerId) return;
@@ -19421,6 +19421,10 @@ async function postVercelServerHeartbeat(action = 'upsert', override = null) {
 }
 
 const PEER_JS_OPTIONS = {
+  host: location.hostname,
+  port: Number(location.port || (location.protocol === 'https:' ? 443 : 80)),
+  secure: location.protocol === 'https:',
+  path: '/peerjs',
   debug: 0,
   config: {
     iceServers: [
@@ -19929,7 +19933,7 @@ function attachHostPeerListeners(p) {
         }
         showToast(`${data.nick} ENTROU NO SERVIDOR!`);
         broadcastRoomMeta();
-        postVercelServerHeartbeat('upsert');
+        postServerHeartbeat('upsert');
       }
       handleNetworkPacket(data, conn);
     });
@@ -19945,7 +19949,7 @@ function attachHostPeerListeners(p) {
         }
       }
       broadcastRoomMeta();
-      postVercelServerHeartbeat('upsert');
+      postServerHeartbeat('upsert');
     });
   });
 }
@@ -19989,7 +19993,7 @@ function bindAsHostForRoom(desiredId, opts = {}) {
         await uploadHostWorldBlueprint();
       }
       if (isCurrentRoomOwner()) saveOwnedServerMeta();
-      postVercelServerHeartbeat('upsert');
+      postServerHeartbeat('upsert');
 
       if (isMigration) {
         showToast(`SERVIDOR MANTIDO ONLINE // VOCÊ ASSUMIU A HOSPEDAGEM (${id})`);
@@ -20078,7 +20082,7 @@ function createOnlineServer() {
       }
       saveOwnedServerMeta();
       showToast(`SERVIDOR ONLINE CRIADO! CÓDIGO: ${id}`);
-      postVercelServerHeartbeat('upsert');
+      postServerHeartbeat('upsert');
       refreshServerListUI();
     });
 
@@ -20337,7 +20341,7 @@ function disconnectSession(opts = {}) {
   const { keepServerAlive = true } = opts || {};
   if (netState.migrationTimer) { clearTimeout(netState.migrationTimer); netState.migrationTimer = null; }
   if (!keepServerAlive && netState.roomCode) {
-    postVercelServerHeartbeat('remove', {
+    postServerHeartbeat('remove', {
       peerId: netState.roomCode,
       ownerKey: isCurrentRoomOwner() ? LOCAL_OWNER_KEY : '',
       ownerId: isCurrentRoomOwner() ? LOCAL_OWNER_ID : ''
@@ -20428,7 +20432,7 @@ function stopHostedServer(explicitRoomCode = null) {
     } else {
       sendRemoteOwnerCloseToPeer(targetRoom);
     }
-    postVercelServerHeartbeat('remove', {
+    postServerHeartbeat('remove', {
       peerId: targetRoom,
       ownerKey: LOCAL_OWNER_KEY,
       ownerId: LOCAL_OWNER_ID
@@ -20443,7 +20447,7 @@ function stopHostedServer(explicitRoomCode = null) {
   }
 
   // Caso 2: Fechando seu próprio servidor remotamente (fora da sala, após recarregar/sair, em standby ou hospedado por um amigo)
-  postVercelServerHeartbeat('remove', {
+  postServerHeartbeat('remove', {
     peerId: targetRoom,
     ownerKey: LOCAL_OWNER_KEY,
     ownerId: LOCAL_OWNER_ID
@@ -20456,7 +20460,7 @@ function stopHostedServer(explicitRoomCode = null) {
   setTimeout(() => refreshServerListUI(), 1800);
 }
 
-/* Busca dupla de Servidores (API Vercel /api/servers + Scan Direto WebRTC + Sala Própria Salva!) */
+/* Busca dupla de Servidores (API local /api/servers + Scan Direto WebRTC + Sala Própria Salva!) */
 async function refreshServerListUI() {
   const box = document.getElementById('server-list-box');
   box.innerHTML = `<div style="font-size:10.5px;color:var(--amb);padding:8px;">Buscando servidores ativos na rede...</div>`;
@@ -20824,7 +20828,7 @@ function updateRemotePlayersAndNet(dt) {
       netState.heartbeatAcc += dt;
       if (netState.heartbeatAcc >= 12.0) {
         netState.heartbeatAcc = 0;
-        postVercelServerHeartbeat('upsert');
+        postServerHeartbeat('upsert');
       }
     }
   }
@@ -21016,7 +21020,7 @@ function renderPartyModal() {
   const listEl = document.getElementById('party-players-list');
   listEl.innerHTML = '';
   if (remotePlayers.size === 0) {
-    listEl.innerHTML = `<div style="font-size:11px;color:var(--dim);padding:10px;">Nenhum outro jogador conectado ainda. Crie uma sala no Menu ESC e mande o link da Vercel para seus amigos!</div>`;
+    listEl.innerHTML = `<div style="font-size:11px;color:var(--dim);padding:10px;">Nenhum outro jogador conectado ainda. Crie uma sala no Menu ESC e compartilhe o código da sala com seus amigos!</div>`;
     return;
   }
 

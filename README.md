@@ -1,40 +1,32 @@
 # 🌲 CONDADO DE KNOX // Sobrevivência Multiplayer Estilo DayZ & Project Zomboid
 
-Protótipo tático de sobrevivência em 3D (WebGL / Three.js) com geração de mapa procedural, combate em primeira e terceira pessoa, zumbis, 10 armas 3D reais (.GLB), inventário com anexos (miras, silenciadores, etc.), carros dirigíveis com atropelamento frontal/física de explosão, e multiplayer online P2P via WebRTC (PeerJS) e Vercel Serverless.
+Protótipo tático de sobrevivência em 3D (WebGL / Three.js) com geração de mapa procedural, combate em primeira e terceira pessoa, zumbis, 10 armas 3D reais (.GLB), inventário com anexos (miras, silenciadores, etc.), carros dirigíveis com atropelamento frontal/física de explosão, e multiplayer online P2P via WebRTC (PeerJS) e descoberta de salas no servidor Node.js local.
 
 ---
 
-## 🚀 Como Hospedar no Vercel (Passo a Passo)
+## Rodar e testar localmente
 
-O projeto foi 100% configurado para rodar na Vercel com 0 configurações complexas:
+Instale Node.js 24 e Git LFS. Na raiz do projeto, execute:
 
-### 1. Conecte o repositório na Vercel
-1. Acesse [vercel.com](https://vercel.com) e faça login com sua conta do GitHub.
-2. Clique em **"Add New..." -> "Project"**.
-3. Selecione o repositório **`condado-de-knox`**.
-4. Framework Preset: Deixe em **"Other"**.
-5. Root Directory: Deixe como `./` (raiz).
-6. Clique em **Deploy**.
+```sh
+git lfs install --local
+git lfs pull
+npm ci
+npm test
+npm run dev
+```
 
-### 2. ⚠️ ATIVAÇÃO OBRIGATÓRIA DO GIT LFS NA VERCEL (Para carregar os modelos 3D .GLB)
-Como as armas e os zumbis são modelos 3D reais (.GLB) gerenciados pelo Git LFS:
-1. No painel do seu projeto na Vercel, vá na aba **Settings**.
-2. No menu lateral esquerdo, clique em **Git**.
-3. Role até a seção **"Git Large File Storage (LFS)"**.
-4. Ative a opção (**Enable**).
-5. Depois de ativar, vá na aba **Deployments**, clique nos `...` do último deploy e selecione **Redeploy** (para que a Vercel baixe os arquivos binários reais do LFS).
+Abra `http://localhost:3000`. No Windows, depois de preparar os modelos com Git LFS, também é possível usar `INICIAR_LOCAL.bat`. O servidor entrega as bibliotecas e os modelos pelo próprio computador. Mapas reais usam serviços externos.
 
-Pronto! Seu link (ex: `https://condado-de-knox.vercel.app`) já estará no ar para você e seus amigos jogarem!
-
----
+**Jogar pelo ZeroTier no Windows.** Conecte os computadores à mesma rede ZeroTier autorizada. No PC anfitrião, execute o BAT uma vez como administrador para liberar a porta TCP do jogo na interface ZeroTier. Copie o link exibido no terminal para seus amigos e mantenha a janela aberta. Crie uma sala no menu do jogo. Os amigos abrem o link no navegador, atualizam a lista e entram na sala. O jogo e a sinalização usam o mesmo IP e porta. A conexão de dados entre os navegadores usa WebRTC.
 
 ## 🌐 Como Funciona o Multiplayer
 
 O multiplayer utiliza uma arquitetura híbrida de alta performance e baixo custo:
 1. **P2P via WebRTC (PeerJS):** Sincronização em tempo real de movimento, tiro, inventário, dano PvP, carros e zumbis diretamente entre os navegadores (sem lag de servidor intermediário).
 2. **Descoberta Dupla de Servidores:**
-   - **API Serverless Vercel (`/api/servers`):** Registra salas ativas na região `gru1` (São Paulo, Brasil).
-   - **Slots Públicos WebRTC (`knox-br-room-1` a `6`):** Caso a API esteja em cold-start, o jogo varre slots públicos P2P diretamente.
+   - **API local (`/api/servers`):** Registra salas ativas na memória do servidor Node.
+   - **Slots locais WebRTC (`knox-br-room-1` a `6`):** Caso a API esteja indisponível, o jogo varre os slots P2P do anfitrião diretamente.
    - **Entrada por Código Direto:** Você pode copiar o ID da sala e enviar para um amigo colar no campo "Ou cole o ID/Código direto da sala".
 3. **Sistema de Esquadrão / Time (Tecla P):**
    - Todos nascem como sobreviventes neutros (estilo DayZ).
@@ -66,26 +58,17 @@ O multiplayer utiliza uma arquitetura híbrida de alta performance e baixo custo
 
 ---
 
-## 💻 Como Rodar Localmente no seu Computador
-
-Caso queira testar ou programar offline:
-1. Dê dois cliques em **`INICIAR_LOCAL.bat`**.
-2. O navegador abrirá automaticamente em `http://localhost:3000`.
-3. Para parar o servidor, basta fechar a janela do terminal.
-
----
-
 ## 📦 Estrutura do Projeto
 
 ```
 condado-de-knox/
 ├── server.mjs              # Servidor local Node.js (com suporte a public/ e MIME .glb)
 ├── INICIAR_LOCAL.bat       # Inicializador rápido de 1 clique
-├── vercel.json             # Configuração da Vercel (região SP gru1 + cache imutável de .GLB)
+├── vercel.json             # Desativa deploys automáticos pelo Git
 ├── package.json            # Metadados do projeto
 ├── api/
-│   └── servers.js          # Rota Serverless da Vercel para listagem de salas
-└── public/                 # Pasta estática padrão da Vercel (servida na raiz /)
+│   └── servers.js          # Rota do servidor local para listagem de salas
+└── public/                 # Pasta estática do jogo (servida na raiz /)
     ├── index.html          # Jogo completo (Three.js WebGL, áudio sintético, HUD, P2P)
     ├── GUNS/               # Modelos 3D (.glb) das 10 armas de fogo
     └── MODELOS PERSONAGENS/# Modelos 3D (.glb) dos Zumbis

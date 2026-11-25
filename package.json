@@ -2,11 +2,19 @@
   "name": "knox-dayz-survival",
   "version": "0.3.1",
   "private": true,
-  "description": "KNOX Survival Multiplayer (DayZ + Zomboid Style) - Three.js WebGL + WebRTC PeerJS + Vercel",
+  "description": "KNOX Survival Multiplayer (DayZ + Zomboid Style) - Three.js WebGL + WebRTC PeerJS + servidor Node local",
   "scripts": {
     "dev": "node server.mjs",
     "start": "node server.mjs",
     "build": "node --check server.mjs && node --check api/servers.js",
-    "lint": "node --check server.mjs && node --check api/servers.js"
+    "lint": "node --check server.mjs && node --check api/servers.js",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "express": "^4.22.3",
+    "leaflet": "1.9.4",
+    "peer": "^1.0.2",
+    "peerjs": "1.5.4",
+    "three": "0.160.0"
   }
 }

@@ -1,4 +1,6 @@
 import http from 'http';
+import express from 'express';
+import { ExpressPeerServer } from 'peer';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -685,7 +687,10 @@ out skel qt;`;
   return { roads, buildings, greenAreas };
 }
 
-const server = http.createServer(async (req, res) => {
+const app = express();
+const server = http.createServer(app);
+app.use('/peerjs', ExpressPeerServer(server, { path: '/' }));
+app.use(async (req, res) => {
   let urlObj;
   let pathname;
   try {
@@ -866,11 +871,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   const relPath = pathname === '/' ? '/index.html' : pathname;
-  let safePath = path.normalize(path.join(__dirname, 'public', relPath));
-  if (!fs.existsSync(safePath)) {
-    safePath = path.normalize(path.join(__dirname, relPath));
-  }
-  if (!safePath.startsWith(__dirname)) {
+  const vendor = /^\/vendor\/(three|leaflet|peerjs)\/(.+)$/.exec(relPath);
+  const root = vendor ? path.join(__dirname, 'node_modules', vendor[1]) : path.join(__dirname, 'public');
+  const safePath = path.resolve(root, '.' + (vendor ? '/' + vendor[2] : relPath));
+  if (!safePath.startsWith(root + path.sep)) {
     res.writeHead(403); res.end('Forbidden'); return;
   }
 
