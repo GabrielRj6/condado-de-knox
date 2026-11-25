@@ -290,10 +290,10 @@ for (const z of ZOMBIE_SPECS) {
 const WEAPON_MAP = [
   { id: 'assault_rifle',     obj: 'AssaultRifle_2.obj',     mtl: 'AssaultRifle_2.mtl',     barrelYRatio: 0.42 },
   { id: 'ak_rifle',          obj: 'AssaultRifle_5.obj',     mtl: 'AssaultRifle_5.mtl',     barrelYRatio: 0.42 },
-  { id: 'dmr_m110',          obj: 'AssaultRifle2_3.obj',    mtl: 'AssaultRifle2_3.mtl',    barrelYRatio: 0.45 },
+  { id: 'dmr_m110',          obj: 'AssaultRifle2_3.obj',    sight: ['front_sight', 741, 794], mtl: 'AssaultRifle2_3.mtl',    barrelYRatio: 0.45 },
   { id: 'mdr_rifle',         obj: 'Bullpup_1.obj',          mtl: 'Bullpup_1.mtl',          barrelYRatio: 0.46 },
   { id: 'sniper_rifle',      obj: 'SniperRifle_4.obj',      mtl: 'SniperRifle_4.mtl',      barrelYRatio: 0.45 },
-  { id: 'heavy_sniper',      obj: 'SniperRifle_6.obj',      mtl: 'SniperRifle_6.mtl',      barrelYRatio: 0.46 },
+  { id: 'heavy_sniper',      obj: 'SniperRifle_6.obj',      sight: ['native_scope', 343, 558], mtl: 'SniperRifle_6.mtl',      barrelYRatio: 0.46 },
   { id: 'tactical_pistol',   obj: 'Pistol_2.obj',           mtl: 'Pistol_2.mtl',           barrelYRatio: 0.62 },
   { id: 'revolver_magnum',   obj: 'Revolver_3.obj',         mtl: 'Revolver_3.mtl',         barrelYRatio: 0.62 },
   { id: 'combat_shotgun',    obj: 'Shotgun_3.obj',          mtl: 'Shotgun_3.mtl',          barrelYRatio: 0.56 },
@@ -305,6 +305,32 @@ const WEAPON_MAP = [
   { id: 'tactical_katana',   obj: 'Accessories/Bayonet_2.obj', mtl: 'Accessories/Bayonet_2.mtl', barrelYRatio: 0.50, outBase: 'Bayonet_2' }
 ];
 
+// Estes dois OBJ do pacote guardam a mira no mesmo objeto que o corpo.
+// Preserve faces, UVs, normais e materiais; nomeie a peça que o jogo anima.
+function copyWeaponObj(source, destination, sight) {
+  if (!sight) return fs.copyFileSync(source, destination);
+  const [name, firstVertex, lastVertex] = sight;
+  const body = [];
+  const optics = [];
+  let material = '', lastMaterial = '';
+  for (const line of fs.readFileSync(source, 'utf8').trimEnd().split(/\r?\n/)) {
+    if (line.startsWith('usemtl ')) material = line;
+    const isSightFace = line.startsWith('f ') && line.slice(2).trim().split(/\s+/).every(ref => {
+      const vertex = parseInt(ref, 10);
+      return vertex >= firstVertex && vertex <= lastVertex;
+    });
+    if (isSightFace) {
+      if (material !== lastMaterial) optics.push(material);
+      lastMaterial = material;
+      optics.push(line);
+    } else {
+      body.push(line);
+    }
+  }
+  if (!optics.length) throw new Error(`Mira ausente: ${source} (${name})`);
+  fs.writeFileSync(destination, [...body, 'o ' + name, ...optics, ''].join('\n'));
+}
+
 let totalWeaponBytes = 0;
 for (const w of WEAPON_MAP) {
   const srcObj = path.join(GUN_SRC, w.obj);
@@ -312,7 +338,7 @@ for (const w of WEAPON_MAP) {
   const base = w.outBase || path.basename(w.obj, '.obj');
   const dstObjRel = `weapons/${base}.obj`;
   const dstMtlRel = `weapons/${base}.mtl`;
-  fs.copyFileSync(srcObj, path.join(OUT_ROOT, dstObjRel));
+  copyWeaponObj(srcObj, path.join(OUT_ROOT, dstObjRel), w.sight);
   fs.copyFileSync(srcMtl, path.join(OUT_ROOT, dstMtlRel));
   totalWeaponBytes += fs.statSync(srcObj).size + fs.statSync(srcMtl).size;
 

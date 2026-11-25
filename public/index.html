@@ -87,6 +87,11 @@
   .scope-center { position:absolute; top:50%; left:50%; width:6px; height:6px; transform:translate(-50%,-50%); border-radius:50%; background:rgba(220,42,32,0.96); box-shadow:0 0 6px rgba(220,42,32,0.7); }
   #scope-zoom-label { position:absolute; top:calc(50% + 24vmin); left:50%; transform:translateX(-50%); font-size:10px; color:#8b9c7c; letter-spacing:2px; }
 
+  #scope-overlay.model-scope { background:none; }
+  .model-scope .scope-ring, .model-scope .scope-dots-h, .model-scope .scope-dots-v { display:none; }
+  .model-scope .scope-h { left:calc(50% - 1.5vmin); right:calc(50% - 1.5vmin); }
+  .model-scope .scope-v { top:calc(50% - 1.5vmin); bottom:calc(50% - 1.5vmin); }
+
   /* Camada de Tags 3D (Aliados de Time e Jogadores próximos) */
   #world-labels { position:fixed; inset:0; pointer-events:none; z-index:4; overflow:hidden; }
   .player-tag { position:absolute; transform:translate(-50%,-100%); font-size:10px; font-weight:700; letter-spacing:1px; padding:2px 7px; border-radius:2px; white-space:nowrap; text-shadow:0 1px 3px #000; }
@@ -132,7 +137,8 @@
   }
   #net-debug-overlay b { color:#f5e6be; }
   #scope-zeroing-label {
-    position:absolute; bottom:17%; left:50%; transform:translateX(-50%);
+    position:absolute; top:calc(50% + 24vmin + 16px); left:50%; transform:translateX(-50%);
+    width:max-content; max-width:96vw; text-align:center;
     font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1.4px;
     color:rgba(210,238,185,0.88); text-shadow:0 1px 4px #000;
   }
@@ -4761,7 +4767,7 @@ const WEAPON_DEFS = {
 
   // === 01_fuzis ===
   assault_rifle: {
-    id:'assault_rifle', code:'M41-T', category:'rifles', categoryLabel:'Fuzis',
+    id:'assault_rifle', nativeSightLabel:'Reflex integrada', code:'M41-T', category:'rifles', categoryLabel:'Fuzis',
     name:'FUZIL DE ASSALTO M41-T', cal:'5.56x45MM // AUTO 750 RPM', ammoType:'556',
     folder:'01_fuzis/m41-t_fuzil', objFile:'m41-t_game_ready.obj', hudIcon:'m41-t_hud_icon.png',
     texChannels:['metal','accent','polymer','grip'], lengthCm:84, targetLenM:0.86,
@@ -4781,7 +4787,7 @@ const WEAPON_DEFS = {
     sockets:{ muzzle:[1.62,0.11,0], grip:[-0.36,-0.22,0], ejection:[0.06,0.11,0.075], optic:[-0.04,0.25,0], side:[0.76,0.11,0.075], under:[0.72,0.01,0] }
   },
   sniper_rifle: {
-    id:'sniper_rifle', code:'SR-76', category:'rifles', categoryLabel:'Fuzis',
+    id:'sniper_rifle', nativeScope:'scope8x', code:'SR-76', category:'rifles', categoryLabel:'Fuzis',
     name:'RIFLE DE PRECISÃO SR-76', cal:'.308 WIN // BOLT-ACTION', ammoType:'308',
     folder:'01_fuzis/sr-76_sniper', objFile:'sr-76_game_ready.obj', hudIcon:'sr-76_hud_icon.png',
     texChannels:['metal','accent','polymer','grip'], lengthCm:124, targetLenM:1.12,
@@ -4791,7 +4797,7 @@ const WEAPON_DEFS = {
     sockets:{ muzzle:[2.02,0.115,0], grip:[-0.4, -0.24,0], ejection:[-0.14,0.12,0.08], optic:[0.08,0.31,0], side:[0.58,0.06,0.085], under:[0.92,-0.02,0] }
   },
   dmr_m110: {
-    id:'dmr_m110', code:'M110-K', category:'rifles', categoryLabel:'Fuzis DMR',
+    id:'dmr_m110', packModel:true, hudIconUrl:'/assets/v2/weapons/dmr_m110.png', code:'M110-K', category:'rifles', categoryLabel:'Fuzis DMR',
     name:'DMR TÁTICO M110-K', cal:'7.62x51MM .308 // SEMI-AUTO', ammoType:'308',
     folder:'01_fuzis/m41-t_fuzil', objFile:'m41-t_game_ready.obj', hudIcon:'m41-t_hud_icon.png',
     texChannels:['metal','accent','polymer','grip'], lengthCm:102, targetLenM:0.98,
@@ -4801,7 +4807,7 @@ const WEAPON_DEFS = {
     sockets:{ muzzle:[1.55,0.125,0], grip:[-0.32,-0.24,0], ejection:[0.08,0.12,0.08], optic:[0.02,0.34,0], side:[0.82,0.12,0.09], under:[0.78,0.01,0] }
   },
   mdr_rifle: {
-    id:'mdr_rifle', code:'MDR-X', category:'rifles', categoryLabel:'Fuzis',
+    id:'mdr_rifle', packModel:true, hudIconUrl:'/assets/v2/weapons/mdr_rifle.png', code:'MDR-X', category:'rifles', categoryLabel:'Fuzis',
     name:'RIFLE DE COMBATE MDR-X', cal:'7.62 NATO // AUTO 580 RPM', ammoType:'762',
     folder:'01_fuzis/m41-t_fuzil', objFile:'m41-t_game_ready.obj', hudIcon:'m41-t_hud_icon.png',
     texChannels:['metal','accent','polymer','grip'], lengthCm:88, targetLenM:0.89,
@@ -4811,7 +4817,7 @@ const WEAPON_DEFS = {
     sockets:{ muzzle:[1.55,0.125,0], grip:[-0.32,-0.24,0], ejection:[0.08,0.12,0.08], optic:[0.02,0.34,0], side:[0.82,0.12,0.09], under:[0.78,0.01,0] }
   },
   heavy_sniper: {
-    id:'heavy_sniper', code:'M82-.50', category:'rifles', categoryLabel:'Sniper Pesada',
+    id:'heavy_sniper', nativeScope:'scope12x', packModel:true, hudIconUrl:'/assets/v2/weapons/heavy_sniper.png', code:'M82-.50', category:'rifles', categoryLabel:'Sniper Pesada',
     name:'SNIPER ANTIMATERIAL M82 .50', cal:'.50 BMG // LONGO ALCANCE', ammoType:'308',
     folder:'01_fuzis/sr-76_sniper', objFile:'sr-76_game_ready.obj', hudIcon:'sr-76_hud_icon.png',
     texChannels:['metal','accent','polymer','grip'], lengthCm:142, targetLenM:1.28,
@@ -4865,7 +4871,7 @@ const WEAPON_DEFS = {
     sockets:{ muzzle:[1.46,0.12,0], grip:[-0.46,-0.04,0], ejection:[-0.12,0.12,0], optic:[-0.06,0.22,0], under:[0.76,0,0] }
   },
   compact_smg: {
-    id:'compact_smg', code:'VX-9', category:'cqb', categoryLabel:'CQB',
+    id:'compact_smg', nativeSightLabel:'Reflex integrada', code:'VX-9', category:'cqb', categoryLabel:'CQB',
     name:'SUBMETRALHADORA VX-9', cal:'9x19MM // SUPRIMIDA 920 RPM', ammoType:'9mm',
     folder:'03_cqb/vx-9_smg', objFile:'vx-9_game_ready.obj', hudIcon:'vx-9_hud_icon.png',
     texChannels:['metal','accent','grip','polymer'], lengthCm:62, targetLenM:0.64,
@@ -4887,7 +4893,7 @@ const WEAPON_DEFS = {
     sockets:{ muzzle:[1.74,0.12,0], grip:[-0.44,-0.24,0], ejection:[0.12,0.14,0.12], optic:[-0.02,0.32,0], side:[0.84,0.1,0.11], under:[0.88,-0.04,0] }
   },
   rocket_launcher: {
-    id:'rocket_launcher', code:'RL-84', category:'heavy', categoryLabel:'Pesadas',
+    id:'rocket_launcher', nativeScope:'acog4x', code:'RL-84', category:'heavy', categoryLabel:'Pesadas',
     name:'LANÇADOR ANTITANQUE RL-84', cal:'84MM HEAT // EXPLOSIVO', ammoType:'rocket',
     folder:'04_pesadas/rl-84_lancador', objFile:'rl-84_game_ready.obj', hudIcon:'rl-84_hud_icon.png',
     texChannels:['olive','metal','grip'], lengthCm:108, targetLenM:1.08,
@@ -4909,7 +4915,7 @@ const WEAPON_DEFS = {
 
   // === 05_scifi_e_melee (Armas Sci-Fi e Furtivas) ===
   plasma_rifle: {
-    id:'plasma_rifle', code:'PL-09', category:'scifi_melee', categoryLabel:'Sci-Fi',
+    id:'plasma_rifle', nativeSightLabel:'Retículo integrado', code:'PL-09', category:'scifi_melee', categoryLabel:'Sci-Fi',
     name:'RIFLE DE PLASMA PL-09', cal:'CÉLULA PLASMA // 480 RPM', ammoType:'plasma',
     folder:'05_scifi_e_melee/pl-09_plasma', objFile:'pl-09_game_ready.obj', hudIcon:'pl-09_hud_icon.png',
     texChannels:['metal','accent','polymer','grip'], lengthCm:88, targetLenM:0.88,
@@ -4919,7 +4925,7 @@ const WEAPON_DEFS = {
     sockets:{ muzzle:[1.46,0.13,0], grip:[-0.36,-0.22,0], ejection:[0.24,0.18,0.1], optic:[0.06,0.34,0], side:[0.76,0.14,0.11], under:[0.72,-0.03,0] }
   },
   tactical_crossbow: {
-    id:'tactical_crossbow', code:'CB-X', category:'scifi_melee', categoryLabel:'Furtiva / Precisão',
+    id:'tactical_crossbow', nativeScope:'acog4x', code:'CB-X', category:'scifi_melee', categoryLabel:'Furtiva / Precisão',
     name:'BESTA TÁTICA CB-X', cal:'VIROTE CARBONO 20" // FURTIVA', ammoType:'bolt',
     folder:'05_scifi_e_melee/cb-x_besta', objFile:'cb-x_game_ready.obj', hudIcon:'cb-x_hud_icon.png',
     texChannels:['metal','polymer','grip','accent'], lengthCm:86, targetLenM:0.86,
@@ -4930,9 +4936,14 @@ const WEAPON_DEFS = {
   }
 };
 
+function getDefaultSightLabel(def) {
+  if (def.nativeScope) return 'Luneta integrada · ' + ATTACHMENTS_DB[def.nativeScope].overlay.split(' //')[0];
+  return def.nativeSightLabel || 'Mira aberta';
+}
+
 function getWeaponHudIconUrl(wId) {
   const def = WEAPON_DEFS[wId] || WEAPON_DEFS[DEFAULT_MELEE_WEAPON];
-  return `${WEAPONS_BASE_URL}${def.folder}/${def.hudIcon}`;
+  return def.hudIconUrl || `${WEAPONS_BASE_URL}${def.folder}/${def.hudIcon}`;
 }
 
 /* ============================================================================
@@ -5079,8 +5090,10 @@ function classifyWeaponSubmesh(wId, idx, meshName) {
     else if (idx >= 20 && idx <= 24) res.channel = '__shellBrass';
     else if (idx === 27 || idx === 28) res.channel = 'metal';
   } else if (wId === 'rocket_launcher') {
-    if (idx === 9 || idx === 10) res.channel = 'metal';
-    else if (idx === 11) res.channel = '__scopeGlass';
+    if (idx >= 9 && idx <= 11) {
+      res.builtInOptic = true;
+      res.channel = idx === 11 ? '__scopeGlass' : 'metal';
+    }
   } else if (wId === 'plasma_rifle') {
     if (idx === 8) { res.channel = 'polymer'; res.isMag = true; }
     else if (idx === 9) res.channel = '__plasmaCore';
@@ -5092,7 +5105,10 @@ function classifyWeaponSubmesh(wId, idx, meshName) {
     if (idx === 10) res.channel = 'polymer';
     else if (idx === 11) res.channel = 'accent';
     else if (idx >= 12 && idx <= 14) res.channel = '__shellRed';
-    else if (idx >= 15 && idx <= 17) res.builtInOptic = true;
+    else if (idx >= 15 && idx <= 17) {
+      res.builtInOptic = true;
+      if (idx === 17) res.channel = '__opticLens';
+    }
   }
 
   if (!res.channel) {
@@ -5108,6 +5124,31 @@ function classifyWeaponSubmesh(wId, idx, meshName) {
     else res.channel = has('metal') ? 'metal' : def.texChannels[0];
   }
   return res;
+}
+
+// Os OBJ trazem lunetas com tampas sólidas. Abra a pupila no material da
+// própria peça, ao longo de X (eixo longitudinal no espaço do modelo).
+function openModelScope(obj, center, radius) {
+  if (!center || !(radius > 0)) return;
+  const materials = new Map();
+  function withAperture(source) {
+    if (materials.has(source)) return materials.get(source);
+    const mat = source.clone();
+    mat.onBeforeCompile = shader => {
+      shader.uniforms.scopePupil = { value: new THREE.Vector3(center.y, center.z, radius) };
+      shader.vertexShader = 'varying vec2 vScopeSection;\n' + shader.vertexShader.replace(
+        '#include <begin_vertex>', '#include <begin_vertex>\nvScopeSection = position.yz;');
+      shader.fragmentShader = 'varying vec2 vScopeSection;\nuniform vec3 scopePupil;\n' +
+        shader.fragmentShader.replace('#include <clipping_planes_fragment>',
+          '#include <clipping_planes_fragment>\nif (distance(vScopeSection, scopePupil.xy) < scopePupil.z) discard;');
+    };
+    materials.set(source, mat);
+    return mat;
+  }
+  obj.traverse(mesh => {
+    if (!mesh.isMesh || !mesh.userData.builtInOptic) return;
+    mesh.material = Array.isArray(mesh.material) ? mesh.material.map(withAperture) : withAperture(mesh.material);
+  });
 }
 
 function loadWeaponTemplate(wId) {
@@ -5127,8 +5168,8 @@ function loadWeaponTemplate(wId) {
   };
 
   const p = (async () => {
-    // Pipeline v2 (Quaternius Ultimate Gun Pack OBJ+MTL) quando ?assets=v2 (padrão) e arma não marcada com fallbackV1
-    if (assetLibrary.isV2()) {
+    // As variantes sem OBJ exclusivo no pacote original usam seu modelo do manifesto.
+    if (def.packModel) {
       await assetLibrary.loadManifest();
       const v2Meta = assetLibrary.getWeaponMeta(wId);
       if (v2Meta) {
@@ -5142,6 +5183,8 @@ function loadWeaponTemplate(wId) {
 
           // Varre vértices reais do OBJ para centralização lateral exata (mediana Z ignora alavanca de ferrolho!) e altura real do trilho/linha de visada
           const zs = [];
+          let nativeSight = null;
+          let pupilRadius = 0;
           let midMaxY = -Infinity;
           let sightMaxY = -Infinity;
           let muzzleMinY = Infinity, muzzleMaxY = -Infinity;
@@ -5152,10 +5195,32 @@ function loadWeaponTemplate(wId) {
           obj.traverse((child) => {
             if (!child.isMesh || !child.geometry || !child.geometry.attributes.position) return;
             const posAttr = child.geometry.attributes.position;
+            if (child.name === 'front_sight' || child.name === 'native_scope') {
+              child.geometry.computeBoundingBox();
+              const bounds = child.geometry.boundingBox;
+              nativeSight = bounds.getCenter(new THREE.Vector3());
+              if (child.name === 'front_sight') {
+                nativeSight.y = bounds.max.y;
+              } else {
+                child.userData.builtInOptic = true;
+                const glass = new THREE.Box3();
+                const vertex = new THREE.Vector3();
+                for (const group of child.geometry.groups) {
+                  if (child.material[group.materialIndex]?.name !== 'Glass') continue;
+                  for (let i = group.start; i < group.start + group.count; i++) {
+                    glass.expandByPoint(vertex.fromBufferAttribute(posAttr, i));
+                  }
+                }
+                if (!glass.isEmpty()) {
+                  glass.getCenter(nativeSight);
+                  pupilRadius = Math.min(glass.max.y - glass.min.y, glass.max.z - glass.min.z) * 0.31;
+                }
+              }
+            }
             for (let vi = 0; vi < posAttr.count; vi++) {
               const vx = posAttr.getX(vi), vy = posAttr.getY(vi), vz = posAttr.getZ(vi);
               zs.push(vz);
-              if (vx >= xMid0 && vx <= xMid1 && vy > midMaxY) midMaxY = vy;
+              if (!child.userData.builtInOptic && vx >= xMid0 && vx <= xMid1 && vy > midMaxY) midMaxY = vy;
               if (vx >= xSight0 && vy > sightMaxY) sightMaxY = vy;
               if (vx >= xMuz0) {
                 if (vy < muzzleMinY) muzzleMinY = vy;
@@ -5163,6 +5228,7 @@ function loadWeaponTemplate(wId) {
               }
             }
           });
+          openModelScope(obj, nativeSight, pupilRadius);
           zs.sort((a, b) => a - b);
           const medZ = zs.length ? zs[(zs.length * 0.5) | 0] : ((rawBox.min.z + rawBox.max.z) * 0.5);
 
@@ -5210,7 +5276,9 @@ function loadWeaponTemplate(wId) {
             opticZ: opticPos.z,
             railY,
             baseSightY,
-            builtInSightY: baseSightY,
+            builtInSightY: nativeSight ? (nativeSight.y - gy) * scale : baseSightY,
+            builtInSightX: nativeSight ? (nativeSight.z - gz) * scale : 0,
+            hasNativeSight: !!nativeSight,
             safeAdsZ,
             safeHipY,
             opticPos,
@@ -5247,7 +5315,8 @@ function loadWeaponTemplate(wId) {
       let receiverBox = null;
       let receiverTopY = -Infinity;
       let receiverMidX = rawCenter.x;
-      let builtInReticleObjY = null;
+      let sightCenter = null;
+      let pupilRadius = Infinity;
       const toHollow = [];
       const origMeshes = [];
 
@@ -5280,8 +5349,15 @@ function loadWeaponTemplate(wId) {
         child.geometry.computeBoundingBox();
         const b = child.geometry.boundingBox;
         if (!b) continue;
-        if (info.isReticleDot) {
-          builtInReticleObjY = (b.min.y + b.max.y) * 0.5;
+        const frontBlade = /^(front_blade_sight|front_sight_hood)$/.test(child.name);
+        if (def.nativeScope && (ch === '__scopeGlass' || child.name === 'scope_lens')) {
+          pupilRadius = Math.min(pupilRadius, (b.max.y - b.min.y) * 0.40, (b.max.z - b.min.z) * 0.40);
+        }
+        if (info.isReticleDot || frontBlade || /^(brass_bead|front_bead|scope_lens)$/.test(child.name) ||
+            ch === '__scopeGlass' || (wId === 'heavy_lmg' && curIdx === 27)) {
+          sightCenter = b.getCenter(new THREE.Vector3());
+          if (frontBlade) sightCenter.y = b.max.y;
+          if (wId === 'heavy_lmg') sightCenter.z = 0;
         }
         const nm = String(child.name || '').toLowerCase();
         if (!gripBox && /^(pistol_grip|sniper_grip|walnut_grip|crossbow_grip|tactical_handle|tsuka_handle|trigger_grip|sci_fi_grip|lmg_grip|fragmentation_body)$/.test(nm)) {
@@ -5299,6 +5375,7 @@ function loadWeaponTemplate(wId) {
         }
       }
 
+      if (Number.isFinite(pupilRadius)) openModelScope(obj, sightCenter, pupilRadius);
       for (const h of toHollow) {
         convertSolidBoxToOpenFrame(h.mesh, h.mode);
       }
@@ -5338,9 +5415,8 @@ function loadWeaponTemplate(wId) {
 
       // Altura exata da linha de visada padrão: na Besta CB-X fica limpa acima da coronha/trilho (nunca bloqueada pelo bloco traseiro!)
       const baseSightY = Math.max(0.03, opticPos.y + (wId === 'tactical_crossbow' ? 0.026 : 0.012));
-      const builtInSightY = builtInReticleObjY !== null
-        ? Math.max(0.03, (builtInReticleObjY - gy) * scale)
-        : baseSightY;
+      const nativeSight = sightCenter && objToGame(sightCenter.x, sightCenter.y, sightCenter.z);
+      const builtInSightY = nativeSight?.y ?? baseSightY;
 
       // Relação de escala entre sockets.json e OBJ para trilhos lateral e inferior
       const sockSpanX = Math.max(0.25, (sMuz[0] || 1.2) - (sGrp[0] || -0.3));
@@ -5372,6 +5448,7 @@ function loadWeaponTemplate(wId) {
         railY: Math.max(0.025, opticPos.y),
         baseSightY,
         builtInSightY,
+        builtInSightX: nativeSight?.x ?? 0,
         safeAdsZ,
         safeHipY,
         opticPos,
@@ -5457,6 +5534,7 @@ function hydrateWeaponAssembly(assembly, wId, entry) {
   assembly.muzzleY = metrics.muzzleY;
   assembly.opticZ = metrics.opticZ;
   assembly.railY = metrics.railY ?? metrics.baseSightY;
+  assembly.builtInSightX = metrics.builtInSightX || 0;
   assembly.baseSightY = metrics.baseSightY;
   assembly.builtInSightY = metrics.builtInSightY;
   assembly.opticSightY = metrics.builtInSightY;
@@ -5470,8 +5548,7 @@ function hydrateWeaponAssembly(assembly, wId, entry) {
     assembly.ironSightRear.remove(assembly.ironSightRear.children[0]);
   }
   const wDefIron = WEAPON_DEFS[wId];
-  const hasNativeIntegratedScope = (wId === 'sniper_rifle' || wId === 'heavy_sniper');
-  const needsOpenIronSights = (metrics.isV2 || wId === 'tactical_crossbow') && !hasNativeIntegratedScope;
+  const needsOpenIronSights = metrics.isV2 && !metrics.hasNativeSight;
   if (needsOpenIronSights && wDefIron && !wDefIron.melee && wDefIron.animType !== 'throwable') {
     const sy = metrics.baseSightY;
     const ryBase = Math.min(sy - 0.010, (metrics.railY ?? (sy - 0.014)) - 0.008);
@@ -5624,20 +5701,20 @@ function rebuildAttachmentVisuals(assembly, gunType, attachments) {
     });
   };
 
-  // Na SR-76 e M82, a luneta nativa do modelo OBJ substitui a procedural quando 8x/12x; na Besta CB-X oculta o cilindro sólido opaco em mira de ferro!
-  const useNativeSniperScope = ((gunType === 'sniper_rifle' || gunType === 'heavy_sniper') && (!optic || optic === 'scope8x' || optic === 'scope12x'));
-  const showBuiltInOptic = useNativeSniperScope || (!optic && gunType !== 'tactical_crossbow');
+  const useNativeScope = def.nativeScope && (!optic || optic === def.nativeScope);
+  const showBuiltInOptic = useNativeScope || !optic;
+  assembly.opticSightX = showBuiltInOptic ? assembly.builtInSightX : 0;
   if (assembly.builtInOpticMeshes && assembly.builtInOpticMeshes.length > 0) {
     for (let i = 0; i < assembly.builtInOpticMeshes.length; i++) {
       assembly.builtInOpticMeshes[i].visible = showBuiltInOptic;
     }
   }
 
-  assembly.ironSightRear.visible = !optic && !useNativeSniperScope;
+  assembly.ironSightRear.visible = !optic && !useNativeScope;
   assembly.opticSightY = showBuiltInOptic ? (assembly.builtInSightY ?? assembly.baseSightY) : assembly.baseSightY;
 
   // 1. MIRA / ÓPTICA (socket_optic — janelas 100% transparentes e retículo luminoso rente ao trilho!)
-  const opticMountY = Math.max(assembly.railY ?? (assembly.baseSightY - 0.012), assembly.baseSightY - 0.012);
+  const opticMountY = assembly.railY ?? (assembly.baseSightY - 0.012);
   if (optic === 'reddot') {
     const oy = opticMountY + 0.020;
     assembly.opticSightY = oy;
@@ -5675,7 +5752,7 @@ function rebuildAttachmentVisuals(assembly, gunType, attachments) {
     dot.position.set(0, oy, assembly.opticZ - 0.001);
     dot.renderOrder = 6;
     assembly.attachGroup.add(hood, sideL, sideR, topB, lens, ring, dot);
-  } else if ((optic === 'acog4x' || optic === 'scope8x' || optic === 'scope12x') && !useNativeSniperScope) {
+  } else if ((optic === 'acog4x' || optic === 'scope8x' || optic === 'scope12x') && !useNativeScope) {
     const is12x = optic === 'scope12x';
     const is8x = optic === 'scope8x' || is12x;
     const oy = opticMountY + 0.022;
@@ -6900,7 +6977,7 @@ function rollRandomLootEntry(rng, lootIdx, highTier = false) {
     const wId = pool[(rng() * pool.length) | 0];
     const def = WEAPON_DEFS[wId];
     const startMag = def.melee ? 0 : Math.max(1, Math.ceil(rng() * def.magSize));
-    const defaultOptic = wId === 'heavy_sniper' ? 'scope12x' : (wId === 'sniper_rifle' ? 'scope8x' : ((wId === 'dmr_m110' || wId === 'tactical_crossbow' || wId === 'plasma_rifle') ? 'acog4x' : null));
+    const defaultOptic = wId === 'heavy_sniper' ? 'scope12x' : (wId === 'sniper_rifle' ? 'scope8x' : (wId === 'dmr_m110' ? 'acog4x' : null));
     const att = { optic: defaultOptic, muzzle: null, side: null, under: wId === 'heavy_sniper' ? 'bipod' : null };
     return { uid, kind: 'weapon', subId: wId, name: def.name, qty: 1, extra: { mag: startMag, attachments: att } };
   } else if (r < 0.66) {
@@ -15146,7 +15223,7 @@ function updateLocalPlayer(dt) {
 
     const wInstCar = getActiveWeaponObj();
     const wDefCar = WEAPON_DEFS[wInstCar.id];
-    const opticIdCar = wInstCar.attachments ? wInstCar.attachments.optic : null;
+    const opticIdCar = wInstCar.attachments?.optic || wDefCar.nativeScope;
     const opticCfgCar = opticIdCar ? ATTACHMENTS_DB[opticIdCar] : null;
     const wantsAdsCar = wantsLean && (mouseDownRight || player.adsFirstPersonToggle) && !gunState.reloading && !wDefCar.melee;
     const useInCar1P = player.firstPerson || (wantsLean && (player.adsFirstPersonToggle || (wantsAdsCar && opticCfgCar && opticCfgCar.overlay)));
@@ -15655,8 +15732,7 @@ function updateCameraAndWeaponViewmodel(dt) {
   const wInst = getActiveWeaponObj();
   const wDef = WEAPON_DEFS[wInst.id];
   const opticId = wInst.attachments.optic;
-  const nativeSniperOptic = !opticId ? (wInst.id === 'heavy_sniper' ? 'scope12x' : (wInst.id === 'sniper_rifle' ? 'scope8x' : null)) : null;
-  const opticCfg = (opticId || nativeSniperOptic) ? ATTACHMENTS_DB[opticId || nativeSniperOptic] : null;
+  const opticCfg = ATTACHMENTS_DB[opticId || wDef.nativeScope];
 
   // Caso 1: Dentro de Veículo (Motorista OU Passageiro com Mira 100% Livre 360°, Câmera Estável sem Tremor e Inclinação pela Janela!)
   if (player.drivingCar) {
@@ -15736,6 +15812,9 @@ function updateCameraAndWeaponViewmodel(dt) {
 
   // Overlay de Luneta 4x / 8x / 12x + Zeroing + Draw Distance Dinâmico (ativa cedo para evitar tela preta no tubo da luneta)
   const showScopeOverlay = !!(wantsAds && opticCfg && opticCfg.overlay && gunState.adsAlpha > 0.52);
+  const useModelScope = showScopeOverlay && wDef.nativeScope && (!opticId || opticId === wDef.nativeScope)
+    && fpWeaponMeshes[wInst.id]?.builtInOpticMeshes?.length > 0;
+  _scopeElRef?.classList.toggle('model-scope', !!useModelScope);
   if (showScopeOverlay !== _lastScopeShow) {
     _lastScopeShow = showScopeOverlay;
     if (_scopeElRef) _scopeElRef.style.display = showScopeOverlay ? 'block' : 'none';
@@ -15796,7 +15875,7 @@ function updateCameraAndWeaponViewmodel(dt) {
   if (useFirstPersonView) {
     // --- CÂMERA 1ª PESSOA + VIEWMODEL COM ANIMAÇÕES 3D DE ARMAS E MIRAS ALINHADAS NO CENTRO (0, 0)! ---
     omni.root.visible = false;
-    fpWeaponRig.visible = !showScopeOverlay;
+    fpWeaponRig.visible = !showScopeOverlay || !!useModelScope;
 
     const hSpeed = Math.hypot(player.vel.x, player.vel.z);
     const hbSetting = knoxSettings.gameplay.headbob ? (knoxSettings.gameplay.headbobIntensity ?? 1.0) : 0;
@@ -15848,7 +15927,7 @@ function updateCameraAndWeaponViewmodel(dt) {
     const hipY = (fpMesh && Number.isFinite(fpMesh.safeHipY)) ? fpMesh.safeHipY : wDef.hipPos[1];
     const adsZ = (fpMesh && Number.isFinite(fpMesh.safeAdsZ)) ? fpMesh.safeAdsZ : wDef.adsZ;
     _fpHipVec.set(wDef.hipPos[0], hipY, wDef.hipPos[2]);
-    _fpAdsVec.set(0, -(fpMesh ? fpMesh.opticSightY : (wDef.sightY || 0.08)), adsZ);
+    _fpAdsVec.set(-(fpMesh?.opticSightX || 0), -(fpMesh ? fpMesh.opticSightY : (wDef.sightY || 0.08)), adsZ);
     _fpCurPos.lerpVectors(_fpHipVec, _fpAdsVec, inFpAds ? gunState.adsAlpha : 0);
     updateFpArmsPose(wInst.id, fpMesh, inFpAds ? gunState.adsAlpha : 0);
 
@@ -17998,7 +18077,7 @@ function renderDayZInventoryUI() {
     ['optic', 'muzzle', 'side', 'under'].forEach((sl) => {
       if (!curDef.allowedSlots.includes(sl)) return;
       const curAttId = curW.attachments[sl];
-      const emptyTxt = sl === 'optic' ? 'Vazio (Mira de Ferro Padrão)' : 'Vazio (Padrão)';
+      const emptyTxt = sl === 'optic' ? getDefaultSightLabel(curDef) : 'Vazio (Padrão)';
       const box = document.createElement('div');
       box.className = 'attach-slot-box';
       box.innerHTML = `<div><span class="slot-lbl">${labels[sl]}</span><b>${curAttId ? ATTACHMENTS_DB[curAttId].name : emptyTxt}</b></div>`;
@@ -21765,7 +21844,7 @@ function updateWeaponHUD() {
     .filter(Boolean);
   document.getElementById('hud-attachments').textContent = attNames.length
     ? attNames.join(' · ')
-    : (def.melee ? (def.id === DEFAULT_MELEE_WEAPON ? 'ARMA INICIAL DAYZ' : 'CORPO A CORPO') : (gameConfig.infiniteWeaponsMode ? 'MODO ARSENAL [B] · RESERVA ∞' : 'MIRA DE FERRO PADRÃO'));
+    : (def.melee ? (def.id === DEFAULT_MELEE_WEAPON ? 'ARMA INICIAL DAYZ' : 'CORPO A CORPO') : (gameConfig.infiniteWeaponsMode ? 'MODO ARSENAL [B] · RESERVA ∞' : getDefaultSightLabel(def)));
 
   const magEl = document.getElementById('ammo-mag');
   const resEl = document.getElementById('ammo-reserve');

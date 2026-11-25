@@ -510,7 +510,7 @@ export class AssetLibrary {
   }
 
   getWeaponMeta(weaponId) {
-    if (!this.isV2() || !this.manifest || !this.manifest.weapons) return null;
+    if (!this.manifest || !this.manifest.weapons) return null;
     const entry = this.manifest.weapons[weaponId];
     if (!entry || entry.fallbackV1 || !entry.file) return null;
     return entry;
@@ -619,7 +619,6 @@ export class AssetLibrary {
   }
 
   async loadWeaponObjMtl(weaponId) {
-    if (!this.isV2()) return null;
     await this.loadManifest();
     const meta = this.getWeaponMeta(weaponId);
     if (!meta) return null;
