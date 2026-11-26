@@ -4892,7 +4892,7 @@ const WEAPON_DEFS = {
     sockets:{ muzzle:[1.74,0.12,0], grip:[-0.44,-0.24,0], ejection:[0.12,0.14,0.12], optic:[-0.02,0.32,0], side:[0.84,0.1,0.11], under:[0.88,-0.04,0] }
   },
   rocket_launcher: {
-    id:'rocket_launcher', nativeScope:'acog4x', code:'RL-84', category:'heavy', categoryLabel:'Pesadas',
+    id:'rocket_launcher', scopeOverlayOnly:true, nativeScope:'acog4x', code:'RL-84', category:'heavy', categoryLabel:'Pesadas',
     name:'LANÇADOR ANTITANQUE RL-84', cal:'84MM HEAT // EXPLOSIVO', ammoType:'rocket',
     folder:'04_pesadas/rl-84_lancador', objFile:'rl-84_game_ready.obj', hudIcon:'rl-84_hud_icon.png',
     texChannels:['olive','metal','grip'], lengthCm:108, targetLenM:1.08,
@@ -4924,7 +4924,7 @@ const WEAPON_DEFS = {
     sockets:{ muzzle:[1.46,0.13,0], grip:[-0.36,-0.22,0], ejection:[0.24,0.18,0.1], optic:[0.06,0.34,0], side:[0.76,0.14,0.11], under:[0.72,-0.03,0] }
   },
   tactical_crossbow: {
-    id:'tactical_crossbow', nativeScope:'acog4x', code:'CB-X', category:'scifi_melee', categoryLabel:'Furtiva / Precisão',
+    id:'tactical_crossbow', scopeOverlayOnly:true, nativeScope:'acog4x', code:'CB-X', category:'scifi_melee', categoryLabel:'Furtiva / Precisão',
     name:'BESTA TÁTICA CB-X', cal:'VIROTE CARBONO 20" // FURTIVA', ammoType:'bolt',
     folder:'05_scifi_e_melee/cb-x_besta', objFile:'cb-x_game_ready.obj', hudIcon:'cb-x_hud_icon.png',
     texChannels:['metal','polymer','grip','accent'], lengthCm:86, targetLenM:0.86,
@@ -5252,6 +5252,7 @@ function loadWeaponTemplate(wId) {
         if (!part.isMesh) return;
         const mesh = new THREE.Mesh(part.geometry.clone().applyMatrix4(part.matrixWorld), part.material);
         mesh.name = part.name;
+        mesh.userData.isPumpPart = part.parent?.name === 'pump_forend';
         if (mesh.material.isMeshStandardMaterial) {
           mesh.material.envMap = weaponEnvMap;
           mesh.material.envMapIntensity = 0.55;
@@ -5515,6 +5516,46 @@ function hydrateWeaponAssembly(assembly, wId, entry) {
     pivot.add(hammer);
     clone.add(pivot);
     assembly.hammerMesh = pivot;
+  }
+
+  // A geometria do GLB está em coordenadas da arma. Reponha os pivôs
+  // das peças que giram para que a animação mantenha o encaixe no modelo.
+  for (const key of ['magMesh', 'boltMesh']) {
+    const part = assembly[key];
+    if (!part?.isMesh || (key === 'boltMesh' && WEAPON_DEFS[wId].animType !== 'bolt')) continue;
+    const pivot = new THREE.Group();
+    part.geometry.boundingBox.getCenter(pivot.position);
+    pivot.userData = { objSpace: true, restX: pivot.position.x, restY: pivot.position.y };
+    part.position.sub(pivot.position);
+    pivot.add(part);
+    clone.add(pivot);
+    assembly[key] = pivot;
+  }
+
+  if (wId === 'combat_shotgun') {
+    const pumpParts = clone.children.filter(part => part.userData.isPumpPart);
+    if (pumpParts.length) {
+      assembly.pumpGroup = new THREE.Group();
+      assembly.pumpGroup.add(...pumpParts);
+      clone.add(assembly.pumpGroup);
+    }
+  }
+
+  if (wId === 'double_barrel') {
+    const barrels = clone.children.filter(part =>
+      /^(barrel_left|barrel_right|center_rib|brass_bead|walnut_forend)$/.test(part.name));
+    const barrel = barrels.find(part => part.name === 'barrel_left');
+    if (barrel) {
+      const hinge = new THREE.Group();
+      const bounds = barrel.geometry.boundingBox;
+      hinge.position.set(bounds.min.x, (bounds.min.y + bounds.max.y) / 2, 0);
+      for (const part of barrels) {
+        part.position.sub(hinge.position);
+        hinge.add(part);
+      }
+      clone.add(hinge);
+      assembly.barrelHinge = hinge;
+    }
   }
 
   // Posiciona empunhadura centralizada em (0,0,0), escala real e gira +X (cano do OBJ) para -Z (frente do jogo!)
@@ -14160,6 +14201,9 @@ function equipSlot(slotIdx) {
   gunState.boltTimer = 0;
   gunState.recoilKick = 0;
   gunState.meleeSwingT = 0;
+  gunState.flashT = 0;
+  tpFlashMesh.visible = fpFlashMesh.visible = false;
+  muzzleLight.intensity = 0;
   gunState.recoilPosZ = 0;
   gunState.recoilPitch = 0;
   gunState.recoilPitchVel = 0;
@@ -14195,9 +14239,11 @@ function animateWeaponAssembly(assembly, wInst, dt, isFirstPerson) {
         vRotZ += eq * 0.35;
       }
     }
-    if (animType === 'break' && gunState.reloading && relProg > 0.12 && relProg < 0.84) {
-      const brk = Math.sin(((relProg - 0.12) / 0.72) * Math.PI);
-      vRotX -= brk * 0.42;
+    if (assembly.barrelHinge) {
+      const open = gunState.reloading && relProg > 0.12 && relProg < 0.84
+        ? Math.sin((relProg - 0.12) / 0.72 * Math.PI)
+        : 0;
+      assembly.barrelHinge.rotation.z = -0.52 * open;
     }
     assembly.gunVisualGroup.position.z = THREE.MathUtils.lerp(assembly.gunVisualGroup.position.z, vPosZ, Math.min(1, dt * 28));
     assembly.gunVisualGroup.rotation.x = THREE.MathUtils.lerp(assembly.gunVisualGroup.rotation.x, vRotX, Math.min(1, dt * 24));
@@ -14295,6 +14341,7 @@ function animateWeaponAssembly(assembly, wInst, dt, isFirstPerson) {
     if (isObj) {
       const targetX = restAxis - pullback * travelUnit;
       assembly.boltMesh.position.x = THREE.MathUtils.lerp(assembly.boltMesh.position.x, targetX, Math.min(1, dt * 36));
+      if (assembly.pumpGroup) assembly.pumpGroup.position.x = assembly.boltMesh.position.x - restAxis;
       assembly.boltMesh.rotation.x = THREE.MathUtils.lerp(assembly.boltMesh.rotation.x, targetRot, Math.min(1, dt * 28));
     } else {
       const targetZ = restAxis + pullback;
@@ -15805,7 +15852,7 @@ function updateCameraAndWeaponViewmodel(dt) {
   }
 
   // Modo Mira 1ª Pessoa Real (quando V=1ª Pessoa OU quando aperta Z / Luneta 4x/8x/12x!)
-  const wantsAds = (mouseDownRight || player.adsFirstPersonToggle) && !gunState.reloading && !player.sprinting && !player.dead && !wDef.melee;
+  const wantsAds = (mouseDownRight || player.adsFirstPersonToggle) && !gunState.reloading && !player.sprinting && !player.dead && !wDef.melee && wDef.animType !== 'throwable';
   const useFirstPersonView = player.firstPerson || player.adsFirstPersonToggle || (wantsAds && opticCfg && opticCfg.overlay);
 
   const inFpAds = useFirstPersonView && wantsAds;
@@ -15813,7 +15860,7 @@ function updateCameraAndWeaponViewmodel(dt) {
 
   // Overlay de Luneta 4x / 8x / 12x + Zeroing + Draw Distance Dinâmico (ativa cedo para evitar tela preta no tubo da luneta)
   const showScopeOverlay = !!(wantsAds && opticCfg && opticCfg.overlay && gunState.adsAlpha > 0.52);
-  const useModelScope = showScopeOverlay && wDef.nativeScope && (!opticId || opticId === wDef.nativeScope)
+  const useModelScope = showScopeOverlay && !wDef.scopeOverlayOnly && wDef.nativeScope && (!opticId || opticId === wDef.nativeScope)
     && fpWeaponMeshes[wInst.id]?.builtInOpticMeshes?.length > 0;
   _scopeElRef?.classList.toggle('model-scope', !!useModelScope);
   if (showScopeOverlay !== _lastScopeShow) {
@@ -15987,6 +16034,13 @@ function updateCameraAndWeaponViewmodel(dt) {
     if (wDef.melee && gunState.meleeSwingT > 0) {
       const sl = Math.sin((gunState.meleeSwingT / 0.34) * Math.PI);
       extraRX = -sl * 0.88; extraRY = sl * 0.58; _fpCurPos.z -= sl * 0.15;
+    }
+
+    if (wDef.animType === 'throwable' && gunState.meleeSwingT > 0) {
+      const swing = Math.sin((1 - gunState.meleeSwingT / 0.34) * Math.PI);
+      extraRX -= swing * 0.72;
+      extraY += swing * 0.08;
+      extraZ -= swing * 0.09;
     }
 
     // Wall-Pullback 1P: recolhe e levanta o cano suavemente ao encostar em parede
@@ -16735,6 +16789,7 @@ function performAttack() {
 
   const muzzlePos = getMuzzleWorldPos(new THREE.Vector3());
   const isThrowable = wDef.projectileType === 'grenade';
+  if (isThrowable) gunState.meleeSwingT = 0.34;
   const flashHex = wDef.isPlasma ? 0x38ecff : 0xffcf6e;
   if (!isSuppressed && !isThrowable) {
     const tpM = tpWeaponMeshes[wInst.id];
