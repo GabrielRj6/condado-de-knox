@@ -5272,6 +5272,7 @@ function loadWeaponTemplate(wId) {
       let receiverTopY = -Infinity;
       let receiverMidX = rawCenter.x;
       let sightCenter = null;
+      let hammerTop = null;
       let pupilRadius = Infinity;
       const toHollow = [];
       const origMeshes = [];
@@ -5305,6 +5306,10 @@ function loadWeaponTemplate(wId) {
         child.geometry.computeBoundingBox();
         const b = child.geometry.boundingBox;
         if (!b) continue;
+        if (wId === 'revolver_magnum' && child.name === 'exposed_hammer') {
+          hammerTop = new THREE.Vector3(b.max.x, b.max.y, 0);
+        }
+        child.userData.isCylinderRound = wId === 'revolver_magnum' && curIdx >= 2 && curIdx <= 7;
         const frontBlade = /^(front_blade_sight|front_sight_hood)$/.test(child.name);
         if (def.nativeScope && (ch === '__scopeGlass' || child.name === 'scope_lens')) {
           pupilRadius = Math.min(pupilRadius, (b.max.y - b.min.y) * 0.40, (b.max.z - b.min.z) * 0.40);
@@ -5372,6 +5377,13 @@ function loadWeaponTemplate(wId) {
       const railY = wId === 'heavy_lmg' ? (rawBox.max.y - gy) * scale : opticPos.y;
       const baseSightY = Math.max(0.03, railY + 0.012);
       const nativeSight = sightCenter && objToGame(sightCenter.x, sightCenter.y, sightCenter.z);
+      let builtInSightPitch = 0;
+      if (nativeSight && hammerTop) {
+        const rear = objToGame(hammerTop.x, hammerTop.y, hammerTop.z);
+        nativeSight.y += 0.001;
+        builtInSightPitch = Math.atan2(rear.y + 0.004 - nativeSight.y, rear.z - nativeSight.z);
+        nativeSight.applyAxisAngle(new THREE.Vector3(1, 0, 0), builtInSightPitch);
+      }
       const builtInSightY = nativeSight?.y ?? baseSightY;
 
       // Relação de escala entre sockets.json e OBJ para trilhos lateral e inferior
@@ -5406,6 +5418,7 @@ function loadWeaponTemplate(wId) {
         baseSightY,
         builtInSightY,
         builtInSightX: nativeSight?.x ?? 0,
+        builtInSightPitch,
         safeAdsZ,
         safeHipY,
         opticPos,
@@ -5477,6 +5490,33 @@ function hydrateWeaponAssembly(assembly, wId, entry) {
     }
   });
 
+  if (wId === 'revolver_magnum' && assembly.magMesh) {
+    const cylinder = assembly.magMesh;
+    const pivot = new THREE.Group();
+    pivot.position.copy(cylinder.geometry.boundingBox.getCenter(new THREE.Vector3()));
+    pivot.userData = { objSpace: true, restZ: pivot.position.z };
+    const rounds = clone.children.filter(part => part.userData.isCylinderRound);
+    for (const part of [cylinder, ...rounds]) {
+      part.position.sub(pivot.position);
+      pivot.add(part);
+    }
+    clone.add(pivot);
+    assembly.magMesh = pivot;
+  }
+
+  if (wId === 'revolver_magnum' && assembly.hammerMesh) {
+    const hammer = assembly.hammerMesh;
+    const bounds = hammer.geometry.boundingBox;
+    const pivot = new THREE.Group();
+    bounds.getCenter(pivot.position);
+    pivot.position.y = bounds.min.y;
+    pivot.userData.objSpace = true;
+    hammer.position.sub(pivot.position);
+    pivot.add(hammer);
+    clone.add(pivot);
+    assembly.hammerMesh = pivot;
+  }
+
   // Posiciona empunhadura centralizada em (0,0,0), escala real e gira +X (cano do OBJ) para -Z (frente do jogo!)
   clone.position.set(-metrics.gx, -metrics.gy, -(metrics.gz || 0));
   const orientWrap = new THREE.Group();
@@ -5492,6 +5532,7 @@ function hydrateWeaponAssembly(assembly, wId, entry) {
   assembly.opticZ = metrics.opticZ;
   assembly.railY = metrics.railY ?? metrics.baseSightY;
   assembly.builtInSightX = metrics.builtInSightX || 0;
+  assembly.builtInSightPitch = metrics.builtInSightPitch || 0;
   assembly.baseSightY = metrics.baseSightY;
   assembly.builtInSightY = metrics.builtInSightY;
   assembly.opticSightY = metrics.builtInSightY;
@@ -5662,6 +5703,7 @@ function rebuildAttachmentVisuals(assembly, gunType, attachments) {
   const useNativeScope = def.nativeScope && (!optic || optic === def.nativeScope);
   const showBuiltInOptic = useNativeScope || !optic;
   assembly.opticSightX = showBuiltInOptic ? assembly.builtInSightX : 0;
+  assembly.opticSightPitch = showBuiltInOptic ? assembly.builtInSightPitch : 0;
   if (assembly.builtInOpticMeshes && assembly.builtInOpticMeshes.length > 0) {
     for (let i = 0; i < assembly.builtInOpticMeshes.length; i++) {
       assembly.builtInOpticMeshes[i].visible = showBuiltInOptic;
@@ -14176,11 +14218,11 @@ function animateWeaponAssembly(assembly, wInst, dt, isFirstPerson) {
         ? Math.sin(((relProg - 0.14) / 0.70) * Math.PI) : 0;
       if (isObj) {
         assembly.magMesh.position.z = THREE.MathUtils.lerp(assembly.magMesh.position.z, (assembly.magMesh.userData.restZ ?? 0) - swingOut * 0.12, Math.min(1, dt * 18));
-        assembly.magMesh.rotation.x = THREE.MathUtils.lerp(assembly.magMesh.rotation.x, gunState.cylinderAngle + swingOut * 2.4, Math.min(1, dt * 22));
+        assembly.magMesh.rotation.x = THREE.MathUtils.lerp(assembly.magMesh.rotation.x, gunState.cylinderAngle, Math.min(1, dt * 22));
       } else {
         assembly.magMesh.position.x = THREE.MathUtils.lerp(assembly.magMesh.position.x, restX - swingOut * 0.032, Math.min(1, dt * 18));
         assembly.magMesh.position.y = THREE.MathUtils.lerp(assembly.magMesh.position.y, restY - swingOut * 0.008, Math.min(1, dt * 18));
-        assembly.magMesh.rotation.z = THREE.MathUtils.lerp(assembly.magMesh.rotation.z, gunState.cylinderAngle + swingOut * 2.4, Math.min(1, dt * 22));
+        assembly.magMesh.rotation.z = THREE.MathUtils.lerp(assembly.magMesh.rotation.z, gunState.cylinderAngle, Math.min(1, dt * 22));
       }
     } else {
       if (gunState.reloading && relProg > 0.14 && relProg < 0.78) {
@@ -15963,7 +16005,7 @@ function updateCameraAndWeaponViewmodel(dt) {
       _fpCurPos.z + (gunState.recoilPosZ + gunState.recoilKick * 0.34) * adsRecScale + extraZ
     );
     fpWeaponRig.rotation.set(
-      (gunState.recoilPitch + gunState.recoilKick * 0.85) * adsRecScale + extraRX,
+      (gunState.recoilPitch + gunState.recoilKick * 0.85) * adsRecScale + extraRX + (inFpAds ? (fpMesh?.opticSightPitch || 0) * gunState.adsAlpha : 0),
       extraRY - gunState.swayX * 1.3 * swM + (gunState.recoilYaw || 0) * 0.45,
       extraRZ + gunState.recoilRoll * adsRecScale - gunState.swayX * 1.6 * swM
     );
