@@ -450,18 +450,70 @@ class RigController {
     return next;
   }
 
-  updateZombieFall(progress) {
-    if (this.fallClearance === undefined) {
-      // Preserve a pose atual do mixer e calcule o apoio da pose deitada.
-      const origin = this.group.getWorldPosition(new THREE.Vector3());
-      this.group.rotation.x = Math.PI / 2;
-      this.group.updateMatrixWorld(true);
-      const bounds = new THREE.Box3().setFromObject(this.group, true);
-      this.fallClearance = origin.y - bounds.min.y + 0.025;
+  prepareZombieFall() {
+    const meshes = [];
+    const bones = new Set();
+    this.model.traverseVisible(mesh => {
+      if (!mesh.isSkinnedMesh) return;
+      meshes.push(mesh);
+      for (const bone of mesh.skeleton.bones) bones.add(bone);
+    });
+
+    const pose = Array.from(bones, bone => ({
+      bone, startPosition: bone.position.clone(), startRotation: bone.quaternion.clone()
+    }));
+    for (const mesh of meshes) mesh.skeleton.pose();
+
+    // Com o modelo ainda em pé, deixe braços e pernas apontados para os pés.
+    // A inclinação do corpo transforma essa pose em repouso de costas.
+    const modelRotation = this.model.getWorldQuaternion(new THREE.Quaternion());
+    const relaxLimb = (bone, end, x, z) => {
+      if (!bone || !end) return;
+      const direction = end.getWorldPosition(new THREE.Vector3())
+        .sub(bone.getWorldPosition(new THREE.Vector3())).normalize();
+      const target = new THREE.Vector3(x, -1, z).normalize().applyQuaternion(modelRotation);
+      const worldRotation = bone.getWorldQuaternion(new THREE.Quaternion());
+      const inverseParent = bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
+      bone.quaternion.setFromUnitVectors(direction, target).multiply(worldRotation).premultiply(inverseParent);
+    };
+    const b = this.bones;
+    relaxLimb(b.upperArmL, b.lowerArmL, 0.42, 0.03);
+    relaxLimb(b.lowerArmL, b.leftHand, 0.24, 0.15);
+    relaxLimb(b.upperArmR, b.lowerArmR, -0.29, 0.04);
+    relaxLimb(b.lowerArmR, b.rightHand, -0.14, 0.18);
+    relaxLimb(b.upperLegL, b.lowerLegL, 0.12, 0.03);
+    relaxLimb(b.upperLegR, b.lowerLegR, -0.16, 0.04);
+
+    for (const joint of pose) {
+      joint.restPosition = joint.bone.position.clone();
+      joint.restRotation = joint.bone.quaternion.clone();
     }
-    const eased = THREE.MathUtils.smoothstep(progress, 0, 1);
-    this.group.rotation.x = eased * Math.PI / 2;
-    this.group.position.y = this.fallClearance * eased;
+
+    const groundY = this.group.getWorldPosition(new THREE.Vector3()).y;
+    this.group.rotation.x = Math.PI / 2;
+    this.group.updateMatrixWorld(true);
+    const bounds = new THREE.Box3();
+    for (const mesh of meshes) bounds.expandByObject(mesh, true);
+    const parentScale = this.group.parent?.getWorldScale(new THREE.Vector3()).y ?? 1;
+    this.fallClearance = bounds.isEmpty() ? 0 : (groundY - bounds.min.y + 0.015) / parentScale;
+    this.fallPose = pose;
+  }
+
+  updateZombieFall(progress) {
+    if (this.fallSettled) return;
+    if (!this.fallPose) this.prepareZombieFall();
+    const tilt = THREE.MathUtils.smoothstep(progress, 0, 0.88);
+    const relax = THREE.MathUtils.smoothstep(progress, 0.08, 1);
+    for (const joint of this.fallPose) {
+      joint.bone.position.lerpVectors(joint.startPosition, joint.restPosition, relax);
+      joint.bone.quaternion.slerpQuaternions(joint.startRotation, joint.restRotation, relax);
+    }
+    this.group.rotation.x = tilt * Math.PI / 2;
+    this.group.position.y = this.fallClearance * tilt;
+    if (progress >= 1) {
+      this.fallSettled = true;
+      this.fallPose = null;
+    }
   }
 
   setTimeScale(scale) {
