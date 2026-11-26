@@ -633,30 +633,21 @@ export class AssetLibrary {
 
   loadZombiePack() {
     if (!this.zombiePack) {
-      this.zombiePack = Promise.all([
-        this.gltfLoader.loadAsync('/MODELOS%20PERSONAGENS/zombie2.glb'),
-        fetch('/zombie_anims.json').then(response => {
-          if (!response.ok) throw new Error('Falha ao carregar animações de zumbi');
-          return response.json();
-        })
-      ]).then(([gltf, pack]) => {
-        const clipsByName = new Map();
-        for (const clip of Object.values(pack.clips)) {
-          const tracks = clip.tracks.map(track => {
-            if (track.type === 'quaternion') return new THREE.QuaternionKeyframeTrack(track.name, track.times, track.values);
-            const values = track.values.slice();
-            if (track.name === 'Hips.position') {
-              // O deslocamento horizontal pertence à IA e à sincronização da rede.
-              for (let i = 0; i < values.length; i += 3) {
-                values[i] = 0;
-                values[i + 2] = 0;
-              }
-            }
-            return new THREE.VectorKeyframeTrack(track.name, track.times, values);
-          });
-          clipsByName.set(clip.name, new THREE.AnimationClip(clip.name, clip.duration, tracks));
+      this.zombiePack = fetch('/assets/v2/zombies/quaternius-clips.json').then(response => {
+        if (!response.ok) throw new Error('Falha ao carregar movimentos Quaternius');
+        return response.json();
+      }).then(pack => {
+        const clips = new Map();
+        for (const { name, times, tracks } of pack) {
+          const rotations = Object.entries(tracks).map(([bone, values]) =>
+            new THREE.QuaternionKeyframeTrack(THREE.PropertyBinding.sanitizeNodeName(bone) + '.quaternion', times, values));
+          clips.set(name, new THREE.AnimationClip(name, -1, rotations));
         }
-        return { gltf, clipsByName, categories: pack.categories };
+        // O pacote não tem queda. Incline o modelo sobre os pés ao morrer.
+        clips.set('Fall', new THREE.AnimationClip('Fall', 0.55, [
+          new THREE.NumberKeyframeTrack('.rotation[x]', [0, 0.18, 0.55], [0, -0.22, -Math.PI / 2])
+        ]));
+        return clips;
       }).catch(error => {
         this.zombiePack = null;
         warnOnce('zombie_pack', String(error));
@@ -671,8 +662,11 @@ export class AssetLibrary {
     await this.loadManifest();
     const meta = this.getZombieMeta(archetypeIdx);
     if (!meta) return null;
-    const rec = await this.loadZombiePack();
-    if (!rec) return null;
+    const [rec, clips] = await Promise.all([
+      this._loadGlbAsset('zombie:' + meta.id, meta.file, meta.boneNormalize !== false),
+      this.loadZombiePack()
+    ]);
+    if (!rec || !clips) return null;
 
     const model = SkeletonUtils.clone(rec.gltf.scene);
     const group = new THREE.Group();
@@ -683,10 +677,11 @@ export class AssetLibrary {
 
     return new RigController({
       id: meta.id,
-      meta: { ...meta, clips: { ...rec.categories, hit: rec.categories.idle } },
+      meta: { ...meta, clips: { idle: 'ZombieIdle', walk: 'ZombieWalk', run: 'ZombieRun', crawl: 'ZombieCrawl',
+        attack: ['ZombieAttack', 'ZombieBite'], hit: 'ZombieIdle', death: 'Fall' } },
       group,
       model,
-      clipsByName: rec.clipsByName,
+      clipsByName: clips,
       isZombie: true
     });
   }
