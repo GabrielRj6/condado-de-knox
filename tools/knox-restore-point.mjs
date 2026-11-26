@@ -22,7 +22,7 @@ const vals = (n) => argv.flatMap((a, i) => (a === '--' + n && argv[i + 1] ? [arg
 const ROOT = process.cwd();
 const MANIFEST = 'RESTORE_MANIFEST.json';
 const README = 'RESTORE_README.txt';
-const DEFAULT_EXCLUDES = ['node_modules', '.vercel', '_audit', '.next', 'Personagens Novos e Animações'];
+const DEFAULT_EXCLUDES = ['node_modules', '.vercel', '_audit', '.next', 'Personagens Novos e Animações', 'ANIMAÇÕES NOVAS E PERSONAGENS'];
 const nfc = (s) => s.normalize('NFC');
 const fmt = (n) => (n >= 1e9 ? (n / 1e9).toFixed(2) + ' GB' : n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : n >= 1e3 ? (n / 1e3).toFixed(1) + ' KB' : n + ' B');
 const die = (msg, code = 1) => { console.error('\n✖ ' + msg); process.exit(code); };

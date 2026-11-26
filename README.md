@@ -1,6 +1,6 @@
 # 🌲 CONDADO DE KNOX // Sobrevivência Multiplayer Estilo DayZ & Project Zomboid
 
-Protótipo tático de sobrevivência em 3D (WebGL / Three.js) com geração de mapa procedural, combate em primeira e terceira pessoa, zumbis, 10 armas 3D reais (.GLB), inventário com anexos (miras, silenciadores, etc.), carros dirigíveis com atropelamento frontal/física de explosão, e multiplayer online P2P via WebRTC (PeerJS) e descoberta de salas no servidor Node.js local.
+Protótipo tático de sobrevivência em 3D (**WebGPU nativo / Three.js + TSL/WGSL**) com geração de mapa procedural por chunks e mundo real (OpenStreetMap / Google Maps), combate em primeira e terceira pessoa, zumbis V2, arsenal completo de armas 3D (.GLB + V2), inventário com anexos (miras, silenciadores, laser, lanterna, etc.), veículos multi-assento com física e multiplayer online P2P via WebRTC (PeerJS) e servidor Node.js local / ZeroTier.
 
 ---
 
@@ -40,20 +40,28 @@ O multiplayer utiliza uma arquitetura híbrida de alta performance e baixo custo
 | Tecla / Ação | Função |
 | :--- | :--- |
 | **W, A, S, D** | Movimentação / Direção do veículo |
-| **Shift** | Correr a pé / Acelerar carro |
-| **Ctrl ou C** | Agachar (estratégico para menor ruído e mira firme) |
-| **Espaço** | Pular a pé / Freio de mão no carro |
-| **Botão Direito** | Mira Tática OTS (3ª Pessoa) ou Mira de Ferro Real ADS (1ª Pessoa) |
+| **Shift** | Correr a pé / Segurar fôlego na luneta / Acelerar carro |
+| **Ctrl ou C** | Agachar (menor ruído e mira mais firme) |
+| **X** | Deitar (Prone — perfil baixo e estabilidade máxima) |
+| **Q / E** | Inclinar tronco (Lean tático esquerda / direita) |
+| **Espaço** | Pular ou saltar janela a pé / Freio de mão no veículo |
+| **Botão Direito** | Mira Tática OTS (3ª Pessoa) ou Mira ADS Real (1ª Pessoa) |
 | **Z** | Alternar modo de mira 1ª Pessoa direta (ADS) |
+| **T** | Trocar ombro da câmera OTS / Inclinar pela janela (passageiro) |
 | **V** | Alternar Câmera (1ª Pessoa vs 3ª Pessoa) |
-| **Botão Esquerdo** | Disparar arma / Golpe de faca KA-BAR |
+| **Botão Esquerdo** | Disparar arma / Golpe corpo a corpo |
 | **R** | Recarregar munição |
-| **E** | Interagir: Pegar loot, abrir/fechar portas, entrar/sair de veículos |
+| **[ / ]** | Ajustar Zeroing da luneta (em ADS) ou Zoom do minimapa |
+| **F** | Interagir: Pegar loot, abrir/fechar portas, entrar/sair de veículos |
+| **G** | Entrar como passageiro / Trocar assento no veículo |
+| **H** | Buzina do veículo |
+| **L** | Lanterna tática (a pé) / Faróis do veículo (motorista) |
+| **M** | Mapa tático completo e GPS de rotas |
 | **TAB ou B** | Abrir Inventário de Sobrevivência & Loot |
 | **P** | Menu de Esquadrão / Time Multiplayer |
-| **F** | Lanterna tática |
 | **Alt (Segurar)** | Câmera livre / Olhar ao redor sem girar o corpo |
 | **N** | Gerar novo mapa procedural (apenas Host/Solo) |
+| **F1** | Painel de Desenvolvedor (exclusivo Host/Solo) |
 | **ESC** | Menu principal / Lista de servidores / Configurações |
 
 ---

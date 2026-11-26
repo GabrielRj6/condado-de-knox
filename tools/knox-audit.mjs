@@ -17,7 +17,7 @@ import { execFileSync } from 'node:child_process';
 const argv = process.argv.slice(2);
 const val = (n, d) => { const i = argv.indexOf('--' + n); return i >= 0 && argv[i + 1] ? argv[i + 1] : d; };
 const ROOT = path.resolve(val('root', process.cwd()));
-const NEW_DIRS = val('new', 'Personagens Novos e Animações').split('|').map((s) => s.normalize('NFC'));
+const NEW_DIRS = val('new', 'ANIMAÇÕES NOVAS E PERSONAGENS|Personagens Novos e Animações').split('|').map((s) => s.normalize('NFC'));
 const SKIP = new Set(['node_modules', '.git', '.vercel', '_audit', '.next', '.cache']);
 const nfc = (s) => s.normalize('NFC');
 const fmt = (n) => (n >= 1e9 ? (n / 1e9).toFixed(2) + ' GB' : n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : n >= 1e3 ? (n / 1e3).toFixed(1) + ' KB' : n + ' B');
