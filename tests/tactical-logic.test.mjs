@@ -5,6 +5,7 @@ import {
   getVehicleSeatsList,
   getVehicleSeatMeta,
   getVehiclePhysicsSpec,
+  sweptVehicleContact,
   stepVehicleLongitudinalSpeed,
   computeVehicleGroundAlignment,
   computeVehicleColliderBounds,
@@ -381,3 +382,15 @@ test('Atualização 2 & 3: DayZ PvP config, vehicle passenger aim clamping, spri
 });
 
 
+
+test('vehicle sweep catches a zombie crossed between frames and respects vehicle width', () => {
+  const moto = getVehiclePhysicsSpec(true);
+  const car = getVehiclePhysicsSpec(false);
+  const hits = (spec, x, z) => sweptVehicleContact(0, 0, 0, -7, { x, z }, 0, -1, spec, 0.32);
+  assert.equal(hits(moto, 0, -3), true);
+  assert.equal(hits(moto, 0.90, -3), true);
+  assert.equal(hits(moto, 1.2, -3), false);
+  assert.equal(hits(car, 1.2, -3), true);
+  assert.equal(hits(moto, 0, -12), false);
+  assert.equal(sweptVehicleContact(0, 0, 0, 7, { x: 0, z: 3 }, 0, -1, moto, 0.32), true);
+});

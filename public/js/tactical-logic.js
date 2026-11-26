@@ -2134,3 +2134,25 @@ export function computeBallisticDrop(distMeters, zeroingMeters = 100, muzzleVelo
 
 
 
+
+// Teste de segmento contra o volume horizontal expandido pelo raio do zumbi.
+export function sweptVehicleContact(fromX, fromZ, toX, toZ, target, forwardX, forwardZ, spec, radius) {
+  const dx = toX - fromX, dz = toZ - fromZ;
+  const x = target.x - fromX, z = target.z - fromZ;
+  const axes = [
+    [x * forwardX + z * forwardZ, dx * forwardX + dz * forwardZ, -spec.hitLenBack - radius, spec.hitLenFront + radius],
+    [-x * forwardZ + z * forwardX, -dx * forwardZ + dz * forwardX, -spec.hitHalfW - radius, spec.hitHalfW + radius]
+  ];
+  let enter = 0, exit = 1;
+  for (const [origin, speed, min, max] of axes) {
+    if (Math.abs(speed) < 1e-8) {
+      if (origin < min || origin > max) return false;
+      continue;
+    }
+    const a = (origin - max) / speed, b = (origin - min) / speed;
+    enter = Math.max(enter, Math.min(a, b));
+    exit = Math.min(exit, Math.max(a, b));
+    if (enter > exit) return false;
+  }
+  return true;
+}

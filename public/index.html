@@ -1942,6 +1942,7 @@ import {
   getVehicleSeatsList,
   getVehicleSeatMeta,
   getVehiclePhysicsSpec,
+  sweptVehicleContact,
   stepVehicleLongitudinalSpeed,
   computeVehicleGroundAlignment,
   computeVehicleColliderBounds,
@@ -6628,8 +6629,8 @@ function getVehicleSeatWorldPose(veh, seatIdx, leanAlpha = 0, outPos = new THREE
       s.y + lean * 0.12,
       s.z
     );
-    veh.root.updateMatrixWorld();
-    outPos.copy(_seatLocalTmp).applyMatrix4(veh.root.matrixWorld);
+    veh.root.updateMatrixWorld(true);
+    outPos.copy(_seatLocalTmp).applyMatrix4(veh.bodyGroup.matrixWorld);
     return outPos;
   }
 }
@@ -6915,6 +6916,7 @@ function buildDrivableVehicle(id, x, z, rotY, styleIdx) {
     label: st.label, root, bodyGroup, chassis, cabin, bodyMat, cabMat, hlMat, tlMat,
     headSpot: { intensity: 0 }, // compatibilidade: luz real controlada pelo vehicleHeadlightPool (zero overhead por carro!)
     steerWheel, wheels, collider: carCol,
+    seatOffsets: getVehicleSeatsList(isMoto),
     pos: new THREE.Vector3(x, baseY, z),
     yaw: rotY, speed: 0, steer: 0,
     vx: 0, vz: 0, yawVel: 0, driftIntensity: 0, skidAcc: 0,
@@ -14414,7 +14416,7 @@ function resolveCircleWorldCollisions(pos, radius, minY, maxY, stepH, ignoreVehi
         const rx = pos.x - v.pos.x, rz = pos.z - v.pos.z;
         const localR = rx * rightX + rz * rightZ;
         const localF = rx * fwdX + rz * fwdZ;
-        const hw = 1.03, hd = 2.34;
+        const hw = (v.phys?.width ?? 2.02) / 2, hd = (v.phys?.length ?? 4.65) / 2;
         const clR = THREE.MathUtils.clamp(localR, -hw, hw);
         const clF = THREE.MathUtils.clamp(localF, -hd, hd);
         const dR = localR - clR, dF = localF - clF;
@@ -14499,10 +14501,11 @@ function updateV2CharacterAnimation(rig, state, dt) {
   rig._v2Dead = false;
 
   if (state.inVehicle) {
-    v2.group.position.set(0, state.isMoto ? -0.26 : -0.44, 0);
+    v2.group.position.set(0, 0, 0);
     v2.group.rotation.set(0, 0, 0);
     v2.play((state.carLeanAlpha || 0) > 0.15 ? 'idleGunAim' : 'idleNeutral', { fade: 0.15 });
     v2.update(dt);
+    v2.applyVehiclePosture(state, state.vehicle);
     return;
   }
 
@@ -14599,6 +14602,13 @@ function animateCharacterRig(rig, state, dt) {
 
   rig.root.position.copy(pos);
   rig.root.rotation.set(0, bodyYaw, state.isDying ? 0 : (state.turnLeanZ || 0));
+  const weaponVisible = !state.inVehicle || (state.carSeat > 0 && state.carLeanAlpha > 0.15);
+  rig.rightArm.weaponMount.visible = weaponVisible;
+  if (rig.v2) rig.v2.weaponMount.visible = weaponVisible;
+  if (state.inVehicle) {
+    rig.root.rotation.order = 'YXZ';
+    state.vehicle.bodyGroup.getWorldQuaternion(rig.root.quaternion);
+  }
   if (rig.v2) updateV2CharacterAnimation(rig, state, dt);
 
   // === ANIMAÇÃO DE MORTE CONTEXTUAL (6 ESTILOS: Frontal, Costas, Lateral, Explosão, Headshot, Crítico) ===
@@ -14767,10 +14777,6 @@ function animateCharacterRig(rig, state, dt) {
     const seatMeta = getVehicleSeatMeta(isMoto, seatIdx);
     const side = seatMeta ? seatMeta.side : 1;
     const wDefV = WEAPON_DEFS[weaponId] || WEAPON_DEFS[DEFAULT_MELEE_WEAPON];
-
-    rig.root.position.copy(pos);
-    rig.root.rotation.order = 'YXZ';
-    rig.root.rotation.set(state.carPitch || 0, bodyYaw, state.carRoll || 0);
 
     const relLook = normalizeAngle(lookYaw - bodyYaw);
 
@@ -15296,12 +15302,11 @@ function updateLocalPlayer(dt) {
         pumpTimer: gunState.pumpTimer,
         walkPhase: 0,
         inVehicle: true,
+        vehicle: v,
         isMoto: !!v.isMoto,
         carSeat: seatIdx,
         carLeanAlpha: player.carLeanAlpha,
-        carSteer: v.steer || 0,
-        carPitch: (v.root.rotation.x || 0) + (v.isMoto ? (v.bodyGroup.rotation.x || 0) : 0),
-        carRoll: (v.root.rotation.z || 0) + (v.isMoto ? (v.bodyGroup.rotation.z || 0) : 0)
+        carSteer: v.steer || 0
       }, dt);
     }
     return;
@@ -17483,6 +17488,7 @@ function updateVehicles(dt) {
         }
       }
 
+      const previousX = v.pos.x, previousZ = v.pos.z;
       v.pos.x += v.vx * dt;
       v.pos.z += v.vz * dt;
 
@@ -17593,25 +17599,29 @@ function updateVehicles(dt) {
 
       // ATROPELAMENTO (Roadkill) em Zumbis e Jogadores Rivais com hitbox fiel de Carro vs Moto!
       const absSpd = Math.hypot(v.vx, v.vz);
-      if (absSpd > 2.6) {
+      if (absSpd > 0.8) {
         const hitLenFront = pSpec.hitLenFront, hitLenBack = pSpec.hitLenBack, hitHalfW = pSpec.hitHalfW;
         const velDirX = v.vx / absSpd, velDirZ = v.vz / absSpd;
 
         for (const z of zombies) {
           if (z.dead) continue;
-          const relX = z.root.position.x - v.pos.x;
-          const relZ = z.root.position.z - v.pos.z;
-          const localFwd = relX * fwdX + relZ * fwdZ;
-          const localSide = relX * rightX + relZ * rightZ;
-          if (localFwd > -hitLenBack && localFwd < hitLenFront && Math.abs(localSide) < hitHalfW) {
-            sfx.playCrashImpact(0.45, v.pos);
-            const knockDir = new THREE.Vector3(velDirX + localSide * 0.35, 0.38, velDirZ).normalize();
-            damageZombie(z, absSpd * (v.isMoto ? 18 : 22), 'torso', knockDir, z.root.position);
-            damageVehicle(v, v.isMoto ? 1.15 : 0.85, player.id, true);
-          }
+          const target = z.root.position;
+          const reach = pSpec.length + absSpd * dt;
+          if (Math.abs(target.x - v.pos.x) > reach || Math.abs(target.z - v.pos.z) > reach ||
+              Math.abs(target.y - v.pos.y) > 0.95) continue;
+          const side = (target.x - v.pos.x) * rightX + (target.z - v.pos.z) * rightZ;
+          if (z._roadkillIgnoreVehicle === v && Math.abs(side) < hitHalfW + 0.38) continue;
+          if (!sweptVehicleContact(previousX, previousZ, v.pos.x, v.pos.z, target, fwdX, fwdZ, pSpec, 0.32)) continue;
+          const outward = side < 0 ? -1 : 1;
+          const knockDir = new THREE.Vector3(velDirX * 0.35 + rightX * outward, 0, velDirZ * 0.35 + rightZ * outward).normalize();
+          z._roadkillIgnoreVehicle = v;
+          const damage = absSpd >= 8 ? Math.max(z.hp, absSpd * (v.isMoto ? 18 : 22)) : absSpd * (v.isMoto ? 18 : 22);
+          damageZombie(z, damage, 'torso', knockDir, target);
+          sfx.playCrashImpact(0.45, v.pos);
+          damageVehicle(v, v.isMoto ? 1.15 : 0.85, player.id, true);
         }
         for (const rp of remotePlayers.values()) {
-          if (rp.dead || rp.inCarId) continue;
+          if (absSpd <= 2.6 || rp.dead || rp.inCarId) continue;
           const relX = rp.pos.x - v.pos.x;
           const relZ = rp.pos.z - v.pos.z;
           const localFwd = relX * fwdX + relZ * fwdZ;
@@ -20998,12 +21008,11 @@ function updateRemotePlayersAndNet(dt) {
           reloading: false, reloadProgress: 0, recoilKick: 0,
           meleeSwingT: rp.meleeT, pumpTimer: 0, walkPhase: 0,
           inVehicle: true,
+          vehicle: car,
           isMoto: !!car.isMoto,
           carSeat: sIdx,
           carLeanAlpha: rp.carLeanSmooth,
-          carSteer: car.steer || 0,
-          carPitch: (car.root.rotation.x || 0) + (car.isMoto ? (car.bodyGroup.rotation.x || 0) : 0),
-          carRoll: (car.root.rotation.z || 0) + (car.isMoto ? (car.bodyGroup.rotation.z || 0) : 0)
+          carSteer: car.steer || 0
         }, dt);
 
         // Nametag sobre aliados/jogadores próximos no veículo (respeita Configurações > Multiplayer)
@@ -21247,7 +21256,7 @@ function updateZombies(dt) {
           zp.x += (z.knockX || 0) * slideMult * 0.55;
           zp.z += (z.knockZ || 0) * slideMult * 0.55;
           zp.y = getTerrainHeight(zp.x, zp.z);
-          resolveCircleWorldCollisions(zp, 0.35, zp.y, zp.y + 1.8, 0.35);
+          resolveCircleWorldCollisions(zp, 0.35, zp.y, zp.y + 1.8, 0.35, z._roadkillIgnoreVehicle?.id);
         }
 
         const buckle = THREE.MathUtils.smoothstep(t, 0.0, 0.32);
@@ -21413,7 +21422,11 @@ function updateZombies(dt) {
 
       const zTargetY = getSurfaceHeight(zp.x, zp.z);
       zp.y = Math.abs(zp.y - zTargetY) > 1.8 ? zTargetY : THREE.MathUtils.lerp(zp.y, zTargetY, Math.min(1, dt * 18));
-      resolveCircleWorldCollisions(zp, 0.35, zp.y, zp.y + 1.8, 0.48);
+      const impactVehicle = z._roadkillIgnoreVehicle;
+      resolveCircleWorldCollisions(zp, 0.35, zp.y, zp.y + 1.8, 0.48, impactVehicle?.id);
+      if (impactVehicle && Math.hypot(zp.x - impactVehicle.pos.x, zp.z - impactVehicle.pos.z) > impactVehicle.phys.length) {
+        z._roadkillIgnoreVehicle = null;
+      }
     }
 
     z.root.rotation.y = z.yaw;

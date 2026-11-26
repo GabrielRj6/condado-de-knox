@@ -218,6 +218,8 @@ class RigController {
       upperLegL: findBone(model, ['UpperLeg.L', 'LeftUpLeg', 'Thigh.L']),
       lowerLegL: findBone(model, ['LowerLeg.L', 'LeftLeg', 'Shin.L']),
       upperLegR: findBone(model, ['UpperLeg.R', 'RightUpLeg', 'Thigh.R']),
+      footL: findBone(model, ['Foot.L', 'LeftFoot']),
+      footR: findBone(model, ['Foot.R', 'RightFoot']),
       lowerLegR: findBone(model, ['LowerLeg.R', 'RightLeg', 'Shin.R']),
       rightHand: findBone(model, [meta.rightHandBone || 'Wrist.R', 'Hand.R', 'RightHand', 'LowerArm.R']),
       leftHand: findBone(model, ['Wrist.L', 'Hand.L', 'LeftHand', 'LowerArm.L']),
@@ -448,6 +450,66 @@ class RigController {
     this.activeAction = next;
     this.activeClipName = clipName;
     return next;
+  }
+
+  applyVehiclePosture({ isMoto, carSeat, carLeanAlpha }, vehicle) {
+    const frame = vehicle.bodyGroup;
+    const b = this.bones;
+    if (!b.body) return;
+    const driver = carSeat === 0;
+    const aiming = !driver && carLeanAlpha > 0.15;
+    const seat = vehicle.seatOffsets?.[carSeat];
+    if (!seat) return;
+    const world = (x, y, z) => frame.localToWorld(new THREE.Vector3(x, y, z));
+    this.group.updateWorldMatrix(true, true);
+    const hipHeight = isMoto ? (driver ? 0.94 : 1.03) : 0.65;
+    const pelvis = world(seat.x + (!isMoto ? seat.side * carLeanAlpha * 0.50 : 0), hipHeight, seat.z);
+    const hip = this.group.parent.worldToLocal(b.body.getWorldPosition(new THREE.Vector3()));
+    this.group.position.add(this.group.parent.worldToLocal(pelvis).sub(hip));
+    if (isMoto && driver) this._rotateBoneModelAxis(b.abdomen || b.torso, 1, 0, 0, 0.62);
+    const aimBone = (bone, from, to) => {
+      this._saveBonePose(bone);
+      const inv = bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
+      const rotation = new THREE.Quaternion().setFromUnitVectors(from.normalize().applyQuaternion(inv), to.normalize().applyQuaternion(inv));
+      bone.quaternion.premultiply(rotation);
+      bone.updateWorldMatrix(false, true);
+    };
+    const reach = (upper, lower, end, target, bendPoint) => {
+      if (!upper || !lower || !end) return;
+      const start = upper.getWorldPosition(new THREE.Vector3());
+      const knee = lower.getWorldPosition(new THREE.Vector3());
+      const tip = end.getWorldPosition(new THREE.Vector3());
+      const first = start.distanceTo(knee), second = knee.distanceTo(tip);
+      if (Math.min(first, second) < 0.01) return;
+      const tipLocal = lower.worldToLocal(tip.clone());
+      const along = target.clone().sub(start);
+      const distance = THREE.MathUtils.clamp(along.length(), Math.abs(first - second) + 0.001, first + second - 0.001);
+      along.normalize();
+      const bend = bendPoint.sub(start);
+      bend.addScaledVector(along, -bend.dot(along)).normalize();
+      const projection = (first * first + distance * distance - second * second) / (2 * distance);
+      const towardKnee = along.clone().multiplyScalar(projection).addScaledVector(bend, Math.sqrt(Math.max(0, first * first - projection * projection)));
+      aimBone(upper, knee.sub(start), towardKnee);
+      lower.getWorldPosition(knee);
+      aimBone(lower, lower.localToWorld(tipLocal.clone()).sub(knee), start.addScaledVector(along, distance).sub(knee));
+      if (end.parent !== lower) {
+        this._saveBonePose(end);
+        end.position.copy(end.parent.worldToLocal(lower.localToWorld(tipLocal)));
+      }
+    };
+    for (const [side, sign, hand] of [['L', -1, b.leftHand], ['R', 1, b.rightHand]]) {
+      const footX = seat.x + sign * (isMoto ? 0.25 : 0.14);
+      reach(b['upperLeg' + side], b['lowerLeg' + side], b['foot' + side],
+        world(footX, isMoto ? (driver ? 0.40 : 0.52) : 0.21, seat.z - (isMoto ? 0.04 : 0.35)),
+        world(footX + (isMoto ? sign * 0.18 : 0), hipHeight, seat.z - 1));
+      if (aiming) continue;
+      const handle = isMoto && driver && vehicle.wheels.find(wheel => wheel.isFront)?.steerPivot;
+      let grip = world(seat.x + sign * 0.19, hipHeight + 0.12, seat.z - 0.12);
+      if (handle) grip = handle.localToWorld(new THREE.Vector3(sign * 0.31, 0.74, 0.27));
+      else if (driver && vehicle.steerWheel) grip = vehicle.steerWheel.localToWorld(new THREE.Vector3(sign * 0.15, 0, 0));
+      reach(b['upperArm' + side], b['lowerArm' + side], hand, grip,
+        world(seat.x + sign * 0.42, hipHeight, seat.z + 0.18));
+    }
   }
 
   prepareZombieFall() {
