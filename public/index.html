@@ -6369,7 +6369,6 @@ function buildZombieEntity(id, x, z, rng) {
   zObj.parts = { pelvis, spine, head, armL, armR, legL, legR };
   zObj.v2 = null;
   zObj._disposed = false;
-  zObj._v2DeathPlayed = false;
 
   if (assetLibrary.isV2()) {
     assetLibrary.spawnZombieInstance(archetype).then((inst) => {
@@ -6392,9 +6391,9 @@ function buildZombieEntity(id, x, z, rng) {
         }
       });
       if (zObj.dead) {
-        zObj._v2DeathPlayed = true;
-        inst.play('death', { fade: 0.02, loop: THREE.LoopOnce, clampWhenFinished: true });
-        inst.update(2.0);
+        inst.play('idle', { fade: 0 });
+        inst.update(0.016);
+        inst.updateZombieFall(zObj.deathT);
       } else {
         inst.play('idle', { fade: 0.08 });
       }
@@ -14117,6 +14116,8 @@ function equipSlot(slotIdx) {
   gunState.equipT = 1.0;
   gunState.pumpTimer = 0;
   gunState.boltTimer = 0;
+  gunState.recoilKick = 0;
+  gunState.meleeSwingT = 0;
   gunState.recoilPosZ = 0;
   gunState.recoilPitch = 0;
   gunState.recoilPitchVel = 0;
@@ -15765,7 +15766,7 @@ function updateCameraAndWeaponViewmodel(dt) {
   const wantsAds = (mouseDownRight || player.adsFirstPersonToggle) && !gunState.reloading && !player.sprinting && !player.dead && !wDef.melee;
   const useFirstPersonView = player.firstPerson || player.adsFirstPersonToggle || (wantsAds && opticCfg && opticCfg.overlay);
 
-  const inFpAds = useFirstPersonView && (mouseDownRight || player.adsFirstPersonToggle) && !gunState.reloading && !wDef.melee;
+  const inFpAds = useFirstPersonView && wantsAds;
   gunState.adsAlpha = THREE.MathUtils.lerp(gunState.adsAlpha, wantsAds ? 1 : 0, Math.min(1, dt * 16));
 
   // Overlay de Luneta 4x / 8x / 12x + Zeroing + Draw Distance Dinâmico (ativa cedo para evitar tela preta no tubo da luneta)
@@ -16526,7 +16527,6 @@ function startReload() {
   gunState.reloadStage = 0;
   gunState.reloadT = wDef.rDur;
   gunState.combatTimer = wDef.rDur + 1.2;
-  player.adsFirstPersonToggle = false;
   document.getElementById('reload-tag').style.display = 'block';
   sfx.playReloadStage('mag_out');
 }
@@ -21138,13 +21138,7 @@ function updateZombies(dt) {
 
     // === ANIMAÇÃO DE MORTE COMPLETA DO ZUMBI (3 ESTILOS ARTICULADOS + RECUO DE IMPACTO + CLIP V2) ===
     if (z.dead) {
-      if (z.v2 && !z.v2.disposed) {
-        if (!z._v2DeathPlayed) {
-          z._v2DeathPlayed = true;
-          z.v2.play('death', { fade: 0.10, loop: THREE.LoopOnce, clampWhenFinished: true, timeScale: 1.15 });
-        }
-        if (z.v2.activeAction?.isRunning()) z.v2.update(dt);
-      }
+      if (z.v2 && !z.v2.disposed) z.v2.updateZombieFall(Math.min(1, z.deathT + dt * 1.75));
       if (z.deathT < 1) {
         const prevT = z.deathT;
         z.deathT = Math.min(1, z.deathT + dt * 1.75);

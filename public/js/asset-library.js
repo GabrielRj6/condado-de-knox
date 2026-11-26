@@ -450,6 +450,20 @@ class RigController {
     return next;
   }
 
+  updateZombieFall(progress) {
+    if (this.fallClearance === undefined) {
+      // Preserve a pose atual do mixer e calcule o apoio da pose deitada.
+      const origin = this.group.getWorldPosition(new THREE.Vector3());
+      this.group.rotation.x = Math.PI / 2;
+      this.group.updateMatrixWorld(true);
+      const bounds = new THREE.Box3().setFromObject(this.group, true);
+      this.fallClearance = origin.y - bounds.min.y + 0.025;
+    }
+    const eased = THREE.MathUtils.smoothstep(progress, 0, 1);
+    this.group.rotation.x = eased * Math.PI / 2;
+    this.group.position.y = this.fallClearance * eased;
+  }
+
   setTimeScale(scale) {
     if (this.activeAction && Number.isFinite(scale)) {
       this.activeAction.timeScale = scale;
@@ -646,10 +660,6 @@ export class AssetLibrary {
           }
           clips.set(name, new THREE.AnimationClip(name, -1, rotations));
         }
-        // O pacote não tem queda. Incline o modelo sobre os pés ao morrer.
-        clips.set('Fall', new THREE.AnimationClip('Fall', 0.55, [
-          new THREE.NumberKeyframeTrack('.rotation[x]', [0, 0.18, 0.55], [0, -0.22, -Math.PI / 2])
-        ]));
         return clips;
       }).catch(error => {
         this.zombiePack = null;
@@ -683,7 +693,7 @@ export class AssetLibrary {
     return new RigController({
       id: meta.id,
       meta: { ...meta, clips: { idle: 'ZombieIdle', walk: 'ZombieWalk', run: 'ZombieRun', crawl: 'ZombieCrawl',
-        attack: ['ZombieAttack', 'ZombieBite'], hit: 'ZombieIdle', death: 'Fall' } },
+        attack: ['ZombieAttack', 'ZombieBite'], hit: 'ZombieIdle' } },
       group,
       model,
       clipsByName: clips,
