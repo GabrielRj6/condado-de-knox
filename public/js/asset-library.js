@@ -638,9 +638,12 @@ export class AssetLibrary {
         return response.json();
       }).then(pack => {
         const clips = new Map();
-        for (const { name, times, tracks } of pack) {
+        for (const { name, times, tracks, positions } of pack) {
           const rotations = Object.entries(tracks).map(([bone, values]) =>
             new THREE.QuaternionKeyframeTrack(THREE.PropertyBinding.sanitizeNodeName(bone) + '.quaternion', times, values));
+          for (const [bone, values] of Object.entries(positions || {})) {
+            rotations.push(new THREE.VectorKeyframeTrack(THREE.PropertyBinding.sanitizeNodeName(bone) + '.position', times, values));
+          }
           clips.set(name, new THREE.AnimationClip(name, -1, rotations));
         }
         // O pacote não tem queda. Incline o modelo sobre os pés ao morrer.
@@ -669,6 +672,8 @@ export class AssetLibrary {
     if (!rec || !clips) return null;
 
     const model = SkeletonUtils.clone(rec.gltf.scene);
+    // Estes GLBs foram salvos em pose de ação; o retarget usa a pose de bind.
+    model.traverse(mesh => { if (mesh.isSkinnedMesh) mesh.skeleton.pose(); });
     const group = new THREE.Group();
     group.name = `v2_zombie_${meta.id}`;
     model.scale.setScalar(meta.scale || 1.0);
