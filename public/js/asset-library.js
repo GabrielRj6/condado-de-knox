@@ -121,6 +121,46 @@ function upgradeObjMaterials(obj) {
   });
 }
 
+// Os OBJ do Gun Pack trazem cores de material. Reutilize os acabamentos
+// do arsenal; alguns OBJ também precisam de coordenadas para a textura.
+const packSurfaceMaps = new Map();
+const surfaceTextureLoader = new THREE.TextureLoader();
+function getPackSurfaceMap(channel) {
+  if (!packSurfaceMaps.has(channel)) {
+    const folder = channel === 'wood' ? 'ak-74m_rifle_ak' : 'm41-t_fuzil';
+    const url = `/assets/3d/weapons/01_fuzis/${folder}/textures/${channel}_albedo.png`;
+    const texture = surfaceTextureLoader.load(url);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    packSurfaceMaps.set(channel, texture);
+  }
+  return packSurfaceMaps.get(channel);
+}
+
+function texturePackWeapon(obj) {
+  obj.traverse(mesh => {
+    if (!mesh.isMesh) return;
+    const geo = mesh.geometry;
+    if (!geo.getAttribute('uv')) {
+      const pos = geo.getAttribute('position'), normal = geo.getAttribute('normal');
+      const uv = new Float32Array(pos.count * 2);
+      for (let i = 0; i < pos.count; i++) {
+        const x = Math.abs(normal.getX(i)), y = Math.abs(normal.getY(i)), z = Math.abs(normal.getZ(i));
+        uv[i * 2] = x > y && x > z ? pos.getZ(i) : pos.getX(i);
+        uv[i * 2 + 1] = y >= x && y > z ? pos.getZ(i) : pos.getY(i);
+      }
+      geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    }
+    for (const mat of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      if (mat.transparent || mat.map) continue;
+      const channel = /wood/i.test(mat.name) ? 'wood' : /black/i.test(mat.name) ? 'polymer' : 'metal';
+      mat.map = getPackSurfaceMap(channel);
+      mat.color.lerp(new THREE.Color(0xffffff), 0.45);
+      mat.needsUpdate = true;
+    }
+  });
+}
+
 const _postureAxis = new THREE.Vector3();
 const _postureQ1 = new THREE.Quaternion();
 const _postureQ2 = new THREE.Quaternion();
@@ -561,9 +601,7 @@ export class AssetLibrary {
     const tasks = [];
     const ch = this.getCharacterMeta(selectedCharId);
     if (ch) tasks.push(this._loadGlbAsset(`char:${ch.id}`, ch.file, ch.boneNormalize !== false));
-    for (const z of (m.zombies || [])) {
-      tasks.push(this._loadGlbAsset(`zombie:${z.id}`, z.file, z.boneNormalize !== false));
-    }
+    tasks.push(this.loadZombiePack());
     await Promise.allSettled(tasks);
     return true;
   }
@@ -593,12 +631,47 @@ export class AssetLibrary {
     });
   }
 
+  loadZombiePack() {
+    if (!this.zombiePack) {
+      this.zombiePack = Promise.all([
+        this.gltfLoader.loadAsync('/MODELOS%20PERSONAGENS/zombie2.glb'),
+        fetch('/zombie_anims.json').then(response => {
+          if (!response.ok) throw new Error('Falha ao carregar animações de zumbi');
+          return response.json();
+        })
+      ]).then(([gltf, pack]) => {
+        const clipsByName = new Map();
+        for (const clip of Object.values(pack.clips)) {
+          const tracks = clip.tracks.map(track => {
+            if (track.type === 'quaternion') return new THREE.QuaternionKeyframeTrack(track.name, track.times, track.values);
+            const values = track.values.slice();
+            if (track.name === 'Hips.position') {
+              // O deslocamento horizontal pertence à IA e à sincronização da rede.
+              for (let i = 0; i < values.length; i += 3) {
+                values[i] = 0;
+                values[i + 2] = 0;
+              }
+            }
+            return new THREE.VectorKeyframeTrack(track.name, track.times, values);
+          });
+          clipsByName.set(clip.name, new THREE.AnimationClip(clip.name, clip.duration, tracks));
+        }
+        return { gltf, clipsByName, categories: pack.categories };
+      }).catch(error => {
+        this.zombiePack = null;
+        warnOnce('zombie_pack', String(error));
+        return null;
+      });
+    }
+    return this.zombiePack;
+  }
+
   async spawnZombieInstance(archetypeIdx = 0) {
     if (!this.isV2()) return null;
     await this.loadManifest();
     const meta = this.getZombieMeta(archetypeIdx);
     if (!meta) return null;
-    const rec = await this._loadGlbAsset(`zombie:${meta.id}`, meta.file, meta.boneNormalize !== false);
+    const rec = await this.loadZombiePack();
     if (!rec) return null;
 
     const model = SkeletonUtils.clone(rec.gltf.scene);
@@ -610,7 +683,7 @@ export class AssetLibrary {
 
     return new RigController({
       id: meta.id,
-      meta,
+      meta: { ...meta, clips: { ...rec.categories, hit: rec.categories.idle } },
       group,
       model,
       clipsByName: rec.clipsByName,
@@ -643,6 +716,7 @@ export class AssetLibrary {
         loader.setMaterials(materials);
         const obj = loader.parse(objText);
         upgradeObjMaterials(obj);
+        texturePackWeapon(obj);
         this._weaponCache.set(cacheKey, obj);
         return obj;
       } catch (err) {

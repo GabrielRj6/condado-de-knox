@@ -1933,7 +1933,6 @@
 
 <script type="module">
 import * as THREE from 'three';
-import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
@@ -4100,11 +4099,11 @@ const fpArms = (() => {
   root.name = 'fp_arms_rig';
   const buildArmSide = (sideSign) => {
     const grp = new THREE.Group();
-    // Antebraço longo (0.48m) estendendo-se ao longo de +Z da mão até fora da borda inferior da tela (nunca termina flutuando!)
-    const foreGeo = new THREE.CylinderGeometry(0.030, 0.046, 0.48, 12);
+    // A manga afunila junto ao punho e continua em direção ao ombro.
+    const foreGeo = new THREE.CylinderGeometry(0.045, 0.030, 0.82, 16);
     foreGeo.rotateX(Math.PI * 0.5);
     const forearm = new THREE.Mesh(foreGeo, fpArmMats.sleeve);
-    forearm.position.set(0, 0, 0.28);
+    forearm.position.set(0, 0, 0.45);
     const cuffGeo = new THREE.CylinderGeometry(0.032, 0.035, 0.040, 12);
     cuffGeo.rotateX(Math.PI * 0.5);
     const cuff = new THREE.Mesh(cuffGeo, fpArmMats.cuff);
@@ -4950,12 +4949,9 @@ function getWeaponHudIconUrl(wId) {
    5B. CARREGADOR PBR 3D (OBJ + MAPAS ALBEDO/NORMAL/ROUGHNESS/METALNESS + SOCKETS)
    ============================================================================ */
 THREE.Cache.enabled = true;
-const weaponObjLoader = new OBJLoader();
-const weaponTexLoader = new THREE.TextureLoader();
 const weaponTemplateCache = new Map();     // weaponId -> { template, metrics }
 const weaponLoadPromises = new Map();      // weaponId -> Promise
 const weaponPendingAssemblies = new Map(); // weaponId -> Set<assembly>
-const weaponPbrMatCache = new Map();       // `${weaponId}:${channel}` -> MeshStandardMaterial
 
 const weaponSpecialMats = {
   plasmaCore:  new THREE.MeshStandardMaterial({ color: 0x62f2ff, emissive: 0x00c8ff, emissiveIntensity: 2.2, roughness: 0.18, metalness: 0.25, envMap: weaponEnvMap }),
@@ -4971,47 +4967,6 @@ const weaponSpecialMats = {
   shellRed:    new THREE.MeshStandardMaterial({ color: 0xb82e24, roughness: 0.45, metalness: 0.15, envMap: weaponEnvMap }),
   shellBrass:  new THREE.MeshStandardMaterial({ color: 0xdcb252, roughness: 0.28, metalness: 0.78, envMap: weaponEnvMap, envMapIntensity: 1.6 })
 };
-
-function getWeaponPbrMaterial(wId, channel) {
-  const def = WEAPON_DEFS[wId];
-  const ch = (def && def.texChannels.includes(channel)) ? channel : (def ? def.texChannels[0] : 'metal');
-  const key = `${wId}:${ch}`;
-  if (weaponPbrMatCache.has(key)) return weaponPbrMatCache.get(key);
-
-  const base = `${WEAPONS_BASE_URL}${def.folder}/textures/${ch}`;
-  const loadMap = (suffix) => {
-    const t = weaponTexLoader.load(`${base}_${suffix}.png`);
-    // Os PNGs de albedo do pacote foram gerados em espaço linear (ex.: metal ~45, polymer ~27, grip ~19):
-    // manter NoColorSpace evita a curva sRGB^2.2 que escurecia tudo para preto puro (<2% de refletância)!
-    t.colorSpace = THREE.NoColorSpace;
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.anisotropy = 4;
-    return t;
-  };
-  const isMetalCh = ch === 'metal' || ch === 'accent';
-  const matCfg = {
-    map: loadMap('albedo'),
-    normalMap: loadMap('normal'),
-    normalScale: new THREE.Vector2(isMetalCh ? 0.36 : 0.42, isMetalCh ? 0.36 : 0.42),
-    roughnessMap: loadMap('roughness'),
-    envMap: weaponEnvMap,
-    envMapIntensity: ch === 'accent' ? 2.0 : (ch === 'metal' ? 1.85 : (ch === 'olive' ? 1.35 : 1.15)),
-    color: new THREE.Color(
-      ch === 'wood' ? 0xd2a884 :
-      ch === 'olive' ? 0xdde6d4 :
-      ch === 'grip' ? 0xe8edf5 :
-      ch === 'polymer' ? 0xeef2f8 : 0xf4f8ff
-    ),
-    roughness: ch === 'accent' ? 0.30 : (ch === 'metal' ? 0.38 : (ch === 'wood' ? 0.62 : (ch === 'grip' ? 0.74 : 0.56))),
-    metalness: ch === 'accent' ? 0.74 : (ch === 'metal' ? 0.64 : (ch === 'olive' ? 0.22 : (ch === 'polymer' ? 0.14 : 0.06)))
-  };
-  if (isMetalCh || ch === 'olive') {
-    matCfg.metalnessMap = loadMap('metalness');
-  }
-  const mat = new THREE.MeshStandardMaterial(matCfg);
-  weaponPbrMatCache.set(key, mat);
-  return mat;
-}
 
 /* Converte cubos sólidos de mira/alça do OBJ (ex.: VX-9 [24], PL-09 [13,14]) em molduras abertas vazadas */
 function convertSolidBoxToOpenFrame(mesh, mode = 'window') {
@@ -5158,15 +5113,6 @@ function loadWeaponTemplate(wId) {
   const def = WEAPON_DEFS[wId];
   if (!def) return Promise.resolve(null);
 
-  const loadV1Obj = () => {
-    const url = `${WEAPONS_BASE_URL}${def.folder}/${def.objFile}`;
-    return fetch(url)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.text();
-      });
-  };
-
   const p = (async () => {
     // As variantes sem OBJ exclusivo no pacote original usam seu modelo do manifesto.
     if (def.packModel) {
@@ -5297,11 +5243,21 @@ function loadWeaponTemplate(wId) {
         }
       }
     }
-    return loadV1Obj().then((rawObjText) => {
-      // Garante nomes únicos para linhas 'o ' vazias para que o OBJLoader nunca mescle sub-malhas (lentes, retículos, trilhos)
-      let unnamedSeq = 0;
-      const patchedObjText = rawObjText.replace(/^o[ \t]*$/gm, () => `o __part_${unnamedSeq++}`);
-      const obj = weaponObjLoader.parse(patchedObjText);
+    const glbFile = def.objFile.replace('_game_ready.obj', '_tactical_black_game_ready.glb');
+    return assetLibrary.gltfLoader.loadAsync(WEAPONS_BASE_URL + def.folder + '/' + glbFile).then(({ scene: model }) => {
+      // Unifica as coordenadas das peças para posicionar encaixes, ópticas e animações.
+      model.updateMatrixWorld(true);
+      const obj = new THREE.Group();
+      model.traverse(part => {
+        if (!part.isMesh) return;
+        const mesh = new THREE.Mesh(part.geometry.clone().applyMatrix4(part.matrixWorld), part.material);
+        mesh.name = part.name;
+        if (mesh.material.isMeshStandardMaterial) {
+          mesh.material.envMap = weaponEnvMap;
+          mesh.material.envMapIntensity = 0.55;
+        }
+        obj.add(mesh);
+      });
 
       const rawBox = new THREE.Box3().setFromObject(obj);
       const rawSize = rawBox.getSize(new THREE.Vector3());
@@ -5339,7 +5295,7 @@ function loadWeaponTemplate(wId) {
         else if (ch === '__scopeGlass') child.material = weaponSpecialMats.scopeGlass;
         else if (ch === '__shellRed') child.material = weaponSpecialMats.shellRed;
         else if (ch === '__shellBrass') child.material = weaponSpecialMats.shellBrass;
-        else child.material = getWeaponPbrMaterial(wId, ch);
+        // As demais peças mantêm o material PBR, UVs e texturas do GLB.
 
         child.userData.builtInOptic = !!info.builtInOptic;
         child.userData.isBoltPart = !!info.isBolt;
@@ -5354,10 +5310,9 @@ function loadWeaponTemplate(wId) {
           pupilRadius = Math.min(pupilRadius, (b.max.y - b.min.y) * 0.40, (b.max.z - b.min.z) * 0.40);
         }
         if (info.isReticleDot || frontBlade || /^(brass_bead|front_bead|scope_lens)$/.test(child.name) ||
-            ch === '__scopeGlass' || (wId === 'heavy_lmg' && curIdx === 27)) {
+            ch === '__scopeGlass') {
           sightCenter = b.getCenter(new THREE.Vector3());
           if (frontBlade) sightCenter.y = b.max.y;
-          if (wId === 'heavy_lmg') sightCenter.z = 0;
         }
         const nm = String(child.name || '').toLowerCase();
         if (!gripBox && /^(pistol_grip|sniper_grip|walnut_grip|crossbow_grip|tactical_handle|tsuka_handle|trigger_grip|sci_fi_grip|lmg_grip|fragmentation_body)$/.test(nm)) {
@@ -5414,7 +5369,8 @@ function loadWeaponTemplate(wId) {
       const opticPos = objToGame(opticObjX, topRailObjY, gz);
 
       // Altura exata da linha de visada padrão: na Besta CB-X fica limpa acima da coronha/trilho (nunca bloqueada pelo bloco traseiro!)
-      const baseSightY = Math.max(0.03, opticPos.y + (wId === 'tactical_crossbow' ? 0.026 : 0.012));
+      const railY = wId === 'heavy_lmg' ? (rawBox.max.y - gy) * scale : opticPos.y;
+      const baseSightY = Math.max(0.03, railY + 0.012);
       const nativeSight = sightCenter && objToGame(sightCenter.x, sightCenter.y, sightCenter.z);
       const builtInSightY = nativeSight?.y ?? baseSightY;
 
@@ -5445,7 +5401,8 @@ function loadWeaponTemplate(wId) {
         muzzleY: muzzlePos.y,
         muzzlePos,
         opticZ: opticPos.z,
-        railY: Math.max(0.025, opticPos.y),
+        railY: Math.max(0.025, railY),
+        hasNativeSight: !!nativeSight,
         baseSightY,
         builtInSightY,
         builtInSightX: nativeSight?.x ?? 0,
@@ -5540,6 +5497,7 @@ function hydrateWeaponAssembly(assembly, wId, entry) {
   assembly.opticSightY = metrics.builtInSightY;
   assembly.safeAdsZ = metrics.safeAdsZ;
   assembly.safeHipY = metrics.safeHipY;
+  assembly.safeHipZ = Math.min(WEAPON_DEFS[wId].hipPos[2], metrics.safeAdsZ - 0.06);
   assembly.sidePos = metrics.sidePos ? metrics.sidePos.clone() : null;
   assembly.underPos = metrics.underPos ? metrics.underPos.clone() : null;
 
@@ -5548,7 +5506,7 @@ function hydrateWeaponAssembly(assembly, wId, entry) {
     assembly.ironSightRear.remove(assembly.ironSightRear.children[0]);
   }
   const wDefIron = WEAPON_DEFS[wId];
-  const needsOpenIronSights = metrics.isV2 && !metrics.hasNativeSight;
+  const needsOpenIronSights = !metrics.hasNativeSight;
   if (needsOpenIronSights && wDefIron && !wDefIron.melee && wDefIron.animType !== 'throwable') {
     const sy = metrics.baseSightY;
     const ryBase = Math.min(sy - 0.010, (metrics.railY ?? (sy - 0.014)) - 0.008);
@@ -15926,7 +15884,7 @@ function updateCameraAndWeaponViewmodel(dt) {
     const fpMesh = fpWeaponMeshes[wInst.id];
     const hipY = (fpMesh && Number.isFinite(fpMesh.safeHipY)) ? fpMesh.safeHipY : wDef.hipPos[1];
     const adsZ = (fpMesh && Number.isFinite(fpMesh.safeAdsZ)) ? fpMesh.safeAdsZ : wDef.adsZ;
-    _fpHipVec.set(wDef.hipPos[0], hipY, wDef.hipPos[2]);
+    _fpHipVec.set(wDef.hipPos[0], hipY, fpMesh?.safeHipZ ?? wDef.hipPos[2]);
     _fpAdsVec.set(-(fpMesh?.opticSightX || 0), -(fpMesh ? fpMesh.opticSightY : (wDef.sightY || 0.08)), adsZ);
     _fpCurPos.lerpVectors(_fpHipVec, _fpAdsVec, inFpAds ? gunState.adsAlpha : 0);
     updateFpArmsPose(wInst.id, fpMesh, inFpAds ? gunState.adsAlpha : 0);
@@ -21172,7 +21130,7 @@ function updateZombies(dt) {
     }
   }
 
-  let v2ZombieAnimBudget = 40;
+
   for (let i = 0; i < zombies.length; i++) {
     const z = zombies[i];
     const zp = z.root.position;
@@ -21185,7 +21143,7 @@ function updateZombies(dt) {
           z._v2DeathPlayed = true;
           z.v2.play('death', { fade: 0.10, loop: THREE.LoopOnce, clampWhenFinished: true, timeScale: 1.15 });
         }
-        if (z.deathT < 1) z.v2.update(dt);
+        if (z.v2.activeAction?.isRunning()) z.v2.update(dt);
       }
       if (z.deathT < 1) {
         const prevT = z.deathT;
@@ -21266,6 +21224,7 @@ function updateZombies(dt) {
     z.atkCd = Math.max(0, z.atkCd - dt);
     z.atkAnimT = Math.max(0, (z.atkAnimT || 0) - dt);
 
+    let animationElapsed = dt;
     let moveSpd = 0;
     let isChasing = false;
 
@@ -21327,11 +21286,8 @@ function updateZombies(dt) {
         zp.x += -Math.sin(z.yaw) * moveSpd * farDt;
         zp.z += -Math.cos(z.yaw) * moveSpd * farDt;
         zp.y = getSurfaceHeight(zp.x, zp.z);
-        z.root.rotation.y = z.yaw;
-        continue;
-      }
-
-      if (z.stagger > 0) {
+        animationElapsed = farDt;
+      } else if (z.stagger > 0) {
         z.stagger = Math.max(0, z.stagger - dt);
         zp.x += z.knockX * dt;
         zp.z += z.knockZ * dt;
@@ -21397,37 +21353,32 @@ function updateZombies(dt) {
       }
     }
 
-    // LOD de Animação Esquelética por Distância (60 Hz perto -> 20 Hz médio -> 10 Hz longe -> 0 Hz oculto/>56m)
-    if (!z.root.visible || localDist > 56) continue;
+    // LOD de Animação Esquelética por Distância (60 Hz perto -> 20 Hz médio -> 10 Hz longe -> 8 Hz além de 56m)
+    if (!z.root.visible) continue;
     const zFullDist = getGraphicsPreset().zombieAnimFullDist || 24;
-    let animDt = dt;
+    let animDt = animationElapsed;
     if (localDist > zFullDist) {
-      const minStep = localDist > 42 ? 0.10 : 0.05;
-      z._animAcc = (z._animAcc || 0) + dt;
+      const minStep = localDist > 56 ? 0.125 : localDist > 42 ? 0.10 : 0.05;
+      z._animAcc = (z._animAcc ?? ((i % 8) / 8 * minStep)) + animationElapsed;
       if (z._animAcc < minStep) continue;
       animDt = Math.min(0.15, z._animAcc);
       z._animAcc = 0;
     }
 
     if (z.v2 && !z.v2.disposed) {
-      // Zumbis próximos (< 26m) sempre têm prioridade de animação; distantes compartilham o orçamento de 40 clips ativos
-      const allowV2Anim = localDist <= 26 || v2ZombieAnimBudget > 0;
-      if (allowV2Anim) {
-        if (v2ZombieAnimBudget > 0) v2ZombieAnimBudget--;
-        if (z.atkAnimT > 0) {
-          z.v2.play('attack', { fade: 0.08, timeScale: 1.25, variantIndex: z.variantIdx });
-        } else if (z.stagger > 0) {
-          z.v2.play('hit', { fade: 0.06, timeScale: 1.3, variantIndex: z.variantIdx });
-        } else if (moveSpd > 0.25 && isChasing) {
-          const useRun = !z.legHit && (z.archetype === 1 || moveSpd > 1.45);
-          z.v2.play(useRun ? 'run' : 'walk', { fade: 0.14, timeScale: THREE.MathUtils.clamp(moveSpd / (useRun ? 2.5 : 1.35), 0.78, 1.85) });
-        } else if (moveSpd > 0.12) {
-          z.v2.play('walk', { fade: 0.18, timeScale: THREE.MathUtils.clamp(moveSpd / 1.25, 0.55, 1.35) });
-        } else {
-          z.v2.play('idle', { fade: 0.22, timeScale: 1.0 });
-        }
-        z.v2.update(animDt);
+      if (z.atkAnimT > 0) {
+        z.v2.play('attack', { fade: 0.08, timeScale: 1.25, variantIndex: z.variantIdx });
+      } else if (z.stagger > 0) {
+        z.v2.play('hit', { fade: 0.06, timeScale: 1.3, variantIndex: z.variantIdx });
+      } else if (moveSpd > 0.25 && isChasing) {
+        const useRun = !z.legHit && (z.archetype === 1 || moveSpd > 1.45);
+        z.v2.play(useRun ? 'run' : 'walk', { variantIndex: z.variantIdx, fade: 0.14, timeScale: THREE.MathUtils.clamp(moveSpd / (useRun ? 2.5 : 1.35), 0.78, 1.85) });
+      } else if (moveSpd > 0.12) {
+        z.v2.play('walk', { variantIndex: z.variantIdx, fade: 0.18, timeScale: THREE.MathUtils.clamp(moveSpd / 1.25, 0.55, 1.35) });
+      } else {
+        z.v2.play('idle', { fade: 0.22, timeScale: 1.0 });
       }
+      z.v2.update(animDt);
     }
 
     const cycleRate = z.legHit ? (moveSpd * 2.8 + 0.9) : (moveSpd * 3.9 + 1.1);
