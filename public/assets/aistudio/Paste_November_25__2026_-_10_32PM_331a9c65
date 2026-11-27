@@ -1,0 +1,1034 @@
+
+User attachment
+Corrigi o erro da imagem e publiquei a atualização na branch zerotier-local, commit 228d25b. O BAT agora configura o Firewall pelo IP do ZeroTier. Se o Windows recusar a regra, o BAT mostra um aviso e continua iniciando o jogo.
+
+Pressione uma tecla para fechar a janela do erro.
+No GitHub Desktop, com zerotier-local selecionada, clique em Fetch origin e depois em Pull origin.
+Execute o INICIAR_LOCAL.bat como administrador e mantenha a janela aberta.
+Crie uma sala no jogo e mande aos amigos o link exibido pelo BAT. Na sua captura, ele era http://10.147.18.218:3000.
+Os 23 testes do projeto passaram. A confirmação da regra no seu Windows vem ao rodar o BAT atualizado e abrir esse link no PC de um amigo conectado à mesma rede ZeroTier.
+
+8:27 PM
+Tá, deu certo o que tinha pra, pra fazer nessa parte. Já, já testei aqui tudo. Queria que você desse uma olhada em toda essa questão de armas e mecânicas, mira. Porque tem algumas armas que estão iguais, algumas armas estão iguais e estão só que com classes diferentes. Algumas miras não funcionam. Algumas mira fica ou fica, ele usa aquela mira iron sight padrão. Mesmo a arma tendo a mira, né, dela mesmo Olhe nos arquivos lá direitinho das armas e tudo mais, vê como é que faz pra utilizar a mira dela mesmo, a mira que vem padrão no módulo 3D que tinha lá e tal
+
+8:33 PM
+Corrigi os modelos repetidos e as miras integradas. A atualização já está na branch zerotier-local, commit a9ff86f.
+
+M41, VX-9 e rifle de plasma: o jogo agora usa o retículo que vem no modelo 3D. Ao equipar uma red dot, ela substitui a mira integrada. Ao removê-la, a original volta.
+SR-76, M82, besta e RL-84: ao mirar em primeira pessoa, a luneta continua visível e dá para enxergar o cenário através dela. A câmera também acompanha o deslocamento lateral da óptica do RL-84. Para a besta e o RL-84, usei o zoom de 4× já disponível no jogo.
+M110, MDR e M82: cada um passou a usar seu modelo e um ícone feito a partir dele. Isso também permite distinguir as armas no inventário antes de equipá-las.
+Validação: carreguei as 18 armas em primeira e terceira pessoa no Chromium, testei a troca e a remoção de ópticas e conferi a visão de mira de seis armas durante a partida. A build e os 23 testes passaram. A aparência vista por outro jogador via ZeroTier ainda não foi conferida nesta versão.
+
+Para testar no seu PC, feche o jogo, faça Fetch origin → Pull origin na zerotier-local e abra o BAT. Um jeito rápido de ver a diferença é equipar o M41 sem acessório e apertar Z: a moldura e o ponto vermelho que aparecem são os do próprio modelo.
+
+8:40 PM
+User attachment
+User attachment
+ta acontecendo esse bugs ai, e a maioria das armas estão sem textura
+
+8:52 PM
+Vou conferir a MG-240 e a SR-76 em primeira pessoa, em uma cena diurna como a das capturas, e verificar os materiais das outras armas que usam o mesmo carregador.
+
+
+Ran commands
+
+cd condado-de-knox && git status -sb && python - <<'PY' import json,struct,glob for f in glob.glob('public/assets/3d/weapons/**/*.glb',recursive=True)[:3]: b=open(f,'rb').read();j=json.loads(b[20:20+struct.unpack_from('<I',b,12)[0]]);print(f,[(m['name'],m.get('pbrMetallicRoughness')) for m in j.get('materials',[])][:3],len(j.get('images',[]))) PY sed -n '4967,5017p;14096,14210p' public/index.html && rg -n 'fpArmMats|aimFpArmToShoulder|dayTime|setTimeOfDay' public/index.html |head -45
+$cd condado-de-knox && git status -sb && python - <<'PY'
+import json,struct,glob
+for f in glob.glob('public/assets/3d/weapons/**/*.glb',recursive=True)[:3]:
+ b=open(f,'rb').read();j=json.loads(b[20:20+struct.unpack_from('<I',b,12)[0]]);print(f,[(m['name'],m.get('pbrMetallicRoughness')) for m in j.get('materials',[])][:3],len(j.get('images',[])))
+PY
+sed -n '4967,5017p;14096,14210p' public/index.html && rg -n 'fpArmMats|aimFpArmToShoulder|dayTime|setTimeOfDay' public/index.html |head -45
+## zerotier-local
+Traceback (most recent call last):
+  File "<stdin>", line 3, in <module>
+KeyError: 'name'
+  laserBeam:   new THREE.MeshBasicMaterial({ color: 0xff1e24, transparent: true, opacity: 0.42, depthWrite: false }),
+  tacLens:     new THREE.MeshBasicMaterial({ color: 0xfff2cc }),
+  tacCone:     new THREE.MeshBasicMaterial({ color: 0xfff5d6, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false }),
+  scopeGlass:  new THREE.MeshStandardMaterial({ color: 0x246280, emissive: 0x0e3448, emissiveIntensity: 0.55, roughness: 0.08, metalness: 0.72, envMap: weaponEnvMap, envMapIntensity: 2.0 }),
+  shellRed:    new THREE.MeshStandardMaterial({ color: 0xb82e24, roughness: 0.45, metalness: 0.15, envMap: weaponEnvMap }),
+  shellBrass:  new THREE.MeshStandardMaterial({ color: 0xdcb252, roughness: 0.28, metalness: 0.78, envMap: weaponEnvMap, envMapIntensity: 1.6 })
+};
+
+function getWeaponPbrMaterial(wId, channel) {
+  const def = WEAPON_DEFS[wId];
+  const ch = (def && def.texChannels.includes(channel)) ? channel : (def ? def.texChannels[0] : 'metal');
+  const key = `${wId}:${ch}`;
+  if (weaponPbrMatCache.has(key)) return weaponPbrMatCache.get(key);
+
+  const base = `${WEAPONS_BASE_URL}${def.folder}/textures/${ch}`;
+  const loadMap = (suffix) => {
+    const t = weaponTexLoader.load(`${base}_${suffix}.png`);
+    // Os PNGs de albedo do pacote foram gerados em espaço linear (ex.: metal ~45, polymer ~27, grip ~19):
+    // manter NoColorSpace evita a curva sRGB^2.2 que escurecia tudo para preto puro (<2% de refletância)!
+    t.colorSpace = THREE.NoColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 4;
+    return t;
+  };
+  const isMetalCh = ch === 'metal' || ch === 'accent';
+  const matCfg = {
+    map: loadMap('albedo'),
+    normalMap: loadMap('normal'),
+    normalScale: new THREE.Vector2(isMetalCh ? 0.36 : 0.42, isMetalCh ? 0.36 : 0.42),
+    roughnessMap: loadMap('roughness'),
+    envMap: weaponEnvMap,
+    envMapIntensity: ch === 'accent' ? 2.0 : (ch === 'metal' ? 1.85 : (ch === 'olive' ? 1.35 : 1.15)),
+    color: new THREE.Color(
+      ch === 'wood' ? 0xd2a884 :
+      ch === 'olive' ? 0xdde6d4 :
+      ch === 'grip' ? 0xe8edf5 :
+      ch === 'polymer' ? 0xeef2f8 : 0xf4f8ff
+    ),
+    roughness: ch === 'accent' ? 0.30 : (ch === 'metal' ? 0.38 : (ch === 'wood' ? 0.62 : (ch === 'grip' ? 0.74 : 0.56))),
+    metalness: ch === 'accent' ? 0.74 : (ch === 'metal' ? 0.64 : (ch === 'olive' ? 0.22 : (ch === 'polymer' ? 0.14 : 0.06)))
+  };
+  if (isMetalCh || ch === 'olive') {
+    matCfg.metalnessMap = loadMap('metalness');
+  }
+  const mat = new THREE.MeshStandardMaterial(matCfg);
+  weaponPbrMatCache.set(key, mat);
+  return mat;
+}
+
+/* Converte cubos sólidos de mira/alça do OBJ (ex.: VX-9 [24], PL-09 [13,14]) em molduras abertas vazadas */
+function convertSolidBoxToOpenFrame(mesh, mode = 'window') {
+  reloading: false,
+  reloadT: 0,
+  reloadStage: 0,
+  magDropped: false,
+  recoilKick: 0,
+  recoilPosZ: 0,
+  recoilPitch: 0,
+  recoilPitchVel: 0,
+  recoilYaw: 0,
+  recoilYawVel: 0,
+  recoilRoll: 0,
+  wallPullback: 0,
+  equipT: 0,
+  meleeSwingT: 0,
+  pumpTimer: 0,
+  boltTimer: 0,
+  cylinderAngle: 0,
+  flashT: 0,
+  swayX: 0,
+  swayY: 0,
+  muzzleBlocked: false
+};
+
+function getActiveWeaponObj() {
+  return inventory.weapons[inventory.activeSlot] || inventory.weapons[0];
+}
+
+function syncPlayerFlashlight() {
+  const wInst = getActiveWeaponObj();
+  const hasTacLight = !!(wInst && wInst.attachments && wInst.attachments.under === 'taclight');
+  if (player.flashlightOn) {
+    flashlight.intensity = hasTacLight ? 22 : 12;
+    flashlight.distance = hasTacLight ? 68 : 44;
+    flashlight.angle = hasTacLight ? (Math.PI / 6.2) : (Math.PI / 5.2);
+  } else {
+    flashlight.intensity = 0;
+  }
+  const tpA = wInst ? tpWeaponMeshes[wInst.id] : null;
+  const fpA = wInst ? fpWeaponMeshes[wInst.id] : null;
+  if (tpA && tpA.tacCone) tpA.tacCone.visible = !!player.flashlightOn;
+  if (fpA && fpA.tacCone) fpA.tacCone.visible = !!player.flashlightOn;
+}
+
+function equipSlot(slotIdx) {
+  if (slotIdx < 0 || slotIdx > 2 || !inventory.weapons[slotIdx]) return;
+  for (const k of Object.keys(WEAPON_DEFS)) {
+    tpWeaponMeshes[k].root.visible = false;
+    fpWeaponMeshes[k].root.visible = false;
+  }
+  inventory.activeSlot = slotIdx;
+  const wInst = getActiveWeaponObj();
+  tpWeaponMeshes[wInst.id].root.visible = true;
+  fpWeaponMeshes[wInst.id].root.visible = true;
+  if (!tpWeaponMeshes[wInst.id]._hydrated || !fpWeaponMeshes[wInst.id]._hydrated) {
+    loadWeaponTemplate(wInst.id);
+  }
+  rebuildAttachmentVisuals(tpWeaponMeshes[wInst.id], wInst.id, wInst.attachments);
+  rebuildAttachmentVisuals(fpWeaponMeshes[wInst.id], wInst.id, wInst.attachments);
+  syncPlayerFlashlight();
+
+  gunState.reloading = false;
+  gunState.reloadStage = 0;
+  gunState.cooldown = 0.20;
+  gunState.equipT = 1.0;
+  gunState.pumpTimer = 0;
+  gunState.boltTimer = 0;
+  gunState.recoilPosZ = 0;
+  gunState.recoilPitch = 0;
+  gunState.recoilPitchVel = 0;
+  gunState.recoilYaw = 0;
+  gunState.recoilYawVel = 0;
+  gunState.recoilRoll = 0;
+  document.getElementById('reload-tag').style.display = 'none';
+  sfx.playClick(2100, 0.14);
+  updateWeaponHUD();
+}
+
+/* Animação 3D Procedural das Peças Mecânicas da Arma (Ferrolho, Slide, Tambor, Pump, Carregador, Cão, Lanterna e Saque!) */
+function animateWeaponAssembly(assembly, wInst, dt, isFirstPerson) {
+  if (!assembly || !wInst) return;
+  const wDef = WEAPON_DEFS[wInst.id] || WEAPON_DEFS[DEFAULT_MELEE_WEAPON];
+  const animType = assembly.animType || wDef.animType || 'auto';
+  const relProg = gunState.reloading && wDef.rDur > 0 ? THREE.MathUtils.clamp(1 - gunState.reloadT / wDef.rDur, 0, 1) : 0;
+
+  // Sincroniza cone volumétrico da Lanterna Tática acoplada no trilho inferior
+  if (assembly.tacCone && !assembly.isLoot) {
+    assembly.tacCone.visible = !!player.flashlightOn;
+  }
+
+  // Movimento mecânico do corpo visual da arma (saque, recuo interno 3D e quebra de cano)
+  if (assembly.gunVisualGroup) {
+    let vPosZ = 0, vRotX = 0, vRotZ = 0;
+    if (!isFirstPerson) {
+      vPosZ = gunState.recoilPosZ * 0.65;
+      vRotX = gunState.recoilPitch * 0.55;
+      if (gunState.equipT > 0) {
+        const eq = gunState.equipT * gunState.equipT;
+        vRotX -= eq * 0.55;
+        vRotZ += eq * 0.35;
+      }
+    }
+    if (animType === 'break' && gunState.reloading && relProg > 0.12 && relProg < 0.84) {
+      const brk = Math.sin(((relProg - 0.12) / 0.72) * Math.PI);
+      vRotX -= brk * 0.42;
+    }
+    assembly.gunVisualGroup.position.z = THREE.MathUtils.lerp(assembly.gunVisualGroup.position.z, vPosZ, Math.min(1, dt * 28));
+    assembly.gunVisualGroup.rotation.x = THREE.MathUtils.lerp(assembly.gunVisualGroup.rotation.x, vRotX, Math.min(1, dt * 24));
+    assembly.gunVisualGroup.rotation.z = THREE.MathUtils.lerp(assembly.gunVisualGroup.rotation.z, vRotZ, Math.min(1, dt * 24));
+  }
+
+  if (wDef.melee) return;
+
+  // 1. Animação 3D do Carregador / Tambor (compatível com sub-malhas reais em espaço OBJ!)
+  if (assembly.magMesh) {
+    const isObj = !!assembly.magMesh.userData.objSpace;
+4089:const fpArmMats = {
+4106:    const forearm = new THREE.Mesh(foreGeo, fpArmMats.sleeve);
+4110:    const cuff = new THREE.Mesh(cuffGeo, fpArmMats.cuff);
+4113:    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.050, 0.046, 0.068), fpArmMats.hand);
+4115:    const fingers = new THREE.Mesh(new THREE.BoxGeometry(0.044, 0.036, 0.032), fpArmMats.hand);
+4118:    const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.019, 0.021, 0.040), fpArmMats.hand);
+4131:function aimFpArmToShoulder(armGrp, handX, handY, handZ, shX, shY, shZ) {
+4139:  fpArmMats.sleeve.color.setHex(pal.sleeve);
+4140:  fpArmMats.cuff.color.setHex(pal.cuff);
+4141:  fpArmMats.hand.color.setHex(pal.gloved ? pal.glove : pal.skin);
+4142:  fpArmMats.skin.color.setHex(pal.skin);
+4151:    aimFpArmToShoulder(fpArms.right, 0.010, -0.018, 0.018, 0.16, -0.22, 0.42);
+4154:      aimFpArmToShoulder(fpArms.left, -0.020, -0.048, 0.068, -0.26, -0.24, 0.44);
+4159:    aimFpArmToShoulder(fpArms.right, 0.010, -0.022, 0.020, 0.18, -0.22, 0.42);
+4165:    aimFpArmToShoulder(fpArms.right, 0.008, -0.024, 0.016, rShX, -0.24, 0.44);
+4171:    aimFpArmToShoulder(fpArms.left, lx, ly, lz, lShX, lShY, 0.36);
+4174:    aimFpArmToShoulder(fpArms.right, 0.008, -0.020, 0.014, 0.18, -0.22, 0.42);
+4176:    aimFpArmToShoulder(fpArms.left, -0.022, -0.026, 0.022, -0.24, -0.22, 0.42);
+10638:function setTimeOfDay(hours, stormOverride = null) {
+18610:    setTimeOfDay(pkt.timeHours, stormVal);
+19264:    setTimeOfDay(targetH, targetStorm);
+23131:      setTimeOfDay(timeOfDayState.hours);
+24713:          setTimeOfDay(targetH);
+24721:    if (Number.isFinite(h)) setTimeOfDay(h);
+24729:    setTimeOfDay(h);
+24751:    setTimeOfDay(timeOfDayState.hours, timeOfDayState.stormMode);
+25941:  setTime: (h) => { setTimeOfDay(h, false); updateStreetlightPool(1.0); },
+Success
+
+cd condado-de-knox && python - <<'PY' import json,struct,glob for f in glob.glob('public/**/*mg-240*.glb',recursive=True)+glob.glob('public/**/*sr-76*.glb',recursive=True): b=open(f,'rb').read();j=json.loads(b[20:20+struct.unpack_from('<I',b,12)[0]]);print(f,len(j.get('images',[])),j['materials'][:2],j['nodes'][:3]) PY sed -n '4090,4139p;5380,5427p' public/index.html && cat /tmp/knox-optics-clear.py|tail -12 && curl -s localhost:3012/api/servers
+$cd condado-de-knox && python - <<'PY'
+import json,struct,glob
+for f in glob.glob('public/**/*mg-240*.glb',recursive=True)+glob.glob('public/**/*sr-76*.glb',recursive=True):
+ b=open(f,'rb').read();j=json.loads(b[20:20+struct.unpack_from('<I',b,12)[0]]);print(f,len(j.get('images',[])),j['materials'][:2],j['nodes'][:3])
+PY
+sed -n '4090,4139p;5380,5427p' public/index.html && cat /tmp/knox-optics-clear.py|tail -12 && curl -s localhost:3012/api/servers
+public/assets/3d/weapons/04_pesadas/mg-240_lmg/mg-240_tactical_black_game_ready.glb 18 [{'pbrMetallicRoughness': {'metallicFactor': 1, 'roughnessFactor': 1, 'metallicRoughnessTexture': {'index': 0, 'texCoord': 0, 'extensions': {'KHR_texture_transform': {'scale': [1.5, 1.5]}}}, 'baseColorTexture': {'index': 1, 'texCoord': 0, 'extensions': {'KHR_texture_transform': {'scale': [1.5, 1.5]}}}}, 'normalTexture': {'index': 2, 'texCoord': 0, 'scale': 0.85, 'extensions': {'KHR_texture_transform': {'scale': [1.5, 1.5]}}}, 'extensions': {'KHR_materials_clearcoat': {'clearcoatFactor': 0.16, 'clearcoatRoughnessFactor': 0.42}}}, {'pbrMetallicRoughness': {'metallicFactor': 1, 'roughnessFactor': 1, 'metallicRoughnessTexture': {'index': 3, 'texCoord': 0, 'extensions': {'KHR_texture_transform': {'scale': [2, 2]}}}, 'baseColorTexture': {'index': 4, 'texCoord': 0, 'extensions': {'KHR_texture_transform': {'scale': [2, 2]}}}}, 'normalTexture': {'index': 5, 'texCoord': 0, 'scale': 0.65, 'extensions': {'KHR_texture_transform': {'scale': [2, 2]}}}, 'extensions': {'KHR_materials_anisotropy': {'anisotropyStrength': 0.65, 'anisotropyRotation': 0}}}] [{'name': 'MG240_HeavyLMG', 'children': [1]}, {'matrix': [0.8862434002879219, 0, 0, 0, 0, 0.8862434002879219, 0, 0, 0, 0, 0.8862434002879219, 0, 0, 0, 0, 1], 'name': 'MG240_HeavyLMG', 'children': [2, 3, 4, 16, 17, 18, 19, 20, 21, 22, 29, 30, 31, 34, 35, 36, 37]}, {'matrix': [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.04, 0.07, 0, 1], 'name': 'lmg_receiver', 'extras': {'basePos': {'x': -0.04, 'y': 0.07, 'z': 0}, 'explodeOffset': {'x': 0, 'y': 0.06, 'z': 0}}, 'mesh': 0}]
+public/assets/3d/weapons/01_fuzis/sr-76_sniper/sr-76_tactical_black_game_ready.glb 21 [{'pbrMetallicRoughness': {'metallicFactor': 1, 'roughnessFactor': 1, 'metallicRoughnessTexture': {'index': 0, 'texCoord': 0, 'extensions': {'KHR_texture_transform': {'scale': [1.5, 1.5]}}}, 'baseColorTexture': {'index': 1, 'texCoord': 0, 'extensions': {'KHR_texture_transform': {'scale': [1.5, 1.5]}}}}, 'normalTexture': {'index': 2, 'texCoord': 0, 'scale': 0.85, 'extensions': {'KHR_texture_transform': {'scale': [1.5, 1.5]}}}, 'extensions': {'KHR_materials_clearcoat': {'clearcoatFactor': 0.16, 'clearcoatRoughnessFactor': 0.42}}}, {'pbrMetallicRoughness': {'metallicFactor': 1, 'roughnessFactor': 1, 'metallicRoughnessTexture': {'index': 3, 'texCoord': 0, 'extensions': {'KHR_texture_transform': {'scale': [2, 2]}}}, 'baseColorTexture': {'index': 4, 'texCoord': 0, 'extensions': {'KHR_texture_transform': {'scale': [2, 2]}}}}, 'normalTexture': {'index': 5, 'texCoord': 0, 'scale': 0.65, 'extensions': {'KHR_texture_transform': {'scale': [2, 2]}}}, 'extensions': {'KHR_materials_anisotropy': {'anisotropyStrength': 0.65, 'anisotropyRotation': 0}}}] [{'name': 'SR76_SniperRifle', 'children': [1]}, {'matrix': [0.9336099721789478, 0, 0, 0, 0, 0.9336099721789478, 0, 0, 0, 0, 0.9336099721789478, 0, 0, 0, 0, 1], 'name': 'SR76_SniperRifle', 'children': [2, 3, 7, 8, 9, 17, 18, 19, 20, 21, 25, 26, 27, 28]}, {'name': 'precision_chassis', 'extras': {'basePos': {'x': 0, 'y': 0, 'z': 0}, 'explodeOffset': {'x': 0, 'y': -0.02, 'z': 0}}, 'mesh': 0}]
+  sleeve: new THREE.MeshStandardMaterial({ color: 0x1d293a, roughness: 0.78, metalness: 0.08 }),
+  cuff:   new THREE.MeshStandardMaterial({ color: 0x111722, roughness: 0.65, metalness: 0.14 }),
+  hand:   new THREE.MeshStandardMaterial({ color: 0x181b20, roughness: 0.72, metalness: 0.08 }),
+  skin:   new THREE.MeshStandardMaterial({ color: 0xd2a27c, roughness: 0.80, metalness: 0.02 })
+};
+const _fpArmPosZ = new THREE.Vector3(0, 0, 1);
+const _fpArmDir = new THREE.Vector3();
+const _fpArmTarget = new THREE.Vector3();
+const fpArms = (() => {
+  const root = new THREE.Group();
+  root.name = 'fp_arms_rig';
+  const buildArmSide = (sideSign) => {
+    const grp = new THREE.Group();
+    // Antebraço longo (0.48m) estendendo-se ao longo de +Z da mão até fora da borda inferior da tela (nunca termina flutuando!)
+    const foreGeo = new THREE.CylinderGeometry(0.030, 0.046, 0.48, 12);
+    foreGeo.rotateX(Math.PI * 0.5);
+    const forearm = new THREE.Mesh(foreGeo, fpArmMats.sleeve);
+    forearm.position.set(0, 0, 0.28);
+    const cuffGeo = new THREE.CylinderGeometry(0.032, 0.035, 0.040, 12);
+    cuffGeo.rotateX(Math.PI * 0.5);
+    const cuff = new THREE.Mesh(cuffGeo, fpArmMats.cuff);
+    cuff.position.set(0, 0, 0.055);
+    // Palma + dorso da mão + dedos envolvendo o punho/guarda-mão
+    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.050, 0.046, 0.068), fpArmMats.hand);
+    palm.position.set(0, -0.004, 0.008);
+    const fingers = new THREE.Mesh(new THREE.BoxGeometry(0.044, 0.036, 0.032), fpArmMats.hand);
+    fingers.position.set(-sideSign * 0.012, -0.014, -0.024);
+    fingers.rotation.x = 0.28;
+    const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.019, 0.021, 0.040), fpArmMats.hand);
+    thumb.position.set(-sideSign * 0.025, 0.015, -0.010);
+    thumb.rotation.set(0.18, sideSign * 0.35, 0);
+    grp.add(forearm, cuff, palm, fingers, thumb);
+    grp.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.frustumCulled = false; } });
+    return grp;
+  };
+  const right = buildArmSide(1);
+  const left = buildArmSide(-1);
+  root.add(right, left);
+  fpWeaponRig.add(root);
+  return { root, right, left, lastWeaponId: null };
+})();
+function aimFpArmToShoulder(armGrp, handX, handY, handZ, shX, shY, shZ) {
+  armGrp.position.set(handX, handY, handZ);
+  _fpArmTarget.set(shX, shY, shZ);
+  _fpArmDir.copy(_fpArmTarget).sub(armGrp.position).normalize();
+  armGrp.quaternion.setFromUnitVectors(_fpArmPosZ, _fpArmDir);
+}
+function updateFpArmsAppearance(charId) {
+  const pal = FP_ARM_PALETTES[charId] || FP_ARM_PALETTES.swat;
+  fpArmMats.sleeve.color.setHex(pal.sleeve);
+        convertSolidBoxToOpenFrame(h.mesh, h.mode);
+      }
+
+      // Pivô exato da empunhadura no espaço do OBJ (incluindo centralização lateral gz!)
+      const sGrp = def.sockets?.grip || [-0.3, -0.2, 0];
+      const sMuz = def.sockets?.muzzle || [1.4, 0.12, 0];
+      const sOpt = def.sockets?.optic || [0, 0.30, 0];
+      const sSide = def.sockets?.side || null;
+      const sUnder = def.sockets?.under || null;
+
+      let gx, gy, gz;
+      if (gripBox) {
+        gx = (gripBox.min.x + gripBox.max.x) * 0.5;
+        gy = gripBox.min.y + (gripBox.max.y - gripBox.min.y) * 0.62;
+        gz = (gripBox.min.z + gripBox.max.z) * 0.5;
+      } else {
+        gx = rawCenter.x + sGrp[0] * 0.85;
+        gy = rawCenter.y + sGrp[1] * 0.85;
+        gz = receiverBox ? ((receiverBox.min.z + receiverBox.max.z) * 0.5) : rawCenter.z;
+      }
+      // Para SMGs/fuzis com pequena folga lateral no OBJ (ex.: VX-9), centraliza Z exatamente no eixo do receiver!
+      if (receiverBox) {
+        gz = (receiverBox.min.z + receiverBox.max.z) * 0.5;
+      }
+
+      // Converte qualquer offset (ox, oy, oz) do OBJ para o espaço da arma no jogo (+X->-Z, +Y->+Y, +Z->+X)
+      const objToGame = (ox, oy, oz = gz) => new THREE.Vector3((oz - gz) * scale, (oy - gy) * scale, -(ox - gx) * scale);
+
+      const muzzleObjX = rawBox.max.x;
+      const muzzleObjY = muzzleBox ? ((muzzleBox.min.y + muzzleBox.max.y) * 0.5) : (rawCenter.y + (sMuz[1] || 0.12) * 0.85);
+      const muzzlePos = objToGame(muzzleObjX, muzzleObjY, gz);
+
+      const topRailObjY = Number.isFinite(receiverTopY) ? receiverTopY : (rawCenter.y + (sOpt[1] || 0.25) * 0.85);
+      const opticObjX = Number.isFinite(receiverTopY) ? receiverMidX : (rawCenter.x + (sOpt[0] || 0) * 0.85);
+      const opticPos = objToGame(opticObjX, topRailObjY, gz);
+
+      // Altura exata da linha de visada padrão: na Besta CB-X fica limpa acima da coronha/trilho (nunca bloqueada pelo bloco traseiro!)
+      const baseSightY = Math.max(0.03, opticPos.y + (wId === 'tactical_crossbow' ? 0.026 : 0.012));
+      const nativeSight = sightCenter && objToGame(sightCenter.x, sightCenter.y, sightCenter.z);
+      const builtInSightY = nativeSight?.y ?? baseSightY;
+
+      // Relação de escala entre sockets.json e OBJ para trilhos lateral e inferior
+      const sockSpanX = Math.max(0.25, (sMuz[0] || 1.2) - (sGrp[0] || -0.3));
+      const objSpanToMuz = Math.max(0.25, muzzleObjX - gx);
+      const sockRatio = objSpanToMuz / sockSpanX;
+      const mapSockToGame = (sockArr) => {
+        if (!sockArr) return null;
+        const ox = gx + (sockArr[0] - sGrp[0]) * sockRatio;
+ const height=a.opticSightY;
+ att('reddot'); if(a.builtInOpticMeshes.some(m=>m.visible))throw Error(id+' replacement');
+ att(null); if(a.builtInOpticMeshes.some(m=>!m.visible)||a.opticSightY!==height)throw Error(id+' restore');
+ result[id]=[tpl.template.children[0]?.name,native,a.ironSightRear.children.length];}
+ return result;};\n'''+html[i:]
+ page.route('http://localhost:3012/',lambda r:r.fulfill(body=html,content_type='text/html'));page.goto('http://localhost:3012',wait_until='domcontentloaded',timeout=120000)
+ print(json.dumps(page.evaluate('window.checkArms()'),indent=1),flush=True)
+ page.locator('#spawn-modal.open').wait_for();page.locator('#btn-spawn-random').click();page.locator('#btn-spawn-confirm').click();page.locator('#spawn-modal.open').wait_for(state='hidden');page.wait_for_timeout(1000)
+ page.add_style_tag(content='body > :not(canvas):not(#scope-overlay){visibility:hidden !important}');
+ for id in ['assault_rifle','sniper_rifle','heavy_sniper']:
+  page.locator('#dev-weapon-select').evaluate('(el,id)=>el.value=id',id);page.locator('#dev-btn-equip-weapon').dispatch_event('click');page.keyboard.press('z');page.wait_for_timeout(1500);print('ADS',id,page.evaluate('window.aimState()'),page.locator('#scope-overlay').is_visible(),flush=True);page.screenshot(path='/tmp/knox-view-'+id+'.png');page.keyboard.press('z')
+ b.close()
+{"servers":[]}
+Success
+
+cd condado-de-knox && python - <<'PY' import json,glob,struct for f in glob.glob('public/**/*mg-240*.glb',recursive=True): b=open(f,'rb').read();j=json.loads(b[20:20+struct.unpack_from('<I',b,12)[0]]);print([(i,n.get('name'),n.get('mesh'),n.get('children')) for i,n in enumerate(j['nodes'])]);print([m.get('name') for m in j['meshes']]);print(j['images'][:4]) PY rg 'GLTFLoader|GLBLoader' public/index.html public/js/asset-library.js|head -14 cat /tmp/knox-optics-clear.py|head -12
+$cd condado-de-knox && python - <<'PY'
+import json,glob,struct
+for f in glob.glob('public/**/*mg-240*.glb',recursive=True):
+ b=open(f,'rb').read();j=json.loads(b[20:20+struct.unpack_from('<I',b,12)[0]]);print([(i,n.get('name'),n.get('mesh'),n.get('children')) for i,n in enumerate(j['nodes'])]);print([m.get('name') for m in j['meshes']]);print(j['images'][:4])
+PY
+rg 'GLTFLoader|GLBLoader' public/index.html public/js/asset-library.js|head -14
+cat /tmp/knox-optics-clear.py|head -12
+[(0, 'MG240_HeavyLMG', None, [1]), (1, 'MG240_HeavyLMG', None, [2, 3, 4, 16, 17, 18, 19, 20, 21, 22, 29, 30, 31, 34, 35, 36, 37]), (2, 'lmg_receiver', 0, None), (3, 'feed_cover', 1, None), (4, 'lmg_top_rail', None, [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]), (5, None, 2, None), (6, None, 3, None), (7, None, 3, None), (8, None, 3, None), (9, None, 3, None), (10, None, 3, None), (11, None, 3, None), (12, None, 3, None), (13, None, 3, None), (14, None, 3, None), (15, None, 3, None), (16, 'carry_handle', 4, None), (17, 'heat_shroud', 5, None), (18, 'heavy_barrel', 6, None), (19, 'gas_cylinder', 7, None), (20, 'lmg_flash_hider', 8, None), (21, 'charging_handle', 9, None), (22, 'ammo_box_and_belt', None, [23, 24, 25, 26, 27, 28]), (23, None, 10, None), (24, None, 11, None), (25, None, 11, None), (26, None, 11, None), (27, None, 11, None), (28, None, 11, None), (29, 'lmg_grip', 12, None), (30, 'heavy_stock', 13, None), (31, 'lmg_bipod', None, [32, 33]), (32, None, 14, None), (33, None, 14, None), (34, 'socket_muzzle', None, None), (35, 'socket_grip', None, None), (36, 'socket_ejection', None, None), (37, 'socket_optic', None, None)]
+[None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
+[{'mimeType': 'image/png', 'bufferView': 71}, {'mimeType': 'image/png', 'bufferView': 79}, {'mimeType': 'image/png', 'bufferView': 72}, {'mimeType': 'image/png', 'bufferView': 73}]
+public/js/asset-library.js:import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+public/js/asset-library.js:    this.gltfLoader = new GLTFLoader();
+from playwright.sync_api import sync_playwright
+from pathlib import Path
+import json
+with sync_playwright() as p:
+ b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--enable-unsafe-swiftshader'])
+ page=b.new_page(viewport={'width':480,'height':320});page.on('pageerror',lambda e:print('PAGE ERROR',str(e)[:220],flush=True))
+ page.on('console',lambda m:print('WEBGL',m.text[:300],flush=True) if 'Shader Error' in m.text else None);page.on('response',lambda r:print('HTTP',r.status,r.url[:170],flush=True) if r.status>=400 and '/weapons/' in r.url else None)
+ html=Path('public/index.html').read_text().replace('</script>', '</script>',1);i=html.rindex('</script>');html=html[:i]+'''window.aimState=()=>[getActiveWeaponObj().id,player.adsFirstPersonToggle,player.firstPerson,gunState.adsAlpha,_lastScopeShow,document.pointerLockElement?.id,player.dead,fpWeaponRig.visible,document.querySelector('#scope-overlay').className];window.checkArms=async()=>{
+ const result={};for(const id of Object.keys(WEAPON_DEFS)){
+ const tpl=await loadWeaponTemplate(id),a=fpWeaponMeshes[id];
+ if(!tpl || !a._hydrated || !tpWeaponMeshes[id]._hydrated)throw Error(id);
+ const att=optic=>rebuildAttachmentVisuals(a,id,{optic});
+Success
+
+cd condado-de-knox && ls -lh public/assets/3d/weapons/*/*/*.glb && python - <<'PY' import struct,glob,json for f in glob.glob('public/assets/3d/weapons/**/*.glb',recursive=True): b=open(f,'rb').read();j=json.loads(b[20:20+struct.unpack_from('<I',b,12)[0]]);print(f.split('/')[-1],len([n for n in j['nodes'] if 'mesh' in n]),sum(len(m['primitives'])>1 for m in j['meshes'])) PY sed -n '4162,4173p;5291,5358p;5542,5569p' public/index.html
+$cd condado-de-knox && ls -lh public/assets/3d/weapons/*/*/*.glb && python - <<'PY'
+import struct,glob,json
+for f in glob.glob('public/assets/3d/weapons/**/*.glb',recursive=True):
+ b=open(f,'rb').read();j=json.loads(b[20:20+struct.unpack_from('<I',b,12)[0]]);print(f.split('/')[-1],len([n for n in j['nodes'] if 'mesh' in n]),sum(len(m['primitives'])>1 for m in j['meshes']))
+PY
+sed -n '4162,4173p;5291,5358p;5542,5569p' public/index.html
+-rw------- 1 agent agent 8.9M Nov 25 21:18 public/assets/3d/weapons/01_fuzis/ak-74m_rifle_ak/ak-74m_tactical_black_game_ready.glb
+-rw------- 1 agent agent 8.8M Nov 25 21:18 public/assets/3d/weapons/01_fuzis/m41-t_fuzil/m41-t_tactical_black_game_ready.glb
+-rw------- 1 agent agent 9.8M Nov 25 21:18 public/assets/3d/weapons/01_fuzis/sr-76_sniper/sr-76_tactical_black_game_ready.glb
+-rw------- 1 agent agent 6.2M Nov 25 21:18 public/assets/3d/weapons/02_pistolas/mag-44_revolver/mag-44_tactical_black_game_ready.glb
+-rw------- 1 agent agent 6.8M Nov 25 21:18 public/assets/3d/weapons/02_pistolas/p9-k_pistola/p9-k_tactical_black_game_ready.glb
+-rw------- 1 agent agent 6.3M Nov 25 21:18 public/assets/3d/weapons/03_cqb/db-68_cano_duplo/db-68_tactical_black_game_ready.glb
+-rw------- 1 agent agent 7.9M Nov 25 21:18 public/assets/3d/weapons/03_cqb/sg-12_escopeta/sg-12_tactical_black_game_ready.glb
+-rw------- 1 agent agent 7.7M Nov 25 21:18 public/assets/3d/weapons/03_cqb/vx-9_smg/vx-9_tactical_black_game_ready.glb
+-rw------- 1 agent agent 4.3M Nov 25 21:18 public/assets/3d/weapons/04_pesadas/m67-g_granada/m67-g_tactical_black_game_ready.glb
+-rw------- 1 agent agent 7.1M Nov 25 21:18 public/assets/3d/weapons/04_pesadas/mg-240_lmg/mg-240_tactical_black_game_ready.glb
+-rw------- 1 agent agent 4.0M Nov 25 21:18 public/assets/3d/weapons/04_pesadas/rl-84_lancador/rl-84_tactical_black_game_ready.glb
+-rw------- 1 agent agent 6.9M Nov 25 21:18 public/assets/3d/weapons/05_scifi_e_melee/cb-x_besta/cb-x_tactical_black_game_ready.glb
+-rw------- 1 agent agent 4.1M Nov 25 21:18 public/assets/3d/weapons/05_scifi_e_melee/k-bar_faca/k-bar_tactical_black_game_ready.glb
+-rw------- 1 agent agent 5.1M Nov 25 21:18 public/assets/3d/weapons/05_scifi_e_melee/kat-0_katana/kat-0_tactical_black_game_ready.glb
+-rw------- 1 agent agent 6.8M Nov 25 21:18 public/assets/3d/weapons/05_scifi_e_melee/pl-09_plasma/pl-09_tactical_black_game_ready.glb
+m67-g_tactical_black_game_ready.glb 7 0
+rl-84_tactical_black_game_ready.glb 12 0
+mg-240_tactical_black_game_ready.glb 29 0
+k-bar_tactical_black_game_ready.glb 5 0
+kat-0_tactical_black_game_ready.glb 11 0
+cb-x_tactical_black_game_ready.glb 18 0
+pl-09_tactical_black_game_ready.glb 17 0
+sg-12_tactical_black_game_ready.glb 36 0
+db-68_tactical_black_game_ready.glb 12 0
+vx-9_tactical_black_game_ready.glb 29 0
+m41-t_tactical_black_game_ready.glb 40 0
+sr-76_tactical_black_game_ready.glb 20 0
+ak-74m_tactical_black_game_ready.glb 15 0
+mag-44_tactical_black_game_ready.glb 16 0
+p9-k_tactical_black_game_ready.glb 17 0
+    const rShX = THREE.MathUtils.lerp(0.16, 0.18, adsAlpha);
+    const lShX = THREE.MathUtils.lerp(-0.28, -0.20, adsAlpha);
+    const lShY = THREE.MathUtils.lerp(-0.23, -0.24, adsAlpha);
+    aimFpArmToShoulder(fpArms.right, 0.008, -0.024, 0.016, rShX, -0.24, 0.44);
+    fpArms.left.visible = true;
+    const u = fpMesh && fpMesh.underPos ? fpMesh.underPos : null;
+    const lx = u ? Math.max(-0.045, Math.min(-0.010, u.x - 0.018)) : -0.020;
+    const ly = u ? Math.max(-0.055, Math.min(0.015, u.y - 0.026)) : -0.022;
+    const lz = u ? Math.min(-0.15, Math.max(-0.38, u.z)) : -0.24;
+    aimFpArmToShoulder(fpArms.left, lx, ly, lz, lShX, lShY, 0.36);
+  } else {
+    // Pistola / Revólver: empunhadura tática dupla apontando para os respectivos ombros esquerdo e direito
+          const waiters = weaponPendingAssemblies.get(wId);
+          if (waiters) {
+            for (const asm of waiters) hydrateWeaponAssembly(asm, wId, entry);
+            waiters.clear();
+          }
+          return entry;
+        }
+      }
+    }
+    return loadV1Obj().then((rawObjText) => {
+      // Garante nomes únicos para linhas 'o ' vazias para que o OBJLoader nunca mescle sub-malhas (lentes, retículos, trilhos)
+      let unnamedSeq = 0;
+      const patchedObjText = rawObjText.replace(/^o[ \t]*$/gm, () => `o __part_${unnamedSeq++}`);
+      const obj = weaponObjLoader.parse(patchedObjText);
+
+      const rawBox = new THREE.Box3().setFromObject(obj);
+      const rawSize = rawBox.getSize(new THREE.Vector3());
+      const rawCenter = rawBox.getCenter(new THREE.Vector3());
+      const maxAxis = Math.max(rawSize.x, rawSize.y, 0.001);
+      const scale = (def.targetLenM || (def.lengthCm / 100)) / maxAxis;
+
+      // Medição exata das partes nomeadas (punho, cano/boca, trilho superior, retículo embutido) no espaço do OBJ
+      let gripBox = null;
+      let muzzleBox = null;
+      let receiverBox = null;
+      let receiverTopY = -Infinity;
+      let receiverMidX = rawCenter.x;
+      let sightCenter = null;
+      let pupilRadius = Infinity;
+      const toHollow = [];
+      const origMeshes = [];
+
+      obj.traverse((child) => {
+        if (child.isMesh) origMeshes.push(child);
+      });
+
+      for (let curIdx = 0; curIdx < origMeshes.length; curIdx++) {
+        const child = origMeshes[curIdx];
+        if (!child.geometry.attributes.normal) child.geometry.computeVertexNormals();
+        const info = classifyWeaponSubmesh(wId, curIdx, child.name);
+        const ch = info.channel;
+        if (ch === '__plasmaCore') child.material = weaponSpecialMats.plasmaCore;
+        else if (ch === '__reticleCyan') { child.material = weaponSpecialMats.reticleCyan; child.renderOrder = 6; }
+        else if (ch === '__reticleRed') { child.material = weaponSpecialMats.reticleRed; child.renderOrder = 6; }
+        else if (ch === '__tritiumDot') child.material = weaponSpecialMats.tritiumDot;
+        else if (ch === '__opticLens') { child.material = weaponSpecialMats.opticLens; child.renderOrder = 4; }
+        else if (ch === '__laserDiode') child.material = weaponSpecialMats.laserDiode;
+        else if (ch === '__tacLens') child.material = weaponSpecialMats.tacLens;
+        else if (ch === '__scopeGlass') child.material = weaponSpecialMats.scopeGlass;
+        else if (ch === '__shellRed') child.material = weaponSpecialMats.shellRed;
+        else if (ch === '__shellBrass') child.material = weaponSpecialMats.shellBrass;
+        else child.material = getWeaponPbrMaterial(wId, ch);
+
+        child.userData.builtInOptic = !!info.builtInOptic;
+        child.userData.isBoltPart = !!info.isBolt;
+        child.userData.isMagPart = !!info.isMag;
+        if (info.hollowMode) toHollow.push({ mesh: child, mode: info.hollowMode });
+
+        child.geometry.computeBoundingBox();
+        const b = child.geometry.boundingBox;
+        if (!b) continue;
+        const frontBlade = /^(front_blade_sight|front_sight_hood)$/.test(child.name);
+        if (def.nativeScope && (ch === '__scopeGlass' || child.name === 'scope_lens')) {
+          pupilRadius = Math.min(pupilRadius, (b.max.y - b.min.y) * 0.40, (b.max.z - b.min.z) * 0.40);
+        }
+        if (info.isReticleDot || frontBlade || /^(brass_bead|front_bead|scope_lens)$/.test(child.name) ||
+            ch === '__scopeGlass' || (wId === 'heavy_lmg' && curIdx === 27)) {
+          sightCenter = b.getCenter(new THREE.Vector3());
+  assembly.safeHipY = metrics.safeHipY;
+  assembly.sidePos = metrics.sidePos ? metrics.sidePos.clone() : null;
+  assembly.underPos = metrics.underPos ? metrics.underPos.clone() : null;
+
+  // Constrói alça e massa de mira aberta com base montada no trilho (não cria sobre snipers que já possuem luneta 3D integrada!)
+  while (assembly.ironSightRear.children.length) {
+    assembly.ironSightRear.remove(assembly.ironSightRear.children[0]);
+  }
+  const wDefIron = WEAPON_DEFS[wId];
+  const needsOpenIronSights = metrics.isV2 && !metrics.hasNativeSight;
+  if (needsOpenIronSights && wDefIron && !wDefIron.melee && wDefIron.animType !== 'throwable') {
+    const sy = metrics.baseSightY;
+    const ryBase = Math.min(sy - 0.010, (metrics.railY ?? (sy - 0.014)) - 0.008);
+    const stemH = Math.max(0.008, (sy - 0.006) - ryBase);
+    const rz = metrics.opticZ + 0.022;
+    const fz = Math.max(metrics.muzzleZ + 0.04, Math.min(metrics.opticZ - 0.10, metrics.muzzleZ * 0.82));
+    const earL = new THREE.Mesh(new THREE.BoxGeometry(0.0028, 0.011, 0.006), Mats.gunSteel);
+    earL.position.set(-0.0065, sy - 0.0015, rz);
+    const earR = earL.clone();
+    earR.position.x = 0.0065;
+    const baseBridge = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.0036, 0.008), Mats.gunSteel);
+    baseBridge.position.set(0, sy - 0.0075, rz);
+    const rearStem = new THREE.Mesh(new THREE.BoxGeometry(0.010, stemH, 0.009), Mats.gunBlack);
+    rearStem.position.set(0, ryBase + stemH * 0.5, rz);
+    const dotL = new THREE.Mesh(new THREE.BoxGeometry(0.0018, 0.0018, 0.0018), weaponSpecialMats.tritiumDot);
+    dotL.position.set(-0.0065, sy - 0.001, rz + 0.0035);
+    const dotR = dotL.clone();
+    dotR.position.x = 0.0065;
+Success
+
+cd condado-de-knox && rg -c '^vt ' public/assets/3d/weapons/01_fuzis/sr-76_sniper/*.obj; rg -m1 '^f ' public/assets/3d/weapons/01_fuzis/sr-76_sniper/*.obj; rg -n 'weaponObjLoader|getWeaponPbrMaterial\(' public/index.html; sed -n '14208,14238p' public/index.html
+$cd condado-de-knox && rg -c '^vt ' public/assets/3d/weapons/01_fuzis/sr-76_sniper/*.obj; rg -m1 '^f ' public/assets/3d/weapons/01_fuzis/sr-76_sniper/*.obj; rg -n 'weaponObjLoader|getWeaponPbrMaterial\(' public/index.html; sed -n '14208,14238p' public/index.html
+1169
+f 1/1/1 2/2/2 3/3/3
+4953:const weaponObjLoader = new OBJLoader();
+4975:function getWeaponPbrMaterial(wId, channel) {
+5304:      const obj = weaponObjLoader.parse(patchedObjText);
+5342:        else child.material = getWeaponPbrMaterial(wId, ch);
+  // 1. Animação 3D do Carregador / Tambor (compatível com sub-malhas reais em espaço OBJ!)
+  if (assembly.magMesh) {
+    const isObj = !!assembly.magMesh.userData.objSpace;
+    const restX = assembly.magMesh.userData.restX ?? 0;
+    const restY = assembly.magMesh.userData.restY ?? -0.075;
+    const dropScale = isObj ? 0.38 : 0.135;
+
+    if (animType === 'revolver') {
+      const swingOut = (gunState.reloading && relProg > 0.14 && relProg < 0.84)
+        ? Math.sin(((relProg - 0.14) / 0.70) * Math.PI) : 0;
+      if (isObj) {
+        assembly.magMesh.position.z = THREE.MathUtils.lerp(assembly.magMesh.position.z, (assembly.magMesh.userData.restZ ?? 0) - swingOut * 0.12, Math.min(1, dt * 18));
+        assembly.magMesh.rotation.x = THREE.MathUtils.lerp(assembly.magMesh.rotation.x, gunState.cylinderAngle + swingOut * 2.4, Math.min(1, dt * 22));
+      } else {
+        assembly.magMesh.position.x = THREE.MathUtils.lerp(assembly.magMesh.position.x, restX - swingOut * 0.032, Math.min(1, dt * 18));
+        assembly.magMesh.position.y = THREE.MathUtils.lerp(assembly.magMesh.position.y, restY - swingOut * 0.008, Math.min(1, dt * 18));
+        assembly.magMesh.rotation.z = THREE.MathUtils.lerp(assembly.magMesh.rotation.z, gunState.cylinderAngle + swingOut * 2.4, Math.min(1, dt * 22));
+      }
+    } else {
+      if (gunState.reloading && relProg > 0.14 && relProg < 0.78) {
+        const drop = relProg < 0.44
+          ? THREE.MathUtils.smoothstep(relProg, 0.14, 0.44)
+          : (1 - THREE.MathUtils.smoothstep(relProg, 0.48, 0.78));
+        assembly.magMesh.position.y = restY - drop * dropScale;
+        if (isObj) assembly.magMesh.rotation.z = -drop * 0.24;
+        else assembly.magMesh.rotation.x = drop * 0.28;
+      } else {
+        assembly.magMesh.position.y = THREE.MathUtils.lerp(assembly.magMesh.position.y, restY, Math.min(1, dt * 24));
+        if (isObj) assembly.magMesh.rotation.z = THREE.MathUtils.lerp(assembly.magMesh.rotation.z, 0, Math.min(1, dt * 24));
+        else assembly.magMesh.rotation.x = THREE.MathUtils.lerp(assembly.magMesh.rotation.x, 0, Math.min(1, dt * 24));
+      }
+Success
+
+cd condado-de-knox && python - <<'PY' from pathlib import Path p=Path('public/index.html');s=p.read_text();a=s.index(' const loadV1Obj');b=s.index(' const p = (async',a) s=s[:a]+s[b:] a=s.index(' return loadV1Obj()');b=s.index(' const rawBox',a) s=s[:a]+''' const glbFile = def.objFile.replace('_game_ready.obj', '_tactical_black_game_ready.glb'); return assetLibrary.gltfLoader.loadAsync(WEAPONS_BASE_URL + def.folder + '/' + glbFile).then(({ scene: model }) => { // Le même …
+$cd condado-de-knox && python - <<'PY'
+from pathlib import Path
+p=Path('public/index.html');s=p.read_text();a=s.index('  const loadV1Obj');b=s.index('  const p = (async',a)
+s=s[:a]+s[b:]
+a=s.index('    return loadV1Obj()');b=s.index('      const rawBox',a)
+s=s[:a]+'''    const glbFile = def.objFile.replace('_game_ready.obj', '_tactical_black_game_ready.glb');
+    return assetLibrary.gltfLoader.loadAsync(WEAPONS_BASE_URL + def.folder + '/' + glbFile).then(({ scene: model }) => {
+      // Le même espace de coordonnées sert aux sockets, aux optiques et aux animations.
+      model.updateMatrixWorld(true);
+      const obj = new THREE.Group();
+      model.traverse(part => {
+        if (!part.isMesh) return;
+        const mesh = new THREE.Mesh(part.geometry.clone().applyMatrix4(part.matrixWorld), part.material);
+        mesh.name = part.name;
+        obj.add(mesh);
+      });
+
+'''+s[b:];s=s.replace('Le même espace de coordonnées sert aux sockets, aux optiques et aux animations.', 'Unifica as coordenadas das peças para posicionar encaixes, ópticas e animações.')
+s=s.replace('        else child.material = getWeaponPbrMaterial(wId, ch);','        // As demais peças mantêm o material PBR, UVs e texturas do GLB.')
+a=s.index('function getWeaponPbrMaterial');b=s.index('/* Converte cubos',a);s=s[:a]+s[b:]
+s='\n'.join(l for l in s.split('\n') if not any(x in l for x in ['const weaponPbrMatCache','const weaponTexLoader','const weaponObjLoader','import { OBJLoader }']))
+s=s.replace("ch === '__scopeGlass' || (wId === 'heavy_lmg' && curIdx === 27)", "ch === '__scopeGlass'").replace("          if (wId === 'heavy_lmg') sightCenter.z = 0;\n",'')
+s=s.replace("const baseSightY = Math.max(0.03, opticPos.y + (wId === 'tactical_crossbow' ? 0.026 : 0.012));","const railY = wId === 'heavy_lmg' ? (rawBox.max.y - gy) * scale : opticPos.y;\n      const baseSightY = Math.max(0.03, railY + 0.012);")
+s=s.replace('railY: Math.max(0.025, opticPos.y),','railY: Math.max(0.025, railY),\n        hasNativeSight: !!nativeSight,')
+s=s.replace('metrics.isV2 && !metrics.hasNativeSight','!metrics.hasNativeSight')
+s=s.replace('  assembly.safeHipY = metrics.safeHipY;', '  assembly.safeHipY = metrics.safeHipY;\n  assembly.safeHipZ = Math.min(WEAPON_DEFS[wId].hipPos[2], metrics.safeAdsZ - 0.06);').replace('hipY, wDef.hipPos[2]', 'hipY, fpMesh?.safeHipZ ?? wDef.hipPos[2]')
+s=s.replace('0.030, 0.046, 0.48, 12','0.045, 0.030, 0.82, 16').replace('forearm.position.set(0, 0, 0.28)','forearm.position.set(0, 0, 0.45)')
+p.write_text(s)
+PY
+rg 'weaponTexLoader|OBJLoader|weaponPbrMatCache' public/index.html && true; ls /tmp/knox-optics-clear.py
+/tmp/knox-optics-clear.py
+Success
+
+cd condado-de-knox && python - <<'PY' from pathlib import Path s=Path('/tmp/knox-optics-clear.py').read_text().replace("'width':480,'height':320","'width':896,'height':504").replace('window.aimState=', 'window.day=()=>setTimeOfDay(12,false);window.textureAudit=()=>Object.fromEntries(Object.entries(fpWeaponMeshes).map(([id,a])=>{let count=0;a.modelPivot.traverse(m=>{if(m.material?.map?.image)count++});return [id,count]}));window.aimState=') s=s.replace("for id in ['assault_rifle','sniper_rifle',…
+$cd condado-de-knox && python - <<'PY'
+from pathlib import Path
+s=Path('/tmp/knox-optics-clear.py').read_text().replace("'width':480,'height':320","'width':896,'height':504").replace('window.aimState=', 'window.day=()=>setTimeOfDay(12,false);window.textureAudit=()=>Object.fromEntries(Object.entries(fpWeaponMeshes).map(([id,a])=>{let count=0;a.modelPivot.traverse(m=>{if(m.material?.map?.image)count++});return [id,count]}));window.aimState=')
+s=s.replace("for id in ['assault_rifle','sniper_rifle','heavy_sniper']:","page.evaluate('day()');print('TEXTURES',page.evaluate('textureAudit()'),flush=True)\n for id in ['heavy_lmg','sniper_rifle','assault_rifle']:")
+s=s.replace("page.keyboard.press('z');page.wait_for_timeout(1500);","page.wait_for_timeout(1500);page.keyboard.press('z');page.wait_for_timeout(2100);")
+s=s.replace("'/tmp/knox-view-'","'/tmp/knox-textured-'")
+Path('/tmp/knox-materials.py').write_text(s)
+PY
+timeout 180 python /tmp/knox-materials.py >/tmp/knox-materials.log 2>&1
+No output
+Success
+
+cd condado-de-knox && rg -n 'upgradeObjMaterials\(' public/js/asset-library.js && sed -n '80,140p' public/js/asset-library.js && tail -8 /tmp/knox-materials.log && rg -n 'texChannels|classifyWeaponSubmesh\(' public/index.html |tail -24 && ls public/assets/3d/weapons/01_fuzis/{sr-76_sniper,m41-t_fuzil}/textures
+$cd condado-de-knox && rg -n 'upgradeObjMaterials\(' public/js/asset-library.js && sed -n '80,140p' public/js/asset-library.js && tail -8 /tmp/knox-materials.log && rg -n 'texChannels|classifyWeaponSubmesh\(' public/index.html |tail -24 && ls public/assets/3d/weapons/01_fuzis/{sr-76_sniper,m41-t_fuzil}/textures
+65:function upgradeObjMaterials(obj) {
+645:        upgradeObjMaterials(obj);
+682:        upgradeObjMaterials(obj);
+      const isDarkMetal = nm.includes('metal') || nm.includes('black') || nm.includes('grey') || nm.includes('gray') || nm.includes('main');
+      const isGreen = nm.includes('green') || nm.includes('olive') || nm.includes('tan');
+      // MTLs do Quaternius exportados em linear-RGB têm Kd muito baixo (ex.: 0.016); converte para gama legível sem virar silhueta preta!
+      if (!isGlass) {
+        const maxC = Math.max(col.r, col.g, col.b);
+        if (maxC > 0.0005 && maxC < 0.25) {
+          col.setRGB(
+            Math.min(1, Math.pow(col.r, 1 / 2.2)),
+            Math.min(1, Math.pow(col.g, 1 / 2.2)),
+            Math.min(1, Math.pow(col.b, 1 / 2.2))
+          );
+        }
+        const floorVal = isWood ? 0.12 : 0.14;
+        col.r = Math.max(floorVal, col.r);
+        col.g = Math.max(floorVal, col.g);
+        col.b = Math.max(floorVal, col.b);
+      }
+      const std = isGlass
+        ? new THREE.MeshStandardMaterial({
+            name: m.name || 'quaternius_glass',
+            color: new THREE.Color(0x58c4e8),
+            roughness: 0.08,
+            metalness: 0.12,
+            transparent: true,
+            opacity: 0.22,
+            depthWrite: false
+          })
+        : new THREE.MeshStandardMaterial({
+            name: m.name || 'quaternius_gun',
+            color: col,
+            roughness: isWood ? 0.68 : (isGreen ? 0.58 : (isDarkMetal ? 0.44 : 0.50)),
+            metalness: isWood ? 0.06 : (isGreen ? 0.16 : (isDarkMetal ? 0.26 : 0.22))
+          });
+      matCache.set(key, std);
+      return std;
+    };
+    if (Array.isArray(child.material)) {
+      child.material = child.material.map(upgradeOne);
+    } else {
+      child.material = upgradeOne(child.material);
+    }
+  });
+}
+
+const _postureAxis = new THREE.Vector3();
+const _postureQ1 = new THREE.Quaternion();
+const _postureQ2 = new THREE.Quaternion();
+const _postureQ3 = new THREE.Quaternion();
+const _postureQLoc = new THREE.Quaternion();
+
+function findBone(root, candidates) {
+  const byExact = new Map();
+  const byNorm = new Map();
+  root.traverse((obj) => {
+    if (!obj.name) return;
+    const low = obj.name.toLowerCase();
+    const norm = normBoneName(obj.name);
+    if (!byExact.has(low) || (obj.isBone && !byExact.get(low).isBone)) {
+      byExact.set(low, obj);
+    }
+    if (norm && (!byNorm.has(norm) || (obj.isBone && !byNorm.get(norm).isBone))) {
+4750:    texChannels:['accent','metal','grip'], lengthCm:30, targetLenM:0.34,
+4760:    texChannels:['accent','metal','grip'], lengthCm:102, targetLenM:0.96,
+4772:    texChannels:['metal','accent','polymer','grip'], lengthCm:84, targetLenM:0.86,
+4782:    texChannels:['metal','accent','wood','polymer','grip'], lengthCm:94, targetLenM:0.92,
+4792:    texChannels:['metal','accent','polymer','grip'], lengthCm:124, targetLenM:1.12,
+4802:    texChannels:['metal','accent','polymer','grip'], lengthCm:102, targetLenM:0.98,
+4812:    texChannels:['metal','accent','polymer','grip'], lengthCm:88, targetLenM:0.89,
+4822:    texChannels:['metal','accent','polymer','grip'], lengthCm:142, targetLenM:1.28,
+4834:    texChannels:['metal','accent','polymer','grip'], lengthCm:21, targetLenM:0.27,
+4844:    texChannels:['metal','accent','wood'], lengthCm:31, targetLenM:0.34,
+4856:    texChannels:['metal','accent','grip','polymer'], lengthCm:98, targetLenM:0.94,
+4866:    texChannels:['accent','metal','wood','grip'], lengthCm:92, targetLenM:0.90,
+4876:    texChannels:['metal','accent','grip','polymer'], lengthCm:62, targetLenM:0.64,
+4888:    texChannels:['metal','accent','grip','olive','polymer'], lengthCm:112, targetLenM:1.06,
+4898:    texChannels:['olive','metal','grip'], lengthCm:108, targetLenM:1.08,
+4908:    texChannels:['olive','metal','accent'], lengthCm:11, targetLenM:0.15,
+4920:    texChannels:['metal','accent','polymer','grip'], lengthCm:88, targetLenM:0.88,
+4930:    texChannels:['metal','polymer','grip','accent'], lengthCm:86, targetLenM:0.86,
+5003:function classifyWeaponSubmesh(wId, idx, meshName) {
+5006:  const has = (ch) => def && def.texChannels.includes(ch);
+5079:    else res.channel = has('metal') ? 'metal' : def.texChannels[0];
+5282:        const info = classifyWeaponSubmesh(wId, curIdx, child.name);
+public/assets/3d/weapons/01_fuzis/m41-t_fuzil/textures:
+accent_albedo.png
+accent_metalness.png
+accent_normal.png
+accent_roughness.png
+grip_albedo.png
+grip_metalness.png
+grip_normal.png
+grip_roughness.png
+metal_albedo.png
+metal_metalness.png
+metal_normal.png
+metal_roughness.png
+polymer_albedo.png
+polymer_metalness.png
+polymer_normal.png
+polymer_roughness.png
+
+public/assets/3d/weapons/01_fuzis/sr-76_sniper/textures:
+accent_albedo.png
+accent_metalness.png
+accent_normal.png
+accent_roughness.png
+grip_albedo.png
+grip_metalness.png
+grip_normal.png
+grip_roughness.png
+metal_albedo.png
+metal_metalness.png
+metal_normal.png
+metal_roughness.png
+polymer_albedo.png
+polymer_metalness.png
+polymer_normal.png
+polymer_roughness.png
+Success
+
+tail -20 /tmp/knox-materials.log; ls /tmp/knox-textured*; cd condado-de-knox && rg -c '^vt ' public/assets/v2/weapons/{AssaultRifle2_3,Bullpup_1,SniperRifle_6}.obj && rg -n 'GLTFLoader' public/js/asset-library.js | head
+$tail -20 /tmp/knox-materials.log; ls /tmp/knox-textured*; cd condado-de-knox && rg -c '^vt ' public/assets/v2/weapons/{AssaultRifle2_3,Bullpup_1,SniperRifle_6}.obj && rg -n 'GLTFLoader' public/js/asset-library.js | head
+  3,
+  0
+ ],
+ "frag_grenade": [
+  "fragmentation_body",
+  0,
+  0
+ ],
+ "plasma_rifle": [
+  "plasma_chassis",
+  9,
+  0
+ ],
+ "tactical_crossbow": [
+  "flight_rail",
+  3,
+  0
+ ]
+}
+TEXTURES {'combat_knife': 5, 'tactical_katana': 10, 'assault_rifle': 38, 'ak_rifle': 15, 'sniper_rifle': 18, 'dmr_m110': 0, 'mdr_rifle': 0, 'heavy_sniper': 0, 'tactical_pistol': 13, 'revolver_magnum': 9, 'combat_shotgun': 27, 'double_barrel': 9, 'compact_smg': 30, 'heavy_lmg': 24, 'rocket_launcher': 10, 'frag_grenade': 6, 'plasma_rifle': 12, 'tactical_crossbow': 14}
+ls: cannot access '/tmp/knox-textured*': No such file or directory
+public/assets/v2/weapons/AssaultRifle2_3.obj:1042
+2:import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+447:    this.gltfLoader = new GLTFLoader();
+Success
+
+cd condado-de-knox && python - <<'PY' from pathlib import Path p=Path('public/js/asset-library.js');s=p.read_text();i=s.index('const _postureAxis') s=s[:i]+'''// Os OBJ do Gun Pack trazem cores de material. Reutilize os acabamentos // do arsenal; alguns OBJ também precisam de coordenadas para a textura. const packSurfaceMaps = new Map(); const surfaceTextureLoader = new THREE.TextureLoader(); function getPackSurfaceMap(channel) { if (!packSurfaceMaps.has(channel)) { const folder = channel…
+$cd condado-de-knox && python - <<'PY'
+from pathlib import Path
+p=Path('public/js/asset-library.js');s=p.read_text();i=s.index('const _postureAxis')
+s=s[:i]+'''// Os OBJ do Gun Pack trazem cores de material. Reutilize os acabamentos
+// do arsenal; alguns OBJ também precisam de coordenadas para a textura.
+const packSurfaceMaps = new Map();
+const surfaceTextureLoader = new THREE.TextureLoader();
+function getPackSurfaceMap(channel) {
+  if (!packSurfaceMaps.has(channel)) {
+    const folder = channel === 'wood' ? 'ak-74m_rifle_ak' : 'm41-t_fuzil';
+    const url = `/assets/3d/weapons/01_fuzis/${folder}/textures/${channel}_albedo.png`;
+    const texture = surfaceTextureLoader.load(url);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    packSurfaceMaps.set(channel, texture);
+  }
+  return packSurfaceMaps.get(channel);
+}
+
+function texturePackWeapon(obj) {
+  obj.traverse(mesh => {
+    if (!mesh.isMesh) return;
+    const geo = mesh.geometry;
+    if (!geo.getAttribute('uv')) {
+      const pos = geo.getAttribute('position'), normal = geo.getAttribute('normal');
+      const uv = new Float32Array(pos.count * 2);
+      for (let i = 0; i < pos.count; i++) {
+        const x = Math.abs(normal.getX(i)), y = Math.abs(normal.getY(i)), z = Math.abs(normal.getZ(i));
+        uv[i * 2] = x > y && x > z ? pos.getZ(i) : pos.getX(i);
+        uv[i * 2 + 1] = y >= x && y > z ? pos.getZ(i) : pos.getY(i);
+      }
+      geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    }
+    for (const mat of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      if (mat.transparent || mat.map) continue;
+      const channel = /wood/i.test(mat.name) ? 'wood' : /black/i.test(mat.name) ? 'polymer' : 'metal';
+      mat.map = getPackSurfaceMap(channel);
+      mat.color.lerp(new THREE.Color(0xffffff), 0.45);
+      mat.needsUpdate = true;
+    }
+  });
+}
+
+'''+s[i:];s=s.replace('        this._weaponCache.set(cacheKey, obj);','        texturePackWeapon(obj);\n        this._weaponCache.set(cacheKey, obj);');p.write_text(s)
+PY
+tail -8 /tmp/knox-materials.log; ls /tmp/knox-textured*
+  3,
+  0
+ ]
+}
+TEXTURES {'combat_knife': 5, 'tactical_katana': 10, 'assault_rifle': 38, 'ak_rifle': 15, 'sniper_rifle': 18, 'dmr_m110': 0, 'mdr_rifle': 0, 'heavy_sniper': 0, 'tactical_pistol': 13, 'revolver_magnum': 9, 'combat_shotgun': 27, 'double_barrel': 9, 'compact_smg': 30, 'heavy_lmg': 24, 'rocket_launcher': 10, 'frag_grenade': 6, 'plasma_rifle': 12, 'tactical_crossbow': 14}
+ADS heavy_lmg ['heavy_lmg', True, False, 0.99999744, False, 'game-canvas', False, True, ''] False
+ADS sniper_rifle ['sniper_rifle', True, False, 0.9999974408191996, True, 'game-canvas', False, True, 'model-scope'] True
+ADS assault_rifle ['assault_rifle', True, False, 0.9999974408191978, False, 'game-canvas', False, True, ''] False
+/tmp/knox-textured-assault_rifle.png
+/tmp/knox-textured-heavy_lmg.png
+/tmp/knox-textured-sniper_rifle.png
+Success
+
+Viewed 2 images
+Inspected image
+Inspected image
+
+Ran commands
+
+cd condado-de-knox && python - <<'PY' from pathlib import Path p=Path('public/index.html');s=p.read_text().replace(" // Pré", " // Pré").replace(' mesh.name = part.name;',''' mesh.name = part.name; if (mesh.material.isMeshStandardMaterial) { mesh.material.envMap = weaponEnvMap; mesh.material.envMapIntensity = 0.55; }''') s=s.replace(' // Antebraço longo (0.48m) estendendo-se ao longo de +Z da mão até fora da borda inferior da tela (nunca te…
+$cd condado-de-knox && python - <<'PY'
+from pathlib import Path
+p=Path('public/index.html');s=p.read_text().replace("  // Pré", "  // Pré").replace('        mesh.name = part.name;','''        mesh.name = part.name;
+        if (mesh.material.isMeshStandardMaterial) {
+          mesh.material.envMap = weaponEnvMap;
+          mesh.material.envMapIntensity = 0.55;
+        }''')
+s=s.replace('    // Antebraço longo (0.48m) estendendo-se ao longo de +Z da mão até fora da borda inferior da tela (nunca termina flutuando!)','    // A manga afunila junto ao punho e continua em direção ao ombro.')
+p.write_text(s)
+p=Path('/tmp/knox-materials.py');s=p.read_text().replace('if(m.material?.map?.image)count++','if([m.material].flat().some(t=>t?.map?.image))count++').replace("page.evaluate('day()');","page.evaluate('day()');page.keyboard.press('v');").replace("page.keyboard.press('z');page.wait_for_timeout(2100);","page.screenshot(path='/tmp/knox-hip-'+id+'.png');page.keyboard.press('z');page.wait_for_timeout(2100);")
+p.write_text(s)
+PY
+timeout 180 python /tmp/knox-materials.py >/tmp/knox-final-textures.log 2>&1
+No output
+Success
+
+cd condado-de-knox && sed -n '4996,5084p' public/index.html && rg -n 'texChannels' public --glob '!index.html' -l |head && tail -3 /tmp/knox-final-textures.log && git diff --stat
+$cd condado-de-knox && sed -n '4996,5084p' public/index.html && rg -n 'texChannels' public --glob '!index.html' -l |head && tail -3 /tmp/knox-final-textures.log && git diff --stat
+    addBar(sx, t, sz, cx, b.max.y - t * 0.5, cz);
+    addBar(sx, t, sz, cx, b.min.y + t * 0.5, cz);
+  }
+  mesh.geometry = new THREE.BufferGeometry();
+}
+
+/* Classifica tanto peças nomeadas quanto sub-malhas sem nome ('o') dos arquivos OBJ do pacote (lentes, retículos, trilhos, lunetas embutidas!) */
+function classifyWeaponSubmesh(wId, idx, meshName) {
+  const n = String(meshName || '').toLowerCase();
+  const def = WEAPON_DEFS[wId];
+  const has = (ch) => def && def.texChannels.includes(ch);
+  const res = { channel: null, builtInOptic: false, isReticleDot: false, isBolt: false, isMag: false, hollowMode: null };
+
+  // Regras exatas por índice para sub-malhas sem nome ('o') presentes nos .obj do pacote
+  if (wId === 'assault_rifle') {
+    if (idx >= 4 && idx <= 20) res.channel = 'accent';
+    else if (idx >= 33 && idx <= 36) { res.channel = 'accent'; res.builtInOptic = true; }
+    else if (idx === 37) { res.channel = '__opticLens'; res.builtInOptic = true; }
+    else if (idx === 38) { res.channel = '__reticleRed'; res.builtInOptic = true; res.isReticleDot = true; }
+  } else if (wId === 'sniper_rifle') {
+    if (idx >= 1 && idx <= 3) { res.channel = 'accent'; if (idx === 2) res.isBolt = true; }
+    else if (idx === 6) { res.channel = 'metal'; res.builtInOptic = true; }
+    else if (idx >= 7 && idx <= 10) { res.channel = 'accent'; res.builtInOptic = true; }
+    else if (idx === 11 || idx === 12) { res.channel = '__scopeGlass'; res.builtInOptic = true; }
+    else if (idx >= 17 && idx <= 19) res.channel = 'metal';
+  } else if (wId === 'tactical_pistol') {
+    if (idx === 0) { res.channel = 'metal'; res.isBolt = true; }
+    else if (idx === 1 || idx === 2 || idx === 5) res.channel = 'accent';
+    else if (idx === 3 || idx === 4 || idx === 6) { res.channel = '__tritiumDot'; if (idx === 6) res.isReticleDot = true; }
+  } else if (wId === 'revolver_magnum') {
+    if (idx === 1) { res.channel = 'metal'; res.isMag = true; }
+    else if (idx >= 2 && idx <= 7) res.channel = '__shellBrass';
+  } else if (wId === 'combat_shotgun') {
+    if (idx >= 2 && idx <= 10) res.channel = 'accent';
+    else if (idx >= 15 && idx <= 22) { res.channel = 'grip'; if (idx === 15) res.isBolt = true; }
+    else if (idx === 27) res.channel = 'polymer';
+    else if (idx === 28 || idx === 30 || idx === 32 || idx === 34) res.channel = '__shellRed';
+    else if (idx === 29 || idx === 31 || idx === 33 || idx === 35) res.channel = '__shellBrass';
+  } else if (wId === 'compact_smg') {
+    if (idx >= 2 && idx <= 14) res.channel = 'accent';
+    else if (idx === 20 || idx === 21) res.channel = 'accent';
+    else if (idx === 22) res.channel = 'grip';
+    else if (idx === 23) { res.channel = 'accent'; res.builtInOptic = true; }
+    else if (idx === 24) { res.channel = 'accent'; res.builtInOptic = true; res.hollowMode = 'window'; }
+    else if (idx === 25) { res.channel = '__opticLens'; res.builtInOptic = true; }
+    else if (idx === 26) { res.channel = '__reticleRed'; res.builtInOptic = true; res.isReticleDot = true; }
+  } else if (wId === 'heavy_lmg') {
+    if (idx >= 2 && idx <= 12) res.channel = 'accent';
+    else if (idx === 19) res.channel = 'olive';
+    else if (idx >= 20 && idx <= 24) res.channel = '__shellBrass';
+    else if (idx === 27 || idx === 28) res.channel = 'metal';
+  } else if (wId === 'rocket_launcher') {
+    if (idx >= 9 && idx <= 11) {
+      res.builtInOptic = true;
+      res.channel = idx === 11 ? '__scopeGlass' : 'metal';
+    }
+  } else if (wId === 'plasma_rifle') {
+    if (idx === 8) { res.channel = 'polymer'; res.isMag = true; }
+    else if (idx === 9) res.channel = '__plasmaCore';
+    else if (idx === 12) { res.channel = 'accent'; res.builtInOptic = true; }
+    else if (idx === 13 || idx === 14) { res.channel = 'accent'; res.builtInOptic = true; res.hollowMode = 'pillars'; }
+    else if (idx === 15) { res.channel = '__opticLens'; res.builtInOptic = true; }
+    else if (idx === 16) { res.channel = '__reticleCyan'; res.builtInOptic = true; res.isReticleDot = true; }
+  } else if (wId === 'tactical_crossbow') {
+    if (idx === 10) res.channel = 'polymer';
+    else if (idx === 11) res.channel = 'accent';
+    else if (idx >= 12 && idx <= 14) res.channel = '__shellRed';
+    else if (idx >= 15 && idx <= 17) {
+      res.builtInOptic = true;
+      if (idx === 17) res.channel = '__opticLens';
+    }
+  }
+
+  if (!res.channel) {
+    if (n.includes('plasma_core') || n.includes('accel_coil')) res.channel = '__plasmaCore';
+    else if (n.includes('laser_emitter')) res.channel = '__laserDiode';
+    else if (n.includes('tactical_light_lens')) res.channel = '__tacLens';
+    else if (n.includes('scope_lens')) res.channel = '__scopeGlass';
+    else if (has('wood') && (n.includes('wood') || n.includes('walnut') || (wId === 'ak_rifle' && n.includes('handguard')))) res.channel = 'wood';
+    else if (has('olive') && (n.includes('launch_tube') || n.includes('venturi') || n.includes('fragmentation_body') || n.includes('ammo') || n.includes('box'))) res.channel = 'olive';
+    else if (has('grip') && (n.includes('grip') || n.includes('handle') || n.includes('buttpad') || n.includes('recoil_pad') || n.includes('tsuka') || n.includes('cheek_riser') || n.includes('shoulder_rest'))) res.channel = 'grip';
+    else if (has('accent') && (n.includes('blade') || n.includes('habaki') || n.includes('brass') || n.includes('ordnance_stripe') || n.includes('warhead_band') || n.includes('muzzle') || n.includes('flash_hider') || n.includes('compensator') || n.includes('trigger') || n.includes('hammer') || n.includes('bolt') || n.includes('charging_handle') || n.includes('bead') || n.includes('sight') || n.includes('accelerator_rail'))) res.channel = 'accent';
+    else if (has('polymer') && (n.includes('polymer') || n.includes('stock') || n.includes('handguard') || n.includes('magazine') || n.includes('frame') || n.includes('chassis') || n.includes('prod_limb') || n.includes('feed_cover') || n.includes('bumper'))) res.channel = 'polymer';
+    else res.channel = has('metal') ? 'metal' : def.texChannels[0];
+  }
+  return res;
+}
+
+// Os OBJ trazem lunetas com tampas sólidas. Abra a pupila no material da
+ public/index.html          | 96 +++++++++++++---------------------------------
+ public/js/asset-library.js | 41 ++++++++++++++++++++
+ 2 files changed, 68 insertions(+), 69 deletions(-)
+Success
+
+ls /tmp/knox-hip*; tail -5 /tmp/knox-final-textures.log; cd condado-de-knox && rg -n 'const weaponSpecialMats|OBJLoader|gltfLoader.set' public/js/asset-library.js public/index.html | head
+$ls /tmp/knox-hip*; tail -5 /tmp/knox-final-textures.log; cd condado-de-knox && rg -n 'const weaponSpecialMats|OBJLoader|gltfLoader.set' public/js/asset-library.js public/index.html | head
+ls: cannot access '/tmp/knox-hip*': No such file or directory
+public/js/asset-library.js:3:import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+public/js/asset-library.js:488:    this.objLoader = new OBJLoader();
+public/js/asset-library.js:682:        const loader = new OBJLoader();
+public/js/asset-library.js:720:        const loader = new OBJLoader();
+public/index.html:4956:const weaponSpecialMats = {
+Success
+
+cd condado-de-knox && npm run build && npm test > /tmp/knox-textest && tail -8 /tmp/knox-textest && git diff --check && tail -8 /tmp/knox-final-textures.log && cat public/assets/v2/weapons/{SniperRifle_6,Bullpup_1}.mtl | rg 'newmtl'
+$cd condado-de-knox && npm run build && npm test > /tmp/knox-textest && tail -8 /tmp/knox-textest && git diff --check && tail -8 /tmp/knox-final-textures.log && cat public/assets/v2/weapons/{SniperRifle_6,Bullpup_1}.mtl | rg 'newmtl'
+
+> knox-dayz-survival@0.3.1 build
+> node --check server.mjs && node --check api/servers.js
+
+npm notice
+npm notice New major version of npm available! 11.19.1 -> 12.2.3
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.3
+npm notice To update run: npm install -g npm@12.2.3
+npm notice
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 161.88965
+ ],
+ "tactical_crossbow": [
+  "flight_rail",
+  3,
+  0
+ ]
+}
+TEXTURES {'combat_knife': 5, 'tactical_katana': 10, 'assault_rifle': 38, 'ak_rifle': 15, 'sniper_rifle': 18, 'dmr_m110': 2, 'mdr_rifle': 1, 'heavy_sniper': 2, 'tactical_pistol': 13, 'revolver_magnum': 9, 'combat_shotgun': 27, 'double_barrel': 9, 'compact_smg': 30, 'heavy_lmg': 24, 'rocket_launcher': 10, 'frag_grenade': 6, 'plasma_rifle': 12, 'tactical_crossbow': 14}
+newmtl Black
+newmtl DarkMetal
+newmtl DarkWood
+newmtl Glass
+newmtl Grey
+newmtl Main
+newmtl MainDark
+newmtl MainLight
+Success
+
+ls /tmp/knox-hip*; tail -4 /tmp/knox-final-textures.log
+$ls /tmp/knox-hip*; tail -4 /tmp/knox-final-textures.log
+/tmp/knox-hip-heavy_lmg.png
+/tmp/knox-hip-sniper_rifle.png
+ ]
+}
+TEXTURES {'combat_knife': 5, 'tactical_katana': 10, 'assault_rifle': 38, 'ak_rifle': 15, 'sniper_rifle': 18, 'dmr_m110': 2, 'mdr_rifle': 1, 'heavy_sniper': 2, 'tactical_pistol': 13, 'revolver_magnum': 9, 'combat_shotgun': 27, 'double_barrel': 9, 'compact_smg': 30, 'heavy_lmg': 24, 'rocket_launcher': 10, 'frag_grenade': 6, 'plasma_rifle': 12, 'tactical_crossbow': 14}
+ADS heavy_lmg ['heavy_lmg', True, True, 0.9999872, False, 'game-canvas', False, True, ''] False
+Success
+
+Viewed an image
+Inspected image
+You've hit your usage limit. Upgrade your plan or add credits to continue, or try again at 10:50 PM.
+
+You’re out of Codex and Work usage
+Add credits or upgrade your plan — or wait for usage to reset on 10:50 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

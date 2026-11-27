@@ -121,6 +121,57 @@ function upgradeObjMaterials(obj) {
   });
 }
 
+// Os OBJ do Gun Pack trazem cores de material. Reutilize os acabamentos
+// do arsenal; alguns OBJ também precisam de coordenadas para a textura.
+const packSurfaceMaps = new Map();
+const surfaceTextureLoader = new THREE.TextureLoader();
+function getPackSurfaceMap(channel, suffix = 'albedo') {
+  const key = `${channel}:${suffix}`;
+  if (!packSurfaceMaps.has(key)) {
+    const folder = channel === 'wood' ? 'ak-74m_rifle_ak' : 'm41-t_fuzil';
+    const url = `/assets/3d/weapons/01_fuzis/${folder}/textures/${channel}_${suffix}.png`;
+    const texture = surfaceTextureLoader.load(url);
+    texture.colorSpace = suffix === 'albedo' ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.anisotropy = 4;
+    packSurfaceMaps.set(key, texture);
+  }
+  return packSurfaceMaps.get(key);
+}
+
+function texturePackWeapon(obj) {
+  obj.traverse((mesh) => {
+    if (!mesh.isMesh) return;
+    const geo = mesh.geometry;
+    if (geo && !geo.getAttribute('uv')) {
+      const pos = geo.getAttribute('position');
+      const normal = geo.getAttribute('normal');
+      if (pos && normal) {
+        const uv = new Float32Array(pos.count * 2);
+        for (let i = 0; i < pos.count; i++) {
+          const x = Math.abs(normal.getX(i));
+          const y = Math.abs(normal.getY(i));
+          const z = Math.abs(normal.getZ(i));
+          uv[i * 2] = x > y && x > z ? pos.getZ(i) : pos.getX(i);
+          uv[i * 2 + 1] = y >= x && y > z ? pos.getZ(i) : pos.getY(i);
+        }
+        geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      }
+    }
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const mat of mats) {
+      if (!mat || mat.transparent || mat.map) continue;
+      const channel = /wood/i.test(mat.name) ? 'wood' : (/black/i.test(mat.name) ? 'polymer' : 'metal');
+      mat.map = getPackSurfaceMap(channel, 'albedo');
+      mat.normalMap = getPackSurfaceMap(channel, 'normal');
+      mat.normalScale = new THREE.Vector2(0.32, 0.32);
+      mat.roughnessMap = getPackSurfaceMap(channel, 'roughness');
+      mat.color.lerp(new THREE.Color(0xffffff), 0.45);
+      mat.needsUpdate = true;
+    }
+  });
+}
+
 const _postureAxis = new THREE.Vector3();
 const _postureQ1 = new THREE.Quaternion();
 const _postureQ2 = new THREE.Quaternion();
@@ -644,6 +695,7 @@ export class AssetLibrary {
         loader.setMaterials(materials);
         const obj = loader.parse(objText);
         upgradeObjMaterials(obj);
+        texturePackWeapon(obj);
         this._weaponCache.set(cacheKey, obj);
         return obj;
       } catch (err) {
@@ -681,6 +733,7 @@ export class AssetLibrary {
         loader.setMaterials(materials);
         const obj = loader.parse(objText);
         upgradeObjMaterials(obj);
+        texturePackWeapon(obj);
         this._accessoryCache.set(cacheKey, obj);
         return obj;
       } catch (err) {
