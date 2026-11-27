@@ -968,11 +968,6 @@
     },
     "sniper_rifle": {
       "id": "sniper_rifle",
-      "fallbackV1": true,
-      "note": "Usa modelo PBR dedicado do arsenal (sr-76) com luneta integrada 8x."
-    },
-    "heavy_sniper": {
-      "id": "heavy_sniper",
       "file": "weapons/SniperRifle_6.obj",
       "mtl": "weapons/SniperRifle_6.mtl",
       "sourceName": "SniperRifle_6",
@@ -1013,6 +1008,11 @@
         "reload": null,
         "draw": null
       }
+    },
+    "heavy_sniper": {
+      "id": "heavy_sniper",
+      "fallbackV1": true,
+      "note": "Usa modelo PBR dedicado da Barrett M82 .50 antimaterial (chassi preto pesado com freio de boca e luneta 12x)."
     },
     "tactical_pistol": {
       "id": "tactical_pistol",

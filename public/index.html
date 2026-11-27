@@ -3147,67 +3147,155 @@ class SoundEngine {
       return;
     }
 
-    // Assinaturas sonoras distintas por classe de arma (permite reconhecer calibre/tipo mesmo à distância)
-    const cfg = {
-      pistol:       { f:225, fEnd:48, dur:0.072, bp:2450, bpQ:1.15, vol:0.50, tail:0.26, punch:0.35, snap:2900 },
-      deagle:       { f:98,  fEnd:22, dur:0.155, bp:1180, bpQ:0.65, vol:0.86, tail:0.72, punch:0.82, snap:1750 },
-      smg:          { f:210, fEnd:55, dur:0.056, bp:2300, bpQ:1.25, vol:0.44, tail:0.22, punch:0.30, snap:2600 },
-      rifle:        { f:155, fEnd:32, dur:0.100, bp:1820, bpQ:0.85, vol:0.68, tail:0.48, punch:0.60, snap:2400 },
-      ak:           { f:118, fEnd:26, dur:0.125, bp:1260, bpQ:0.70, vol:0.76, tail:0.62, punch:0.74, snap:2100 },
-      lmg:          { f:124, fEnd:26, dur:0.118, bp:1340, bpQ:0.68, vol:0.74, tail:0.60, punch:0.72, snap:1950 },
-      dmr:          { f:104, fEnd:24, dur:0.145, bp:1720, bpQ:0.80, vol:0.84, tail:0.80, punch:0.80, snap:2500 },
-      shotgun:      { f:76,  fEnd:18, dur:0.175, bp:880,  bpQ:0.42, vol:0.92, tail:0.74, punch:0.95, snap:1100 },
-      sniper:       { f:82,  fEnd:20, dur:0.210, bp:1950, bpQ:0.72, vol:0.98, tail:1.18, punch:0.96, snap:2850 },
-      antimaterial: { f:58,  fEnd:15, dur:0.280, bp:1550, bpQ:0.55, vol:1.15, tail:1.68, punch:1.20, snap:2400, heavyBoom:true }
-    }[profile] || { f:155, fEnd:32, dur:0.100, bp:1820, bpQ:0.85, vol:0.68, tail:0.48, punch:0.60, snap:2400 };
+    // Motor de síntese física PCM dedicada (44.1kHz, waveshaping não-linear, mecânica interna e assinatura acústica única por arma!)
+    if (!this._weaponBuffers) this._weaponBuffers = new Map();
+    const bufKey = `${profile}:${indoors ? 'in' : 'out'}`;
+    if (!this._weaponBuffers.has(bufKey)) {
+      const sr = this.ctx.sampleRate || 44100;
+      const spec = {
+        // Pistola 9mm: POP estalado, seco, agudo, clique rápido do slide aos 30ms, zero sub-grave
+        pistol:       { len: 0.34, punchF0: 310, punchF1: 82,  punchT: 0.032, punchAmt: 0.55, crackHz: 2650, crackT: 0.018, crackAmt: 0.78, bodyHz: 1150, bodyT: 0.055, bodyAmt: 0.48, drive: 1.8, mechAt: 0.030, mechHz: 3900, mechAmt: 0.28, tailT: 0.16, tailHz: 1450, tailAmt: 0.16, subAmt: 0.0 },
+        // Submetralhadora VX-9: TKTK curto, metálico, comprimido, batida rápida de ferrolho aos 20ms
+        smg:          { len: 0.28, punchF0: 340, punchF1: 95,  punchT: 0.024, punchAmt: 0.42, crackHz: 2350, crackT: 0.014, crackAmt: 0.65, bodyHz: 1420, bodyT: 0.042, bodyAmt: 0.52, drive: 1.6, mechAt: 0.020, mechHz: 3300, mechAmt: 0.34, tailT: 0.12, tailHz: 1300, tailAmt: 0.12, subAmt: 0.0 },
+        // Revólver Magnum .44: CANHÃO DE MÃO com pancada grave-média e ressonância metálica do tambor
+        deagle:       { len: 0.85, punchF0: 165, punchF1: 42,  punchT: 0.095, punchAmt: 0.95, crackHz: 1750, crackT: 0.035, crackAmt: 0.85, bodyHz: 680,  bodyT: 0.130, bodyAmt: 0.72, drive: 2.9, mechAt: 0.045, mechHz: 1480, mechAmt: 0.26, ringHz: 1190, tailT: 0.56, tailHz: 920,  tailAmt: 0.34, subAmt: 0.38 },
+        // Fuzil 5.56 (M41-T): CRACK supersônico agudo e cortante + mola sutil do buffer AR
+        rifle:        { len: 0.68, punchF0: 220, punchF1: 54,  punchT: 0.052, punchAmt: 0.72, crackHz: 3450, crackT: 0.016, crackAmt: 0.96, bodyHz: 1380, bodyT: 0.072, bodyAmt: 0.60, drive: 2.3, mechAt: 0.036, mechHz: 2750, mechAmt: 0.22, ringHz: 860,  tailT: 0.44, tailHz: 1250, tailAmt: 0.26, subAmt: 0.15 },
+        // Fuzil 7.62 (AK-74M / MDR): BARK-CLACK encorpado, agressivo, saturado + duplo clack metálico do ferrolho AK
+        ak:           { len: 0.82, punchF0: 148, punchF1: 36,  punchT: 0.082, punchAmt: 0.90, crackHz: 2150, crackT: 0.024, crackAmt: 0.82, bodyHz: 790,  bodyT: 0.105, bodyAmt: 0.78, drive: 3.3, mechAt: 0.038, mechHz: 2280, mechAmt: 0.42, mech2At: 0.068, tailT: 0.58, tailHz: 960,  tailAmt: 0.32, subAmt: 0.32 },
+        // Metralhadora Pesada MG-240: THUMP denso + tilintar metálico de elos da fita
+        lmg:          { len: 0.86, punchF0: 132, punchF1: 32,  punchT: 0.090, punchAmt: 0.92, crackHz: 1920, crackT: 0.026, crackAmt: 0.78, bodyHz: 690,  bodyT: 0.115, bodyAmt: 0.80, drive: 3.1, mechAt: 0.028, mechHz: 4450, mechAmt: 0.38, mech2At: 0.054, tailT: 0.62, tailHz: 880,  tailAmt: 0.34, subAmt: 0.36 },
+        // DMR Tático M110-K (.308): WHACK-SNAP de alta pressão, chicote supersônico nítido e seco
+        dmr:          { len: 1.05, punchF0: 138, punchF1: 30,  punchT: 0.098, punchAmt: 0.94, crackHz: 2950, crackT: 0.022, crackAmt: 1.02, bodyHz: 940,  bodyT: 0.095, bodyAmt: 0.68, drive: 2.8, mechAt: 0.042, mechHz: 2600, mechAmt: 0.25, tailT: 0.78, tailHz: 1080, tailAmt: 0.36, subAmt: 0.35 },
+        // Escopeta Calibre 12 (SG-12 / DB-68): BOOOOM largo, grave, sopro grosso de pólvora sem chicote fino de fuzil
+        shotgun:      { len: 1.02, punchF0: 108, punchF1: 24,  punchT: 0.155, punchAmt: 1.15, crackHz: 780,  crackT: 0.055, crackAmt: 0.75, bodyHz: 420,  bodyT: 0.185, bodyAmt: 1.05, drive: 3.6, mechAt: 0.0,   mechHz: 1200, mechAmt: 0.0,  tailT: 0.76, tailHz: 680,  tailAmt: 0.42, subAmt: 0.68 },
+        // Sniper Bolt-Action SR-76 (.308): KRAK-ECHO cristalino de longo alcance com chicote supersônico forte + eco longo
+        sniper:       { len: 1.55, punchF0: 116, punchF1: 24,  punchT: 0.135, punchAmt: 1.08, crackHz: 3650, crackT: 0.028, crackAmt: 1.18, bodyHz: 880,  bodyT: 0.125, bodyAmt: 0.76, drive: 3.2, mechAt: 0.0,   mechHz: 2000, mechAmt: 0.0,  tailT: 1.28, tailHz: 1020, tailAmt: 0.48, subAmt: 0.52, echoSlap: 0.14 },
+        // Sniper Antimaterial Barrett M82 (.50 BMG): CANHÃO TROVEJANTE com dupla onda de choque do freio de boca + sub-grave sísmico + trovão de 2.1s
+        antimaterial: { len: 2.25, punchF0: 78,  punchF1: 18,  punchT: 0.290, punchAmt: 1.45, crackHz: 2450, crackT: 0.042, crackAmt: 1.25, bodyHz: 360,  bodyT: 0.280, bodyAmt: 1.22, drive: 4.5, brakeSlapAt: 0.019, tailT: 1.95, tailHz: 640, tailAmt: 0.66, subAmt: 1.10, echoSlap: 0.19 }
+      }[profile] || { len: 0.68, punchF0: 220, punchF1: 54, punchT: 0.052, punchAmt: 0.72, crackHz: 3200, crackT: 0.016, crackAmt: 0.90, bodyHz: 1300, bodyT: 0.070, bodyAmt: 0.60, drive: 2.2, mechAt: 0.035, mechHz: 2700, mechAmt: 0.20, tailT: 0.44, tailHz: 1200, tailAmt: 0.26, subAmt: 0.15 };
 
-    const v = cfg.vol * volScale;
-    const farFactor = Math.min(1, distMeters / 220);
+      const totalSamples = Math.floor(sr * spec.len);
+      const buf = this.ctx.createBuffer(1, totalSamples, sr);
+      const out = buf.getChannelData(0);
 
-    // 1. Corpo/Punch grave da detonação
-    const osc = this.ctx.createOscillator(), og = this.ctx.createGain();
-    osc.type = cfg.heavyBoom ? 'sawtooth' : 'triangle';
-    osc.frequency.setValueAtTime(cfg.f * (1 - farFactor * 0.22), now);
-    osc.frequency.exponentialRampToValueAtTime(cfg.fEnd, now + cfg.dur * (1 + farFactor * 0.45));
-    og.gain.setValueAtTime(v * cfg.punch, now);
-    og.gain.exponentialRampToValueAtTime(0.001, now + cfg.dur * (1 + farFactor * 0.55));
-    osc.connect(og).connect(dest);
-    osc.start(now); osc.stop(now + cfg.dur * 1.65 + 0.02);
+      let phasePunch = 0, phaseSub = 0, phaseRing = 0;
+      let lpCrack = 0, bpCrack = 0, lpBody = 0, lpTail = 0;
+      let rng = (profile.charCodeAt(0) * 98765 + profile.length * 12345) >>> 0;
+      const rand = () => {
+        rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0;
+        return (rng / 2147483648) - 1.0;
+      };
 
-    // 2. Estalo supersônico / assinatura espectral da arma
-    const crack = this.ctx.createBufferSource(); crack.buffer = this.noise;
-    const bp = this.ctx.createBiquadFilter(); bp.type = 'bandpass';
-    bp.frequency.value = cfg.bp * (1 - farFactor * 0.38);
-    bp.Q.value = cfg.bpQ;
-    const cg = this.ctx.createGain();
-    cg.gain.setValueAtTime(v * (1 - farFactor * 0.25), now);
-    cg.gain.exponentialRampToValueAtTime(0.001, now + cfg.dur * (1.35 + farFactor * 0.45));
-    crack.connect(bp).connect(cg).connect(dest);
-    crack.start(now); crack.stop(now + cfg.dur * 2.0 + 0.02);
+      const crackAlpha = Math.min(0.88, (2 * Math.PI * spec.crackHz) / sr);
+      const bodyAlpha = Math.min(0.75, (2 * Math.PI * spec.bodyHz) / sr);
+      const tailBaseHz = indoors ? spec.tailHz * 1.35 : spec.tailHz;
+      const tailDur = indoors ? spec.tailT * 0.62 : spec.tailT;
 
-    // 2b. Camada extra de sub-estrondo para Antimaterial (.50 BMG) e Sniper
-    if (cfg.heavyBoom || profile === 'sniper' || profile === 'shotgun') {
-      const sub = this.ctx.createOscillator(), sg = this.ctx.createGain();
-      sub.type = 'sine';
-      sub.frequency.setValueAtTime(cfg.heavyBoom ? 64 : 74, now);
-      sub.frequency.exponentialRampToValueAtTime(18, now + (cfg.heavyBoom ? 0.36 : 0.20));
-      sg.gain.setValueAtTime(v * (cfg.heavyBoom ? 0.92 : 0.55), now);
-      sg.gain.exponentialRampToValueAtTime(0.001, now + (cfg.heavyBoom ? 0.38 : 0.22));
-      sub.connect(sg).connect(dest);
-      sub.start(now); sub.stop(now + (cfg.heavyBoom ? 0.40 : 0.24));
+      for (let i = 0; i < totalSamples; i++) {
+        const t = i / sr;
+        const n = rand();
+
+        // 1. Onda de pressão inicial (punch não-linear com queda exponencial de frequência)
+        let sample = 0;
+        if (t < spec.punchT * 3.2) {
+          const pf = spec.punchF1 + (spec.punchF0 - spec.punchF1) * Math.exp(-t / (spec.punchT * 0.38));
+          phasePunch += (2 * Math.PI * pf) / sr;
+          const pEnv = Math.exp(-t / (spec.punchT * 0.52));
+          sample += Math.sin(phasePunch) * pEnv * spec.punchAmt;
+        }
+
+        // 2. Sub-grave sísmico (12G, Sniper e principalmente Barrett .50 BMG)
+        if (spec.subAmt > 0 && t < 0.55) {
+          const sf = (profile === 'antimaterial' ? 46 : 62) * Math.exp(-t * 1.9);
+          phaseSub += (2 * Math.PI * Math.max(22, sf)) / sr;
+          sample += Math.sin(phaseSub) * Math.exp(-t / (profile === 'antimaterial' ? 0.24 : 0.11)) * spec.subAmt;
+        }
+
+        // 3. Chicote supersônico / estalo de boca (diferencia fuzil/sniper agudo de 12G/pistola)
+        lpCrack += crackAlpha * (n - lpCrack);
+        bpCrack += crackAlpha * 0.55 * ((n - lpCrack) - bpCrack);
+        if (t < spec.crackT * 4.5) {
+          const cEnv = Math.exp(-t / spec.crackT);
+          sample += (n - bpCrack) * cEnv * spec.crackAmt;
+        }
+
+        // 4. Corpo da queima de pólvora no cano
+        lpBody += bodyAlpha * (n - lpBody);
+        if (t < spec.bodyT * 4.0) {
+          sample += lpBody * Math.exp(-t / spec.bodyT) * spec.bodyAmt;
+        }
+
+        // 5. Segunda onda de choque do freio de boca em V da Barrett .50 BMG (duplo impacto brutal!)
+        if (spec.brakeSlapAt && t >= spec.brakeSlapAt && t < spec.brakeSlapAt + 0.16) {
+          const bt = t - spec.brakeSlapAt;
+          sample += (lpBody * 1.15 + Math.sin(bt * 2 * Math.PI * 68) * 0.85) * Math.exp(-bt / 0.038) * 1.05;
+        }
+
+        // 6. Assinatura mecânica metálica (clack do AK, slide da pistola, fita da LMG)
+        if (spec.mechAmt > 0 && t >= spec.mechAt && t < spec.mechAt + 0.045) {
+          const mt = t - spec.mechAt;
+          sample += Math.sin(2 * Math.PI * spec.mechHz * mt + n * 0.8) * Math.exp(-mt / 0.008) * spec.mechAmt;
+        }
+        if (spec.mech2At && t >= spec.mech2At && t < spec.mech2At + 0.045) {
+          const mt2 = t - spec.mech2At;
+          sample += Math.sin(2 * Math.PI * (spec.mechHz * 0.82) * mt2 + n * 0.7) * Math.exp(-mt2 / 0.009) * (spec.mechAmt * 0.85);
+        }
+        if (spec.ringHz && t < 0.22) {
+          phaseRing += (2 * Math.PI * spec.ringHz) / sr;
+          sample += Math.sin(phaseRing) * Math.exp(-t / 0.065) * 0.09;
+        }
+
+        // 7. Saturação acústica (compressão real de onda de choque no ar!)
+        sample = Math.tanh(sample * spec.drive) * 0.82;
+
+        // 8. Cauda/reverberação externa + slapback echo de vale para snipers/antimaterial
+        const dynTailAlpha = Math.min(0.65, (2 * Math.PI * Math.max(140, tailBaseHz * Math.exp(-t / (tailDur * 0.75)))) / sr);
+        lpTail += dynTailAlpha * (n - lpTail);
+        if (t > 0.008) {
+          const tEnv = Math.exp(-(t - 0.008) / (tailDur * 0.42));
+          sample += lpTail * tEnv * spec.tailAmt;
+        }
+        if (spec.echoSlap && !indoors && t >= spec.echoSlap) {
+          const et = t - spec.echoSlap;
+          sample += lpTail * Math.exp(-et / (tailDur * 0.55)) * (spec.tailAmt * 0.58);
+        }
+
+        // Fade-out suave nos últimos 15ms para zero clique final
+        const rem = (totalSamples - i) / (sr * 0.015);
+        out[i] = Math.max(-0.98, Math.min(0.98, sample * Math.min(1, rem)));
+      }
+      this._weaponBuffers.set(bufKey, buf);
     }
 
-    // 3. Eco/reverberação de distância (muito mais longo em snipers e antimaterial)
-    const tail = this.ctx.createBufferSource(); tail.buffer = this.noise;
-    const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass';
-    const tDur = (indoors ? cfg.tail * 0.58 : cfg.tail) * (1 + farFactor * 0.85);
-    lp.frequency.setValueAtTime(indoors ? 1400 : (cfg.snap * 0.42 - farFactor * 280), now);
-    lp.frequency.exponentialRampToValueAtTime(120, now + tDur);
-    const tg = this.ctx.createGain();
-    tg.gain.setValueAtTime(v * (0.36 + farFactor * 0.32), now + 0.015);
-    tg.gain.exponentialRampToValueAtTime(0.001, now + tDur);
-    tail.connect(lp).connect(tg).connect(dest);
-    tail.start(now); tail.stop(now + tDur + 0.03);
+    const masterGainByProfile = {
+      pistol: 0.56,
+      smg: 0.48,
+      rifle: 0.76,
+      ak: 0.84,
+      lmg: 0.86,
+      dmr: 0.92,
+      deagle: 0.90,
+      shotgun: 1.02,
+      sniper: 1.12,
+      antimaterial: 1.38
+    }[profile] || 0.76;
+
+    const farFactor = Math.min(1, distMeters / 240);
+    const shotSrc = this.ctx.createBufferSource();
+    shotSrc.buffer = this._weaponBuffers.get(bufKey);
+    // Micro-variação natural de pitch (±2.5%) para rajadas nunca soarem robóticas
+    shotSrc.playbackRate.value = 0.985 + Math.random() * 0.03;
+
+    const distFilter = this.ctx.createBiquadFilter();
+    distFilter.type = 'lowpass';
+    distFilter.frequency.value = Math.max(520, 18000 - farFactor * 15500);
+
+    const gNode = this.ctx.createGain();
+    gNode.gain.setValueAtTime(masterGainByProfile * volScale, now);
+
+    shotSrc.connect(distFilter).connect(gNode).connect(dest);
+    shotSrc.start(now);
   }
 
   // Vozes 3D realistas de Zumbis (duplo formante vocal gutural: idle, alert, chase, attack, hurt, death!)
@@ -4906,7 +4994,7 @@ const WEAPON_DEFS = {
     sockets:{ muzzle:[1.62,0.11,0], grip:[-0.36,-0.22,0], ejection:[0.06,0.11,0.075], optic:[-0.04,0.25,0], side:[0.76,0.11,0.075], under:[0.72,0.01,0] }
   },
   sniper_rifle: {
-    id:'sniper_rifle', nativeScope:'scope8x', code:'SR-76', category:'rifles', categoryLabel:'Fuzis',
+    id:'sniper_rifle', nativeScope:'scope8x', packModel:true, hudIconUrl:'/assets/v2/weapons/heavy_sniper_hud_icon.png', code:'SR-76', category:'rifles', categoryLabel:'Fuzis',
     name:'RIFLE DE PRECISÃO SR-76', cal:'.308 WIN // BOLT-ACTION', ammoType:'308',
     folder:'01_fuzis/sr-76_sniper', objFile:'sr-76_game_ready.obj', hudIcon:'sr-76_hud_icon.png',
     texChannels:['metal','accent','polymer','grip'], lengthCm:124, targetLenM:1.12,
@@ -4936,9 +5024,9 @@ const WEAPON_DEFS = {
     sockets:{ muzzle:[1.55,0.125,0], grip:[-0.32,-0.24,0], ejection:[0.08,0.12,0.08], optic:[0.02,0.34,0], side:[0.82,0.12,0.09], under:[0.78,0.01,0] }
   },
   heavy_sniper: {
-    id:'heavy_sniper', nativeScope:'scope12x', packModel:true, hudIconUrl:'/assets/v2/weapons/heavy_sniper_hud_icon.png', code:'M82-.50', category:'rifles', categoryLabel:'Sniper Pesada',
+    id:'heavy_sniper', nativeScope:'scope12x', code:'M82-.50', category:'rifles', categoryLabel:'Sniper Pesada',
     name:'SNIPER ANTIMATERIAL M82 .50', cal:'.50 BMG // SEMI-AUTO ANTIMATERIAL', ammoType:'308',
-    folder:'01_fuzis/sr-76_sniper', objFile:'sr-76_game_ready.obj', hudIcon:'/assets/v2/weapons/heavy_sniper_hud_icon.png',
+    folder:'01_fuzis/sr-76_sniper', objFile:'sr-76_game_ready.obj', hudIcon:'sr-76_hud_icon.png',
     texChannels:['metal','accent','polymer','grip'], lengthCm:142, targetLenM:1.28,
     melee:false, mode:'semi', sound:'antimaterial', twoHand:true, animType:'auto', isPrecision:true, muzzleVelocity:940,
     dmg:295, delay:0.62, rDur:3.25, range:640, pellets:1, spread:0.032, adsSpread:0.00025, recoil:0.175, noise:135, magSize:10, shellCol:0xd4ad52,
@@ -5284,15 +5372,21 @@ function loadWeaponTemplate(wId) {
                 child.userData.builtInOptic = true;
                 const glass = new THREE.Box3();
                 const vertex = new THREE.Vector3();
-                for (const group of child.geometry.groups) {
-                  if (child.material[group.materialIndex]?.name !== 'Glass') continue;
-                  for (let i = group.start; i < group.start + group.count; i++) {
-                    glass.expandByPoint(vertex.fromBufferAttribute(posAttr, i));
+                const mats = Array.isArray(child.material) ? child.material : [child.material];
+                if (child.geometry.groups && child.geometry.groups.length > 0) {
+                  for (const group of child.geometry.groups) {
+                    const gm = mats[group.materialIndex];
+                    if (!gm || !/glass/i.test(gm.name || '')) continue;
+                    for (let i = group.start; i < group.start + group.count; i++) {
+                      glass.expandByPoint(vertex.fromBufferAttribute(posAttr, i));
+                    }
                   }
                 }
                 if (!glass.isEmpty()) {
                   glass.getCenter(nativeSight);
-                  pupilRadius = Math.min(glass.max.y - glass.min.y, glass.max.z - glass.min.z) * 0.31;
+                  pupilRadius = Math.min(glass.max.y - glass.min.y, glass.max.z - glass.min.z) * 0.34;
+                } else {
+                  pupilRadius = Math.min(bounds.max.y - bounds.min.y, bounds.max.z - bounds.min.z) * 0.30;
                 }
               }
             }
@@ -6652,7 +6746,9 @@ function attachZombieV2Rig(zObj) {
       inst.update(0.016);
       inst.updateZombieFall(zObj.deathT);
     } else if (zObj.legHit) {
-      inst.play('crawl', { fade: 0.06, timeScale: 0.25 });
+      inst.play('crawl', { fade: 0 });
+      inst.update(0.016);
+      inst.applyZombieCrawlOverlay({ isMoving: false });
     } else {
       inst.play('idle', { fade: 0.08 });
     }

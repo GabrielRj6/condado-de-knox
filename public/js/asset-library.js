@@ -415,9 +415,32 @@ class RigController {
     const b = this.bones;
     const hasAtk = atkPhase > 0.001;
     const hasStag = staggerAlpha > 0.001;
-    if (!hasAtk && !hasStag && isMoving) return;
 
+    // O clip ZombieCrawl não traz trilha de altura para o quadril (Body continua em ~0.88m):
+    // apoia o corpo rastejante rente ao chão em todos os frames (parado, andando ou atacando)!
+    this.group.position.y = 0;
     this.group.updateMatrixWorld(true);
+    const rootWorldY = this.group.getWorldPosition(_postureV1).y;
+    const parentScaleY = this.group.parent?.getWorldScale(_postureV2).y || 1;
+    let lowestBoneY = Infinity;
+    const crawlSupportBones = [
+      b.body, b.abdomen, b.torso, b.chest,
+      b.lowerArmL, b.lowerArmR, b.leftHand, b.rightHand,
+      b.upperLegL, b.upperLegR, b.lowerLegL, b.lowerLegR, b.footL, b.footR
+    ];
+    for (let i = 0; i < crawlSupportBones.length; i++) {
+      const jb = crawlSupportBones[i];
+      if (!jb) continue;
+      const wy = jb.getWorldPosition(_postureV3).y;
+      if (wy < lowestBoneY) lowestBoneY = wy;
+    }
+    if (Number.isFinite(lowestBoneY)) {
+      const groundTargetY = rootWorldY + 0.07;
+      this.group.position.y = (groundTargetY - lowestBoneY) / parentScaleY;
+      this.group.updateMatrixWorld(true);
+    }
+
+    if (!hasAtk && !hasStag && isMoving) return;
 
     // Mantém o corpo colado no chão durante o ataque/dano, erguendo apenas peito, cabeça e braços para rasgar as pernas do jogador!
     if (hasAtk) {
@@ -822,6 +845,9 @@ class RigController {
   }
 
   prepareZombieFall() {
+    if (this.mixer) this.mixer.stopAllAction();
+    this._restorePostureOverrides();
+
     const meshes = [];
     const bones = new Set();
     this.model.traverseVisible(mesh => {
@@ -830,43 +856,70 @@ class RigController {
       for (const bone of mesh.skeleton.bones) bones.add(bone);
     });
 
+    // Zera qualquer offset anterior (ex.: zumbi rastejante) antes de capturar a pose inicial e medir o chão real
+    const prevY = this.group.position.y;
+    this.group.position.y = 0;
+    this.group.rotation.x = 0;
+    this.group.updateMatrixWorld(true);
+    const groundY = this.group.getWorldPosition(new THREE.Vector3()).y;
+
     const pose = Array.from(bones, bone => ({
       bone, startPosition: bone.position.clone(), startRotation: bone.quaternion.clone()
     }));
-    for (const mesh of meshes) mesh.skeleton.pose();
+    this._fallStartOffsetY = prevY;
 
-    // Com o modelo ainda em pé, deixe braços e pernas apontados para os pés.
-    // A inclinação do corpo transforma essa pose em repouso de costas.
-    const modelRotation = this.model.getWorldQuaternion(new THREE.Quaternion());
-    const relaxLimb = (bone, end, x, z) => {
+    for (const mesh of meshes) mesh.skeleton.pose();
+    this.model.updateMatrixWorld(true);
+
+    // Com o modelo em pé (yawOffset = PI, frente do modelo aponta para -Z do group):
+    // ao inclinar group.rotation.x = +PI/2, o eixo -Y do group vai para -Z (horizontal) e -Z do group vai para +Y (cima).
+    // Alinha braços, coxas e canelas esticados rente ao chão para nunca ficarem dobrados para o alto!
+    const groupQuat = this.group.getWorldQuaternion(new THREE.Quaternion());
+    const relaxLimb = (bone, end, gx, gz) => {
       if (!bone || !end) return;
+      bone.parent.updateWorldMatrix(true, false);
+      bone.updateMatrixWorld(true);
       const direction = end.getWorldPosition(new THREE.Vector3())
         .sub(bone.getWorldPosition(new THREE.Vector3())).normalize();
-      const target = new THREE.Vector3(x, -1, z).normalize().applyQuaternion(modelRotation);
+      const target = new THREE.Vector3(gx, -1, gz).normalize().applyQuaternion(groupQuat);
       const worldRotation = bone.getWorldQuaternion(new THREE.Quaternion());
       const inverseParent = bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
       bone.quaternion.setFromUnitVectors(direction, target).multiply(worldRotation).premultiply(inverseParent);
+      bone.updateMatrixWorld(true);
     };
     const b = this.bones;
-    relaxLimb(b.upperArmL, b.lowerArmL, 0.42, 0.03);
-    relaxLimb(b.lowerArmL, b.leftHand, 0.24, 0.15);
-    relaxLimb(b.upperArmR, b.lowerArmR, -0.29, 0.04);
-    relaxLimb(b.lowerArmR, b.rightHand, -0.14, 0.18);
-    relaxLimb(b.upperLegL, b.lowerLegL, 0.12, 0.03);
-    relaxLimb(b.upperLegR, b.lowerLegR, -0.16, 0.04);
+    relaxLimb(b.upperArmL, b.lowerArmL, -0.34, 0.02);
+    relaxLimb(b.lowerArmL, b.leftHand, -0.22, -0.04);
+    relaxLimb(b.upperArmR, b.lowerArmR, 0.30, 0.02);
+    relaxLimb(b.lowerArmR, b.rightHand, 0.18, -0.04);
+    relaxLimb(b.upperLegL, b.lowerLegL, -0.12, 0.0);
+    relaxLimb(b.lowerLegL, b.footL, -0.10, -0.02);
+    relaxLimb(b.upperLegR, b.lowerLegR, 0.14, 0.0);
+    relaxLimb(b.lowerLegR, b.footR, 0.12, -0.02);
 
     for (const joint of pose) {
       joint.restPosition = joint.bone.position.clone();
       joint.restRotation = joint.bone.quaternion.clone();
     }
 
-    const groundY = this.group.getWorldPosition(new THREE.Vector3()).y;
     this.group.rotation.x = Math.PI / 2;
     this.group.updateMatrixWorld(true);
-    const bounds = new THREE.Box3();
-    for (const mesh of meshes) bounds.expandByObject(mesh, true);
-    const parentScale = this.group.parent?.getWorldScale(new THREE.Vector3()).y ?? 1;
-    this.fallClearance = bounds.isEmpty() ? 0 : (groundY - bounds.min.y + 0.015) / parentScale;
+    for (const mesh of meshes) mesh.skeleton.update();
+
+    // Mede a altura real da coluna/quadril/pernas na pose deitada para apoiar as costas coladas no chão (zero flutuação!)
+    let minBackY = Infinity;
+    const backBones = [b.body, b.abdomen, b.torso, b.chest, b.head, b.upperLegL, b.upperLegR, b.lowerLegL, b.lowerLegR];
+    const tmpP = new THREE.Vector3();
+    for (const jb of backBones) {
+      if (!jb) continue;
+      const wy = jb.getWorldPosition(tmpP).y;
+      if (wy < minBackY) minBackY = wy;
+    }
+    const parentScale = this.group.parent?.getWorldScale(new THREE.Vector3()).y || 1;
+    // O raio do tronco/costas além do osso central é ~0.09m: posiciona minBackY a groundY + 0.09m
+    this.fallClearance = Number.isFinite(minBackY)
+      ? ((groundY + 0.09) - minBackY) / parentScale
+      : 0.09;
     this.fallPose = pose;
   }
 
@@ -880,7 +933,8 @@ class RigController {
       joint.bone.quaternion.slerpQuaternions(joint.startRotation, joint.restRotation, relax);
     }
     this.group.rotation.x = tilt * Math.PI / 2;
-    this.group.position.y = this.fallClearance * tilt;
+    const startY = this._fallStartOffsetY || 0;
+    this.group.position.y = THREE.MathUtils.lerp(startY, this.fallClearance, tilt);
     if (progress >= 1) {
       this.fallSettled = true;
       this.fallPose = null;
