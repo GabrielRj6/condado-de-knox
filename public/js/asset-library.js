@@ -1066,12 +1066,26 @@ export class AssetLibrary {
     if (this._glbCache.has(cacheKey)) return this._glbCache.get(cacheKey);
     if (this._glbPromises.has(cacheKey)) return this._glbPromises.get(cacheKey);
 
-    const url = `${V2_BASE_URL}${relFile}`;
+    const urls = [
+      `${V2_BASE_URL}${relFile}`,
+      `https://raw.githubusercontent.com/GabrielRj6/condado-de-knox/master/public/assets/v2/${relFile}`,
+      `https://cdn.jsdelivr.net/gh/GabrielRj6/condado-de-knox@master/public/assets/v2/${relFile}`
+    ];
     this.loadProgress.total++;
-    const p = new Promise((resolve) => {
-      this.gltfLoader.load(
-        url,
-        (gltf) => {
+    const p = (async () => {
+      let lastErr = null;
+      for (const url of urls) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const buf = await res.arrayBuffer();
+          // Confirma magic header binário 'glTF' (0x46546C67); rejeita ponteiros LFS de 132B ou HTML 404 do preview
+          if (buf.byteLength < 64 || new DataView(buf).getUint32(0, true) !== 0x46546C67) {
+            throw new Error(`GLB inválido (${buf.byteLength} bytes)`);
+          }
+          const gltf = await new Promise((resolve, reject) => {
+            this.gltfLoader.parse(buf, url.slice(0, url.lastIndexOf('/') + 1), resolve, reject);
+          });
           const clipsByName = new Map();
           for (const rawClip of (gltf.animations || [])) {
             const clip = boneNormalize ? normalizeClipTracks(rawClip, gltf.scene) : rawClip;
@@ -1080,17 +1094,16 @@ export class AssetLibrary {
           const rec = { gltf, clipsByName };
           this._glbCache.set(cacheKey, rec);
           this.loadProgress.loaded++;
-          resolve(rec);
-        },
-        undefined,
-        (err) => {
-          warnOnce(`glb_err:${url}`, `Erro ao carregar ${url}: ${err && err.message ? err.message : err}`);
-          this._glbPromises.delete(cacheKey);
-          this.loadProgress.loaded++;
-          resolve(null);
+          return rec;
+        } catch (err) {
+          lastErr = err;
         }
-      );
-    });
+      }
+      warnOnce(`glb_err:${relFile}`, `Erro ao carregar ${relFile}: ${lastErr && lastErr.message ? lastErr.message : lastErr}`);
+      this._glbPromises.delete(cacheKey);
+      this.loadProgress.loaded++;
+      return null;
+    })();
     this._glbPromises.set(cacheKey, p);
     return p;
   }
