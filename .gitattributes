@@ -1,1 +1,2 @@
-*.glb filter=lfs diff=lfs merge=lfs -text
+# *.glb armazenado diretamente no Git (sem LFS) para compatibilidade total com Google AI Studio
+*.glb binary
