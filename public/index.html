@@ -1950,6 +1950,8 @@ import {
   getVehicleSeatMeta,
   getVehiclePhysicsSpec,
   sweptVehicleContact,
+  hasZombieLineOfSight,
+  findZombieTacticalPath,
   stepVehicleLongitudinalSpeed,
   computeVehicleGroundAlignment,
   computeVehicleColliderBounds,
@@ -4528,6 +4530,7 @@ function attachV2CharacterRig(rig, charId, weaponMap = null, flashMesh = null) {
       return;
     }
     if (weaponMap) {
+      inst.weaponMap = weaponMap;
       for (const k of Object.keys(weaponMap)) {
         if (weaponMap[k]?.root) inst.weaponMount.add(weaponMap[k].root);
       }
@@ -4694,6 +4697,14 @@ function rebuildDebug3DVisuals() {
   scene.add(grp);
 }
 
+function safeRequestPointerLock() {
+  if (!canvas || typeof canvas.requestPointerLock !== 'function') return;
+  try {
+    const p = canvas.requestPointerLock();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  } catch (_) {}
+}
+
 function toggleDevPanel(forceState = null) {
   const p = document.getElementById('dev-panel');
   if (!p) return;
@@ -4708,7 +4719,7 @@ function toggleDevPanel(forceState = null) {
     mouseDownLeft = false; mouseDownRight = false;
     if (document.pointerLockElement === canvas) { try { document.exitPointerLock(); } catch (_) {} }
   } else if (!inventoryOpen && !partyOpen && !fullMapOpen && !player.dead && menuOverlay.classList.contains('hidden')) {
-    try { canvas.requestPointerLock(); } catch (_) {}
+    safeRequestPointerLock();
   }
 }
 
@@ -4826,7 +4837,7 @@ const WEAPON_DEFS = {
     sockets:{ muzzle:[1.62,0.11,0], grip:[-0.36,-0.22,0], ejection:[0.06,0.11,0.075], optic:[-0.04,0.25,0], side:[0.76,0.11,0.075], under:[0.72,0.01,0] }
   },
   sniper_rifle: {
-    id:'sniper_rifle', nativeScope:'scope8x', code:'SR-76', category:'rifles', categoryLabel:'Fuzis',
+    id:'sniper_rifle', nativeScope:'scope8x', packModel:true, hudIconUrl:'/assets/v2/weapons/heavy_sniper.png', code:'SR-76', category:'rifles', categoryLabel:'Fuzis',
     name:'RIFLE DE PRECISÃO SR-76', cal:'.308 WIN // BOLT-ACTION', ammoType:'308',
     folder:'01_fuzis/sr-76_sniper', objFile:'sr-76_game_ready.obj', hudIcon:'sr-76_hud_icon.png',
     texChannels:['metal','accent','polymer','grip'], lengthCm:124, targetLenM:1.12,
@@ -4856,7 +4867,7 @@ const WEAPON_DEFS = {
     sockets:{ muzzle:[1.55,0.125,0], grip:[-0.32,-0.24,0], ejection:[0.08,0.12,0.08], optic:[0.02,0.34,0], side:[0.82,0.12,0.09], under:[0.78,0.01,0] }
   },
   heavy_sniper: {
-    id:'heavy_sniper', nativeScope:'scope12x', packModel:true, hudIconUrl:'/assets/v2/weapons/heavy_sniper.png', code:'M82-.50', category:'rifles', categoryLabel:'Sniper Pesada',
+    id:'heavy_sniper', nativeScope:'scope12x', code:'M82-.50', category:'rifles', categoryLabel:'Sniper Pesada',
     name:'SNIPER ANTIMATERIAL M82 .50', cal:'.50 BMG // SEMI-AUTO ANTIMATERIAL', ammoType:'308',
     folder:'01_fuzis/sr-76_sniper', objFile:'sr-76_game_ready.obj', hudIcon:'sr-76_hud_icon.png',
     texChannels:['metal','accent','polymer','grip'], lengthCm:142, targetLenM:1.28,
@@ -5052,11 +5063,12 @@ function classifyWeaponSubmesh(wId, idx, meshName) {
     else if (idx >= 33 && idx <= 36) { res.channel = 'accent'; res.builtInOptic = true; }
     else if (idx === 37) { res.channel = '__opticLens'; res.builtInOptic = true; }
     else if (idx === 38) { res.channel = '__reticleRed'; res.builtInOptic = true; res.isReticleDot = true; }
-  } else if (wId === 'sniper_rifle') {
+  } else if (wId === 'heavy_sniper') {
     if (idx >= 1 && idx <= 3) { res.channel = 'accent'; if (idx === 2) res.isBolt = true; }
     else if (idx === 6) { res.channel = 'metal'; res.builtInOptic = true; }
     else if (idx >= 7 && idx <= 10) { res.channel = 'accent'; res.builtInOptic = true; }
     else if (idx === 11 || idx === 12) { res.channel = '__scopeGlass'; res.builtInOptic = true; }
+    else if (idx === 13) { res.channel = 'polymer'; res.isMag = true; }
     else if (idx >= 17 && idx <= 19) res.channel = 'metal';
   } else if (wId === 'tactical_pistol') {
     if (idx === 0) { res.channel = 'metal'; res.isBolt = true; }
@@ -14577,15 +14589,19 @@ function updateV2CharacterAnimation(rig, state, dt) {
 
   const wDef = WEAPON_DEFS[state.weaponId] || WEAPON_DEFS[DEFAULT_MELEE_WEAPON];
   const isMelee = !!wDef.melee;
-  v2.setWeaponHoldMode(isMelee ? 'melee' : 'gun');
+  const isThrow = wDef.animType === 'throwable';
+  if (isMelee || isThrow || proneA >= 0.5) {
+    v2.setWeaponHoldMode(isMelee ? 'melee' : 'gun');
+  }
 
   const hSpd = state.hSpeed || 0;
   // Histerese de movimento e direção evita ping-pong/flicker de clips ao correr na diagonal ou desacelerar!
   const isMoving = rig._v2WasMoving ? (hSpd > 0.14) : (hSpd > 0.28);
   rig._v2WasMoving = isMoving;
   const isSprinting = !!(state.sprinting && hSpd > 1.2);
-  const isShooting = !isMelee && ((state.recoilKick || 0) > 0.04);
-  const meleeActive = isMelee && (state.meleeSwingT || 0) > 0;
+  const isShooting = !isMelee && !isThrow && ((state.recoilKick || 0) > 0.04);
+  const inCombatAim = !isMelee && !isThrow && (!!state.inCombat || isShooting);
+  const meleeActive = (isMelee || isThrow) && (state.meleeSwingT || 0) > 0;
   const meleeFresh = meleeActive && !rig._v2WasMeleeSwing;
   rig._v2WasMeleeSwing = meleeActive;
 
@@ -14600,22 +14616,39 @@ function updateV2CharacterAnimation(rig, state, dt) {
     v2.play('melee', { fade: 0.05, timeScale: 1.65, forceRestart: meleeFresh });
   } else if (proneA > 0.5) {
     // Deitado: mantém clip estável para as pernas não atravessarem o chão enquanto o rastejo procedural anima braços e joelhos
-    if (!isMelee) {
+    if (!isMelee && !isThrow) {
       v2.play(isShooting ? 'idleGunShoot' : 'idleGunAim', { fade: 0.12, timeScale: isShooting ? 1.35 : 0.75 });
     } else {
       v2.play('idleMelee', { fade: 0.14, timeScale: 0.75 });
     }
-  } else if (!isMelee) {
-    // Armas de fogo: mantém o braço direito erguido na altura do peito (Idle_Gun_Pointing / Idle_Gun_Shoot / Run_Shoot) para nunca arrastar a arma no pé!
+  } else if (!isMelee && !isThrow) {
+    // Armas de fogo em 3ª pessoa: pernas usam ciclo natural (Run / Walk / Strafe / IdleNeutral) e os DOIS braços seguram a arma via IK!
     if (isMoving) {
-      const revSign = isRev ? -1 : 1;
-      const crouchSpdMult = crouchA > 0.35 ? 0.72 : 1.0;
-      const spdScale = THREE.MathUtils.clamp(hSpd / (isSprinting ? 4.8 : 4.2), 0.55, 1.55) * crouchSpdMult * revSign;
-      v2.play('runShoot', { fade: 0.14, timeScale: spdScale });
+      const strafeThresh = rig._v2WasStrafe ? 0.95 : 1.30;
+      const isStrafe = Math.abs(str) > Math.abs(fwd) * strafeThresh && Math.abs(str) > 0.55;
+      rig._v2WasStrafe = isStrafe;
+      if (crouchA > 0.35) {
+        const revSign = isRev ? -1 : 1;
+        v2.play('walk', { fade: 0.14, timeScale: THREE.MathUtils.clamp(hSpd / 2.2, 0.55, 1.15) * revSign });
+      } else if (isSprinting && !inCombatAim) {
+        v2.play('run', { fade: 0.14, timeScale: THREE.MathUtils.clamp(hSpd / 4.8, 0.9, 1.55) });
+      } else if (isRev) {
+        v2.play('runBack', { fade: 0.15, timeScale: THREE.MathUtils.clamp(hSpd / 3.2, 0.7, 1.4) });
+      } else if (isStrafe) {
+        v2.play(str > 0 ? 'runRight' : 'runLeft', { fade: 0.15, timeScale: THREE.MathUtils.clamp(hSpd / 3.4, 0.7, 1.4) });
+      } else if (inCombatAim) {
+        const crouchSpdMult = crouchA > 0.35 ? 0.72 : 1.0;
+        const spdScale = THREE.MathUtils.clamp(hSpd / 4.2, 0.62, 1.45) * crouchSpdMult;
+        v2.play('runShoot', { fade: 0.14, timeScale: spdScale });
+      } else {
+        v2.play('walk', { fade: 0.15, timeScale: THREE.MathUtils.clamp(hSpd / 2.6, 0.65, 1.45) });
+      }
     } else if (isShooting) {
       v2.play('idleGunShoot', { fade: 0.05, timeScale: 1.35 });
-    } else {
+    } else if (inCombatAim) {
       v2.play('idleGunAim', { fade: 0.14, timeScale: 1.0 });
+    } else {
+      v2.play('idleNeutral', { fade: 0.16, timeScale: 1.0 });
     }
   } else if (isMoving) {
     const strafeThresh = rig._v2WasStrafe ? 0.95 : 1.30;
@@ -14643,8 +14676,17 @@ function updateV2CharacterAnimation(rig, state, dt) {
     crouchAlpha: crouchA,
     proneAlpha: proneA,
     isMoving,
+    isSprinting,
+    inCombat: inCombatAim,
     isMelee,
     isTwoHand: !!wDef.twoHand,
+    isThrow,
+    weaponId: state.weaponId || DEFAULT_MELEE_WEAPON,
+    pitch: state.pitch || 0,
+    recoilKick: state.recoilKick || 0,
+    reloading: !!state.reloading,
+    reloadProgress: state.reloadProgress || 0,
+    walkPhase: state.walkPhase || 0,
     crawlPhase: (state.walkPhase || 0) * 1.25
   });
 }
@@ -15613,7 +15655,8 @@ function updateLocalPlayer(dt) {
 
   const hSpeed = Math.hypot(player.vel.x, player.vel.z);
   const inFirstPersonAim = player.firstPerson || player.adsFirstPersonToggle;
-  const inCombat = mouseDownRight || inFirstPersonAim || gunState.combatTimer > 0 || gunState.reloading;
+  // Em 3ª pessoa, só entra em postura de mira (inCombat) quando mira com botão direito/Z ou atira — parado/correndo usa guarda tática de lado com as 2 mãos!
+  const inCombat = mouseDownRight || player.adsFirstPersonToggle || gunState.combatTimer > 0 || (player.firstPerson && gunState.reloading);
   gunState.combatTimer = Math.max(0, gunState.combatTimer - dt);
   gunState.meleeSwingT = Math.max(0, gunState.meleeSwingT - dt);
   gunState.pumpTimer = Math.max(0, gunState.pumpTimer - dt);
@@ -19961,7 +20004,7 @@ function applyResumeOnPlayer(m) {
   if (hudEl) hudEl.style.opacity = '1';
   isPlaying = true;
   chunkWorldState.hasChosenSpawn = true;
-  try { canvas.requestPointerLock(); } catch (_) {}
+  safeRequestPointerLock();
 }
 
 async function preloadChunksAndEnter(save, onComplete) {
@@ -21520,6 +21563,23 @@ function updateZombies(dt) {
   const detectRange = player.crouching ? 13.0 : (player.flashlightOn ? 28.0 : 22.0);
   const nowMs = performance.now();
   const isClientNet = !!netState.isClient;
+  let navCalcsThisFrame = 0;
+
+  // Etiqueta portas fechadas e janelas baixas nos colisores para o A* dos zumbis saber por onde sair das casas!
+  for (let di = 0; di < interactiveDoors.length; di++) {
+    const d = interactiveDoors[di];
+    if (d && d.closedAABB) {
+      d.closedAABB.isDoorCollider = true;
+      d.closedAABB.doorRef = d;
+    }
+  }
+  for (let wi = 0; wi < interactiveWindows.length; wi++) {
+    const w = interactiveWindows[wi];
+    if (w && w.collider) {
+      w.collider.isWindowCollider = true;
+      w.collider.winRef = w;
+    }
+  }
 
   // Lista de sobreviventes vivos para a IA do Host perseguir tanto o Host quanto os Amigos conectados!
   const aliveTargets = [];
@@ -21691,14 +21751,121 @@ function updateZombies(dt) {
         zp.z += z.knockZ * dt;
       } else if (z.alertT > 0 && nearest) {
         isChasing = true;
-        const tdx = nearest.x - zp.x, tdz = nearest.z - zp.z;
-        z.yaw = lerpAngle(z.yaw, Math.atan2(-tdx, -tdz), Math.min(1, dt * 6.5));
+        let steerX = nearest.x;
+        let steerZ = nearest.z;
+
         if (nearestDist > 1.05) {
-          // Runner (1) corre agressivamente; Walker (0) e Brute (2) também correm ao perseguir!
-          const archMult = z.archetype === 1 ? 1.68 : (z.archetype === 2 ? 1.48 : 1.54);
-          moveSpd = z.speed * (z.legHit ? 0.45 : archMult);
-          zp.x += -Math.sin(z.yaw) * moveSpd * dt;
-          zp.z += -Math.cos(z.yaw) * moveSpd * dt;
+          // Pathfinding Tático A* + Saída de Casas + Arrombamento de Portas/Janelas + Anti-Stuck!
+          z._navTimer = (z._navTimer || 0) - dt;
+          const goalMoved = z._navGoalX === undefined || Math.hypot(nearest.x - z._navGoalX, nearest.z - z._navGoalZ) > 2.2;
+          const isStuck = (z._stuckCount || 0) >= 1;
+
+          if ((z._navTimer <= 0 || goalMoved || isStuck) && navCalcsThisFrame < 8) {
+            const obsRadius = Math.min(34, Math.max(16, nearestDist + 8));
+            const localObs = queryColliders(zp.x, zp.z, obsRadius).filter((b) => !b.isVehicleId || b.id !== z._roadkillIgnoreVehicle?.id);
+            if (hasZombieLineOfSight(zp.x, zp.z, nearest.x, nearest.z, zp.y, localObs, 0.34) && !isStuck) {
+              z._navWaypoints = null;
+              z._navIdx = 0;
+              z._navTimer = 0.28 + (i % 5) * 0.04;
+            } else {
+              navCalcsThisFrame++;
+              const navRad = isStuck ? 0.27 : 0.34;
+              const pathRes = findZombieTacticalPath(zp.x, zp.z, nearest.x, nearest.z, zp.y, localObs, { radius: navRad });
+              z._navWaypoints = (!pathRes.direct && pathRes.waypoints && pathRes.waypoints.length > 0) ? pathRes.waypoints : null;
+              z._navIdx = 0;
+              z._navTimer = 0.42 + (i % 7) * 0.05;
+              if (isStuck) z._stuckCount = 0;
+            }
+            z._navGoalX = nearest.x;
+            z._navGoalZ = nearest.z;
+          }
+
+          if (z._navWaypoints && z._navIdx < z._navWaypoints.length) {
+            while (z._navIdx < z._navWaypoints.length - 1) {
+              const wp = z._navWaypoints[z._navIdx];
+              if (Math.hypot(wp.x - zp.x, wp.z - zp.z) < 0.72) {
+                z._navIdx++;
+              } else {
+                break;
+              }
+            }
+            const curWp = z._navWaypoints[z._navIdx];
+            if (curWp) {
+              steerX = curWp.x;
+              steerZ = curWp.z;
+            }
+          }
+
+          const sdx = steerX - zp.x, sdz = steerZ - zp.z;
+          const desiredYaw = Math.atan2(-sdx, -sdz);
+          z.yaw = lerpAngle(z.yaw, desiredYaw, Math.min(1, dt * 8.5));
+
+          // Se uma porta fechada ou janela térrea estiver bloqueando a passagem na frente do zumbi, ele bate e abre/quebra!
+          const fwdX = -Math.sin(z.yaw), fwdZ = -Math.cos(z.yaw);
+          const nearCols = queryColliders(zp.x + fwdX * 0.65, zp.z + fwdZ * 0.65, 1.35);
+          let breachingDoor = false;
+          for (let ci = 0; ci < nearCols.length; ci++) {
+            const cb = nearCols[ci];
+            if (!cb || !cb.active) continue;
+            if (cb.isDoorCollider && cb.doorRef && !cb.doorRef.isOpen) {
+              const dc = cb.doorRef.worldCenter;
+              const dd = Math.hypot(dc.x - zp.x, dc.z - zp.z);
+              if (dd < 1.35 && Math.abs(dc.y - (zp.y + 1.1)) < 1.45) {
+                breachingDoor = true;
+                z._doorBashAcc = (z._doorBashAcc || 0) + dt;
+                if (z.atkAnimT <= 0) {
+                  z.atkAnimT = 0.48;
+                  sfx.playClick(180, 0.22);
+                }
+                if (z._doorBashAcc >= 0.34) {
+                  z._doorBashAcc = 0;
+                  toggleDoor(cb.doorRef, true);
+                  z._navTimer = 0;
+                }
+                break;
+              }
+            } else if (cb.isWindowCollider && cb.winRef && !cb.winRef.broken && cb.minY <= zp.y + 1.08) {
+              const wc = cb.winRef.worldCenter;
+              if (Math.hypot(wc.x - zp.x, wc.z - zp.z) < 1.28) {
+                z.atkAnimT = 0.45;
+                shatterWindowGlass(cb.winRef, wc, true);
+                z._navTimer = 0;
+                break;
+              }
+            }
+          }
+
+          if (!breachingDoor) {
+            z._doorBashAcc = 0;
+            const archMult = z.archetype === 1 ? 1.68 : (z.archetype === 2 ? 1.48 : 1.54);
+            moveSpd = z.speed * (z.legHit ? 0.45 : archMult);
+            const preMoveX = zp.x, preMoveZ = zp.z;
+            zp.x += -Math.sin(z.yaw) * moveSpd * dt;
+            zp.z += -Math.cos(z.yaw) * moveSpd * dt;
+
+            // Monitor Anti-Stuck: se após colisão com o mundo o zumbi avançar muito menos que o esperado, destrava e recalcula rota!
+            z._stuckSampleT = (z._stuckSampleT || 0) + dt;
+            if (z._stuckRefX === undefined) { z._stuckRefX = preMoveX; z._stuckRefZ = preMoveZ; }
+            if (z._stuckSampleT >= 0.42) {
+              const movedReal = Math.hypot(zp.x - z._stuckRefX, zp.z - z._stuckRefZ);
+              const expectedMin = moveSpd * z._stuckSampleT * 0.28;
+              if (movedReal < expectedMin && nearestDist > 1.55) {
+                z._stuckCount = (z._stuckCount || 0) + 1;
+                z._navTimer = 0;
+                // Desliza lateralmente para sair de quinas/batentes apertados
+                const sideSign = ((i + z._stuckCount) % 2 === 0) ? 1 : -1;
+                const perpYaw = z.yaw + sideSign * (Math.PI * 0.48);
+                zp.x += -Math.sin(perpYaw) * 0.24;
+                zp.z += -Math.cos(perpYaw) * 0.24;
+                z.yaw = lerpAngle(z.yaw, perpYaw, 0.55);
+              } else {
+                z._stuckCount = 0;
+              }
+              z._stuckRefX = zp.x;
+              z._stuckRefZ = zp.z;
+              z._stuckSampleT = 0;
+            }
+          }
         } else if (z.atkCd <= 0 && !nearest.inCar && Math.abs(nearest.y - zp.y) < 1.35) {
           z.atkCd = 1.15;
           z.atkAnimT = 0.62;
@@ -21711,11 +21878,20 @@ function updateZombies(dt) {
           }
         }
       } else {
+        z._navWaypoints = null;
         z.wanderTimer -= dt;
         if (z.wanderTimer <= 0) { z.wanderTimer = 3 + Math.random() * 4; z.yaw += (Math.random() - 0.5) * 2.0; }
         moveSpd = z.speed * (z.legHit ? 0.25 : 0.38);
+        const wPreX = zp.x, wPreZ = zp.z;
         zp.x += -Math.sin(z.yaw) * moveSpd * dt;
         zp.z += -Math.cos(z.yaw) * moveSpd * dt;
+        z._wanderCheckT = (z._wanderCheckT || 0) + dt;
+        if (z._wanderCheckT > 0.5) {
+          if (Math.hypot(zp.x - (z._wRefX ?? wPreX), zp.z - (z._wRefZ ?? wPreZ)) < 0.08) {
+            z.yaw += Math.PI * (0.55 + Math.random() * 0.45);
+          }
+          z._wRefX = zp.x; z._wRefZ = zp.z; z._wanderCheckT = 0;
+        }
       }
 
       const zTargetY = getSurfaceHeight(zp.x, zp.z);
@@ -21772,6 +21948,8 @@ function updateZombies(dt) {
         z.v2.play('attack', { fade: 0.08, timeScale: 1.25, variantIndex: z.variantIdx });
       } else if (z.stagger > 0) {
         z.v2.play('hit', { fade: 0.06, timeScale: 1.3, variantIndex: z.variantIdx });
+      } else if (z.legHit && moveSpd > 0.10) {
+        z.v2.play('crawl', { fade: 0.16, timeScale: THREE.MathUtils.clamp(moveSpd / 0.95, 0.75, 1.65) });
       } else if (moveSpd > 0.25 && isChasing) {
         const useRun = !z.legHit && (z.archetype === 1 || moveSpd > 1.45);
         z.v2.play(useRun ? 'run' : 'walk', { variantIndex: z.variantIdx, fade: 0.14, timeScale: THREE.MathUtils.clamp(moveSpd / (useRun ? 2.5 : 1.35), 0.78, 1.85) });
@@ -23238,14 +23416,16 @@ function updateDebugOverlay(dt) {
     devState.godMode ? 'GOD' : null,
     gameConfig.infiniteWeaponsMode ? 'AMMO∞' : null
   ].filter(Boolean).join(' · ') || 'PADRÃO';
-  const rInfo = renderer.info && renderer.info.render ? renderer.info.render : { calls: 0, triangles: 0 };
+  const rInfo = renderer.info && renderer.info.render ? renderer.info.render : { drawCalls: 0, calls: 0, triangles: 0 };
+  const drawCalls = _lastGpuDrawCalls || (rInfo.drawCalls ?? rInfo.frameCalls ?? rInfo.calls ?? 0);
+  const frameTris = _lastGpuTriangles || (rInfo.triangles ?? 0);
   const backendTag = renderer.backend?.isWebGPUBackend ? 'WEBGPU (WGSL)' : 'OUTRO';
 
   el.innerHTML =
     `<div style="color:var(--amb);font-weight:700;margin-bottom:3px;">DEBUG TELEMETRY // ${devState.fpsValue} FPS · ${backendTag} · ${formatClockFromHours(timeOfDayState.hours)}</div>` +
     `<div>POS: <b>${px.toFixed(1)}, ${py.toFixed(2)}, ${pz.toFixed(1)}</b> · ALT: <b>${Math.round((terrainState.meanElev || 0) + py)}m</b></div>` +
     `<div>SUP: <b>${surf.surface.toUpperCase()}</b> (Y=${surf.y.toFixed(2)}) · VIA: <b>${surf.roadName || 'TERRENO'}</b></div>` +
-    `<div>RENDER: <b>${rInfo.calls} calls</b> · <b>${Math.round(rInfo.triangles / 1000)}k tris</b> · GFX: <b>${getGraphicsPreset().label}</b> (${Math.round(graphicsState.dynResScale * 100)}%)</div>` +
+    `<div>RENDER: <b>${drawCalls} calls</b> · <b>${Math.round(frameTris / 1000)}k tris</b> · GFX: <b>${getGraphicsPreset().label}</b> (${Math.round(graphicsState.dynResScale * 100)}%)</div>` +
     `<div>MUNDO: <b>${streamingHouses.length} estr.</b> · <b>${streamingTrees.length} árv.</b> · <b>${colliders.length} col.</b></div>` +
     `<div>MODOS DEV: <b style="color:#a7e38d">${modes}</b></div>`;
 }
@@ -24648,8 +24828,16 @@ async function confirmSelectedSpawnAndEnter() {
   invModal.classList.remove('open'); partyModal.classList.remove('open');
   if (fullMapModal) fullMapModal.classList.remove('open');
   menuOverlay.classList.add('hidden');
+  isPlaying = true;
+  const hudEl = document.getElementById('hud');
+  if (hudEl) {
+    hudEl.classList.add('active');
+    hudEl.style.opacity = '1';
+  }
+  updateHealthBarUI();
+  updateWeaponHUD();
   showToast(`NASCIMENTO: ${spawnUiState.selectedRegion.toUpperCase()} (${Math.round(sx)}m, ${Math.round(sz)}m)`);
-  try { canvas.requestPointerLock(); } catch (_) {}
+  safeRequestPointerLock();
 }
 
 // Eventos do Modal de Spawn (#spawn-modal) e Controles da Aba 1 (Seed / Tamanho do Mundo)
@@ -26410,6 +26598,8 @@ function scheduleNextFrame() {
 }
 
 let _lastRenderAtMs = 0;
+let _lastGpuDrawCalls = 0;
+let _lastGpuTriangles = 0;
 
 function animate(nowMs) {
   const cap = knoxSettings.graphics.fpsCap || 0;
@@ -26511,6 +26701,10 @@ function animate(nowMs) {
   updateShadowScheduler(dt);
   updateDynamicResolution(dt);
   renderer.render(scene, camera);
+  if (renderer.info && renderer.info.render) {
+    _lastGpuDrawCalls = renderer.info.render.drawCalls ?? renderer.info.render.frameCalls ?? 0;
+    _lastGpuTriangles = renderer.info.render.triangles ?? 0;
+  }
   scheduleNextFrame();
 }
 

@@ -30,7 +30,9 @@ import {
   clampVehicleAimAngles,
   stepSpringRecoil,
   selectContextualDeathStyle,
-  computeBallisticDrop
+  computeBallisticDrop,
+  hasZombieLineOfSight,
+  findZombieTacticalPath
 } from '../public/js/tactical-logic.js';
 
 test('team-only map visibility hides players without team or on different teams', () => {
@@ -393,4 +395,31 @@ test('vehicle sweep catches a zombie crossed between frames and respects vehicle
   assert.equal(hits(car, 1.2, -3), true);
   assert.equal(hits(moto, 0, -12), false);
   assert.equal(sweptVehicleContact(0, 0, 0, 7, { x: 0, z: 3 }, 0, -1, moto, 0.32), true);
+});
+
+test('Zombie tactical pathfinding escapes indoor rooms via open/closed doors and routes around exterior houses', () => {
+  const houseWallsOpenEast = [
+    { active: true, minX: -4.2, maxX: 4.2, minZ: -4.2, maxZ: -3.8, minY: 0, maxY: 3.0 },
+    { active: true, minX: -4.2, maxX: 4.2, minZ:  3.8, maxZ:  4.2, minY: 0, maxY: 3.0 },
+    { active: true, minX: -4.2, maxX: -3.8, minZ: -4.2, maxZ: 4.2, minY: 0, maxY: 3.0 },
+    { active: true, minX:  3.8, maxX:  4.2, minZ: -4.2, maxZ: -0.75, minY: 0, maxY: 3.0 },
+    { active: true, minX:  3.8, maxX:  4.2, minZ:  0.75, maxZ:  4.2, minY: 0, maxY: 3.0 }
+  ];
+
+  assert.equal(hasZombieLineOfSight(0, 0, 0, -9, 0, houseWallsOpenEast, 0.35), false);
+  const resOpen = findZombieTacticalPath(0, 0, 0, -9, 0, houseWallsOpenEast);
+  assert.equal(resOpen.direct, false);
+  assert.ok(resOpen.waypoints.length >= 2, 'deve gerar waypoints saindo pela porta aberta a leste');
+  assert.ok(resOpen.waypoints.some((w) => w.x > 3.2), 'rota deve passar pelo vão da porta leste');
+  const lastWp = resOpen.waypoints[resOpen.waypoints.length - 1];
+  assert.ok(Math.hypot(lastWp.x - 0, lastWp.z - (-9)) < 1.5, 'rota deve terminar no sobrevivente');
+
+  const closedDoor = { active: true, isDoorCollider: true, minX: 3.82, maxX: 4.18, minZ: -0.75, maxZ: 0.75, minY: 0, maxY: 2.2 };
+  const resClosed = findZombieTacticalPath(0, 0, 0, -9, 0, [...houseWallsOpenEast, closedDoor]);
+  assert.equal(resClosed.direct, false);
+  assert.ok(resClosed.waypoints.some((w) => w.breach === true && w.x > 3.0), 'zumbi trancado deve mirar na porta fechada para abrir e sair');
+
+  const resAround = findZombieTacticalPath(0, 8, 0, -8, 0, [...houseWallsOpenEast, closedDoor]);
+  assert.equal(resAround.direct, false);
+  assert.ok(resAround.waypoints.some((w) => Math.abs(w.x) > 4.2), 'zumbi externo deve contornar a parede lateral da casa');
 });

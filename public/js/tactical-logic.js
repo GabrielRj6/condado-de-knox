@@ -2156,3 +2156,309 @@ export function sweptVehicleContact(fromX, fromZ, toX, toZ, target, forwardX, fo
   }
   return true;
 }
+
+/* ============================================================================
+   PATHFINDING TÁTICO 2D DOS ZUMBIS (A* EM GRADE LOCAL + SAÍDA DE CASAS / PORTAS)
+   ============================================================================ */
+
+/**
+ * Avalia se um ponto (px, pz) expandido por `radius` colide com um colisor sólido (AABB ou OBB)
+ * na faixa vertical do tronco do zumbi [footY + 0.48, footY + 1.55].
+ * Retorna:
+ *   0 = livre
+ *   1 = porta fechada arrombável (custo extra transitável)
+ *   2 = janela baixa quebrável (custo extra transitável)
+ *   3 = parede / obstáculo sólido intransponível
+ */
+export function classifyZombieObstacleAtPoint(px, pz, footY, radius, b) {
+  if (!b) return 0;
+  const isClosedDoor = Boolean(b.isDoorCollider && b.active);
+  const isBreakableWin = Boolean(b.isWindowCollider && b.active && b.minY <= footY + 1.08);
+  if (!b.active) return 0;
+  if (b.maxY <= footY + 0.46 || b.minY >= footY + 1.55) return 0;
+
+  let hit = false;
+  if (b.obb) {
+    const o = b.obb;
+    const dx = px - o.cx, dz = pz - o.cz;
+    const lx = dx * o.ux + dz * o.uz;
+    const lz = dx * o.vx + dz * o.vz;
+    const qx = Math.max(-o.hx, Math.min(lx, o.hx));
+    const qz = Math.max(-o.hz, Math.min(lz, o.hz));
+    const ex = lx - qx, ez = lz - qz;
+    hit = (ex * ex + ez * ez) < (radius * radius);
+  } else {
+    const cx = Math.max(b.minX, Math.min(px, b.maxX));
+    const cz = Math.max(b.minZ, Math.min(pz, b.maxZ));
+    const dx = px - cx, dz = pz - cz;
+    hit = (dx * dx + dz * dz) < (radius * radius);
+  }
+  if (!hit) return 0;
+  if (isClosedDoor) return 1;
+  if (isBreakableWin) return 2;
+  return 3;
+}
+
+function sampleCellTraversalCode(px, pz, footY, radius, obstacles) {
+  let worst = 0;
+  for (let i = 0; i < obstacles.length; i++) {
+    const code = classifyZombieObstacleAtPoint(px, pz, footY, radius, obstacles[i]);
+    if (code === 3) return 3;
+    if (code > worst) worst = code;
+  }
+  return worst;
+}
+
+/**
+ * Verifica se o segmento reto (x0,z0)->(x1,z1) está 100% desobstruído (sem paredes nem portas fechadas).
+ */
+export function hasZombieLineOfSight(x0, z0, x1, z1, footY, obstacles, radius = 0.36) {
+  const dx = x1 - x0, dz = z1 - z0;
+  const dist = Math.hypot(dx, dz);
+  if (dist < 0.05) return true;
+  const steps = Math.max(2, Math.ceil(dist / 0.42));
+  for (let s = 1; s <= steps; s++) {
+    const t = s / steps;
+    const sx = x0 + dx * t;
+    const sz = z0 + dz * t;
+    for (let i = 0; i < obstacles.length; i++) {
+      if (classifyZombieObstacleAtPoint(sx, sz, footY, radius, obstacles[i]) > 0) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function isWalkableSegment(x0, z0, x1, z1, footY, obstacles, radius = 0.34) {
+  const dx = x1 - x0, dz = z1 - z0;
+  const dist = Math.hypot(dx, dz);
+  if (dist < 0.05) return true;
+  const steps = Math.max(2, Math.ceil(dist / 0.45));
+  for (let s = 1; s < steps; s++) {
+    const t = s / steps;
+    const code = sampleCellTraversalCode(x0 + dx * t, z0 + dz * t, footY, radius, obstacles);
+    if (code === 3) return false;
+  }
+  return true;
+}
+
+/**
+ * Calcula o caminho mais rápido para o zumbi sair de dentro de uma casa ou contornar paredes/prédios
+ * até o sobrevivente usando A* 8-direcional + suavização por linha de visada (string-pulling).
+ *
+ * @returns {{ direct: boolean, waypoints: Array<{x:number, z:number, breach?:boolean}> }}
+ */
+export function findZombieTacticalPath(startX, startZ, goalX, goalZ, footY, obstacles, opts = {}) {
+  const radius = opts.radius ?? 0.35;
+  if (!obstacles || obstacles.length === 0 || hasZombieLineOfSight(startX, startZ, goalX, goalZ, footY, obstacles, radius)) {
+    return { direct: true, waypoints: [{ x: goalX, z: goalZ }] };
+  }
+
+  const cell = opts.cellSize ?? 1.05;
+  const halfGrid = opts.halfGridCells ?? 26; // Janela ~54m x 54m centrada no zumbi
+  const gridSpan = halfGrid * 2 + 1;
+  const maxExpanded = opts.maxExpanded ?? 560;
+
+  // Clampa o alvo na borda da janela caso o jogador esteja muito longe (> 27m)
+  const rawGdx = goalX - startX, rawGdz = goalZ - startZ;
+  let gx = Math.round(rawGdx / cell);
+  let gz = Math.round(rawGdz / cell);
+  const maxCoord = halfGrid - 1;
+  if (Math.abs(gx) > maxCoord || Math.abs(gz) > maxCoord) {
+    const scale = maxCoord / Math.max(Math.abs(gx), Math.abs(gz));
+    gx = Math.round(gx * scale);
+    gz = Math.round(gz * scale);
+  }
+
+  const toIdx = (ix, iz) => (iz + halfGrid) * gridSpan + (ix + halfGrid);
+  const worldX = (ix) => startX + ix * cell;
+  const worldZ = (iz) => startZ + iz * cell;
+
+  // Cache preguiçoso de código de colisão por célula
+  const cellCache = new Int8Array(gridSpan * gridSpan);
+  cellCache.fill(-1);
+  const getCellCode = (ix, iz) => {
+    if (ix === 0 && iz === 0) return 0; // célula inicial sempre liberada para permitir sair se encostado na parede
+    const id = toIdx(ix, iz);
+    let c = cellCache[id];
+    if (c === -1) {
+      c = sampleCellTraversalCode(worldX(ix), worldZ(iz), footY, radius, obstacles);
+      cellCache[id] = c;
+    }
+    return c;
+  };
+
+  // Se a célula final cair exatamente dentro de uma parede grossa, procura a célula vizinha livre mais próxima
+  if (getCellCode(gx, gz) === 3) {
+    let foundNear = false;
+    for (let r = 1; r <= 3 && !foundNear; r++) {
+      let bestD = Infinity, bIx = gx, bIz = gz;
+      for (let dz = -r; dz <= r; dz++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const nx = gx + dx, nz = gz + dz;
+          if (nx < -halfGrid || nx > halfGrid || nz < -halfGrid || nz > halfGrid) continue;
+          if (getCellCode(nx, nz) < 3) {
+            const d2 = (worldX(nx) - goalX) ** 2 + (worldZ(nz) - goalZ) ** 2;
+            if (d2 < bestD) { bestD = d2; bIx = nx; bIz = nz; foundNear = true; }
+          }
+        }
+      }
+      if (foundNear) { gx = bIx; gz = bIz; }
+    }
+  }
+
+  const totalCells = gridSpan * gridSpan;
+  const gScore = new Float32Array(totalCells);
+  gScore.fill(1e9);
+  const parent = new Int32Array(totalCells);
+  parent.fill(-1);
+  const closed = new Uint8Array(totalCells);
+
+  // Min-heap binário enxuto sobre índices de célula
+  const heapNodes = [];
+  const heapF = [];
+  const heapPush = (nodeIdx, fVal) => {
+    let i = heapNodes.length;
+    heapNodes.push(nodeIdx);
+    heapF.push(fVal);
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (heapF[p] <= fVal) break;
+      heapNodes[i] = heapNodes[p]; heapF[i] = heapF[p];
+      i = p;
+    }
+    heapNodes[i] = nodeIdx; heapF[i] = fVal;
+  };
+  const heapPop = () => {
+    const top = heapNodes[0];
+    const lastN = heapNodes.pop();
+    const lastF = heapF.pop();
+    const len = heapNodes.length;
+    if (len > 0) {
+      let i = 0;
+      while (true) {
+        const l = (i << 1) + 1, r = l + 1;
+        let sm = i;
+        if (l < len && heapF[l] < (sm === i ? lastF : heapF[sm])) sm = l;
+        if (r < len && heapF[r] < (sm === i ? lastF : heapF[sm])) sm = r;
+        if (sm === i) break;
+        heapNodes[i] = heapNodes[sm]; heapF[i] = heapF[sm];
+        i = sm;
+      }
+      heapNodes[i] = lastN; heapF[i] = lastF;
+    }
+    return top;
+  };
+
+  const heuristic = (ix, iz) => Math.hypot(goalX - worldX(ix), goalZ - worldZ(iz)) / cell;
+  const startIdx = toIdx(0, 0);
+  const goalIdx = toIdx(gx, gz);
+  gScore[startIdx] = 0;
+  heapPush(startIdx, heuristic(0, 0));
+
+  let bestPartialIdx = startIdx;
+  let bestPartialH = heuristic(0, 0);
+  let expanded = 0;
+  let reachedGoal = false;
+
+  const DIRS = [
+    [1, 0, 1.0], [-1, 0, 1.0], [0, 1, 1.0], [0, -1, 1.0],
+    [1, 1, 1.4142], [1, -1, 1.4142], [-1, 1, 1.4142], [-1, -1, 1.4142]
+  ];
+
+  while (heapNodes.length > 0 && expanded < maxExpanded) {
+    const cur = heapPop();
+    if (closed[cur]) continue;
+    closed[cur] = 1;
+    expanded++;
+
+    if (cur === goalIdx) {
+      reachedGoal = true;
+      bestPartialIdx = cur;
+      break;
+    }
+
+    const czIdx = Math.floor(cur / gridSpan) - halfGrid;
+    const cxIdx = (cur % gridSpan) - halfGrid;
+    const curH = heuristic(cxIdx, czIdx);
+    if (cur !== startIdx && curH < bestPartialH) {
+      bestPartialH = curH;
+      bestPartialIdx = cur;
+    }
+
+    const baseG = gScore[cur];
+    for (let d = 0; d < 8; d++) {
+      const dx = DIRS[d][0], dz = DIRS[d][1];
+      const nx = cxIdx + dx, nz = czIdx + dz;
+      if (nx < -halfGrid || nx > halfGrid || nz < -halfGrid || nz > halfGrid) continue;
+      const nIdx = toIdx(nx, nz);
+      if (closed[nIdx]) continue;
+
+      const code = getCellCode(nx, nz);
+      if (code === 3) continue;
+
+      // Impede cortar quina diagonal atravessando parede sólida adjacente!
+      if (dx !== 0 && dz !== 0) {
+        if (getCellCode(cxIdx + dx, czIdx) === 3 || getCellCode(cxIdx, czIdx + dz) === 3) continue;
+      }
+
+      // Porta fechada tem leve penalidade (+2.4 células) -> prefere porta aberta próxima, mas usa porta fechada se for o jeito rápido de sair!
+      // Janela baixa tem penalidade (+3.6 células) -> prefere portas, mas estilhaça janela se trancado!
+      const penalty = code === 1 ? 2.4 : (code === 2 ? 3.6 : 0.0);
+      const tentativeG = baseG + DIRS[d][2] + penalty;
+      if (tentativeG < gScore[nIdx]) {
+        gScore[nIdx] = tentativeG;
+        parent[nIdx] = cur;
+        heapPush(nIdx, tentativeG + heuristic(nx, nz) * 1.08);
+      }
+    }
+  }
+
+  if (bestPartialIdx === startIdx) {
+    return { direct: false, waypoints: [{ x: goalX, z: goalZ }] };
+  }
+
+  // Reconstrói cadeia bruta de células do destino até a origem
+  const rawPts = [];
+  let trace = bestPartialIdx;
+  while (trace !== -1 && trace !== startIdx) {
+    const tz = Math.floor(trace / gridSpan) - halfGrid;
+    const tx = (trace % gridSpan) - halfGrid;
+    const cCode = cellCache[trace];
+    rawPts.push({ x: worldX(tx), z: worldZ(tz), breach: cCode === 1 || cCode === 2 });
+    trace = parent[trace];
+  }
+  rawPts.reverse();
+  if (reachedGoal && Math.hypot(goalX - worldX(gx), goalZ - worldZ(gz)) < cell * 2.2) {
+    rawPts.push({ x: goalX, z: goalZ, breach: false });
+  }
+
+  // String-pulling (suavização): conecta waypoints distantes em linha reta quando não há parede sólida nem porta fechada no meio
+  const smooth = [];
+  let anchorX = startX, anchorZ = startZ;
+  let i = 0;
+  while (i < rawPts.length) {
+    if (rawPts[i].breach) {
+      smooth.push(rawPts[i]);
+      anchorX = rawPts[i].x;
+      anchorZ = rawPts[i].z;
+      i++;
+      continue;
+    }
+    let furthest = i;
+    for (let j = i + 1; j < rawPts.length; j++) {
+      if (rawPts[j].breach) break;
+      if (isWalkableSegment(anchorX, anchorZ, rawPts[j].x, rawPts[j].z, footY, obstacles, radius * 0.92)
+          && hasZombieLineOfSight(anchorX, anchorZ, rawPts[j].x, rawPts[j].z, footY, obstacles, radius * 0.88)) {
+        furthest = j;
+      }
+    }
+    smooth.push(rawPts[furthest]);
+    anchorX = rawPts[furthest].x;
+    anchorZ = rawPts[furthest].z;
+    i = furthest + 1;
+  }
+
+  return { direct: false, waypoints: smooth.length > 0 ? smooth : [{ x: goalX, z: goalZ }] };
+}
