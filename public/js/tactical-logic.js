@@ -2462,3 +2462,54 @@ export function findZombieTacticalPath(startX, startZ, goalX, goalZ, footY, obst
 
   return { direct: false, waypoints: smooth.length > 0 ? smooth : [{ x: goalX, z: goalZ }] };
 }
+
+/**
+ * Seleciona o clip esquelético e modo de animação de um zumbi vivo.
+ * Regra invariante: se `legHit` for verdadeiro (zumbi rastejando no chão),
+ * ele NUNCA retorna clip em pé ('attack', 'hit', 'idle', 'walk', 'run') —
+ * permanece sempre em 'crawl' e usa overlay procedural no chão para atacar/sofrer dano.
+ */
+export function selectZombieAnimState({
+  legHit = false,
+  atkAnimT = 0,
+  stagger = 0,
+  moveSpd = 0,
+  isChasing = false,
+  archetype = 0
+} = {}) {
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  if (legHit) {
+    if (atkAnimT > 0) {
+      return { clip: 'crawl', mode: 'crawl_attack', fade: 0.12, timeScale: 0.25 };
+    }
+    if (stagger > 0) {
+      return { clip: 'crawl', mode: 'crawl_hit', fade: 0.10, timeScale: 0.14 };
+    }
+    if (moveSpd > 0.08) {
+      return { clip: 'crawl', mode: 'crawl_move', fade: 0.16, timeScale: clamp(moveSpd / 0.95, 0.75, 1.65) };
+    }
+    return { clip: 'crawl', mode: 'crawl_idle', fade: 0.18, timeScale: 0.08 };
+  }
+
+  if (atkAnimT > 0) {
+    return { clip: 'attack', mode: 'attack', fade: 0.08, timeScale: 1.25 };
+  }
+  if (stagger > 0) {
+    return { clip: 'hit', mode: 'hit', fade: 0.06, timeScale: 1.3 };
+  }
+  if (moveSpd > 0.25 && isChasing) {
+    const useRun = archetype === 1 || moveSpd > 1.45;
+    return {
+      clip: useRun ? 'run' : 'walk',
+      mode: useRun ? 'run' : 'walk',
+      fade: 0.14,
+      timeScale: clamp(moveSpd / (useRun ? 2.5 : 1.35), 0.78, 1.85)
+    };
+  }
+  if (moveSpd > 0.12) {
+    return { clip: 'walk', mode: 'walk', fade: 0.18, timeScale: clamp(moveSpd / 1.25, 0.55, 1.35) };
+  }
+  return { clip: 'idle', mode: 'idle', fade: 0.22, timeScale: 1.0 };
+}
+
+

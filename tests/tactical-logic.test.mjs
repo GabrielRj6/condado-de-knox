@@ -32,7 +32,8 @@ import {
   selectContextualDeathStyle,
   computeBallisticDrop,
   hasZombieLineOfSight,
-  findZombieTacticalPath
+  findZombieTacticalPath,
+  selectZombieAnimState
 } from '../public/js/tactical-logic.js';
 
 test('team-only map visibility hides players without team or on different teams', () => {
@@ -422,4 +423,29 @@ test('Zombie tactical pathfinding escapes indoor rooms via open/closed doors and
   const resAround = findZombieTacticalPath(0, 8, 0, -8, 0, [...houseWallsOpenEast, closedDoor]);
   assert.equal(resAround.direct, false);
   assert.ok(resAround.waypoints.some((w) => Math.abs(w.x) > 4.2), 'zumbi externo deve contornar a parede lateral da casa');
+});
+
+test('Crawling zombies (legHit) stay on crawl clip when attacking, staggered, moving, or idle', () => {
+  const crawlAtk = selectZombieAnimState({ legHit: true, atkAnimT: 0.5, moveSpd: 0, isChasing: true });
+  assert.equal(crawlAtk.clip, 'crawl');
+  assert.equal(crawlAtk.mode, 'crawl_attack');
+
+  const crawlHit = selectZombieAnimState({ legHit: true, stagger: 0.2, moveSpd: 0, isChasing: true });
+  assert.equal(crawlHit.clip, 'crawl');
+  assert.equal(crawlHit.mode, 'crawl_hit');
+
+  const crawlIdle = selectZombieAnimState({ legHit: true, atkAnimT: 0, stagger: 0, moveSpd: 0, isChasing: true });
+  assert.equal(crawlIdle.clip, 'crawl');
+  assert.equal(crawlIdle.mode, 'crawl_idle');
+
+  const crawlMove = selectZombieAnimState({ legHit: true, moveSpd: 1.0, isChasing: true });
+  assert.equal(crawlMove.clip, 'crawl');
+  assert.equal(crawlMove.mode, 'crawl_move');
+  assert.ok(crawlMove.timeScale >= 0.75);
+
+  // Standing zombies still play standing attack/run/idle clips
+  assert.equal(selectZombieAnimState({ legHit: false, atkAnimT: 0.4 }).clip, 'attack');
+  assert.equal(selectZombieAnimState({ legHit: false, stagger: 0.2 }).clip, 'hit');
+  assert.equal(selectZombieAnimState({ legHit: false, moveSpd: 2.2, isChasing: true, archetype: 1 }).clip, 'run');
+  assert.equal(selectZombieAnimState({ legHit: false, moveSpd: 0 }).clip, 'idle');
 });

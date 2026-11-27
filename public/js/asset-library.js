@@ -191,10 +191,18 @@ const _ikQP = new THREE.Quaternion();
 const _ikQPInv = new THREE.Quaternion();
 const _ikRightTgt = new THREE.Vector3();
 const _ikLeftTgt = new THREE.Vector3();
+const _ikRightWristTgt = new THREE.Vector3();
+const _ikLeftWristTgt = new THREE.Vector3();
 const _ikPoleR = new THREE.Vector3();
 const _ikPoleL = new THREE.Vector3();
+const _ikShoulderR = new THREE.Vector3();
+const _ikShoulderL = new THREE.Vector3();
+const _ikShoulderMid = new THREE.Vector3();
+const _ikGunFwd = new THREE.Vector3();
+const _ikForearmDir = new THREE.Vector3();
 const _ikGrpQ = new THREE.Quaternion();
 const _ikHandQ = new THREE.Quaternion();
+const _ikParentQ = new THREE.Quaternion();
 const _ikGunQ = new THREE.Quaternion();
 const _ikGunEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 
@@ -262,10 +270,20 @@ class RigController {
       lowerArmR: findBone(model, ['LowerArm.R', 'RightForeArm'])
     };
 
+    // Guarda pose de repouso (bind pose) dos ombros e pulsos para estabilizar o IK de 2 mãos contra o balanço dos clips Run/Walk
+    this._restShoulderL = this.bones.shoulderL ? this.bones.shoulderL.quaternion.clone() : null;
+    this._restShoulderR = this.bones.shoulderR ? this.bones.shoulderR.quaternion.clone() : null;
+    this._restLeftHand = this.bones.leftHand ? this.bones.leftHand.quaternion.clone() : null;
+    this._restRightHand = this.bones.rightHand ? this.bones.rightHand.quaternion.clone() : null;
+
     // Montagem de arma acoplada ao osso da mão direita (suporta modo 'gun' e 'melee')
     this.weaponMount = new THREE.Group();
     this.weaponMount.name = 'v2_weapon_mount';
     this._gunOffset = meta.weaponOffset || { pos: [0.0, 0.085, -0.015], rot: [Math.PI * 0.5, 0, Math.PI * 0.5], scale: 0.95 };
+    this._gunOffsetQuat = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(this._gunOffset.rot[0], this._gunOffset.rot[1], this._gunOffset.rot[2], 'XYZ')
+    );
+    this._gunOffsetQuatInv = this._gunOffsetQuat.clone().invert();
     this._meleeOffset = meta.meleeOffset || { pos: [0.0, 0.085, -0.01], rot: [0, Math.PI * 0.5, Math.PI], scale: 0.95 };
     this._weaponHoldMode = null;
     this.setWeaponHoldMode('gun');
@@ -387,6 +405,53 @@ class RigController {
     lowerBone.updateMatrixWorld(true);
   }
 
+  applyZombieCrawlOverlay({
+    atkPhase = 0,
+    staggerAlpha = 0,
+    phase = 0,
+    isMoving = false
+  } = {}) {
+    if (this.disposed || !this.isZombie) return;
+    const b = this.bones;
+    const hasAtk = atkPhase > 0.001;
+    const hasStag = staggerAlpha > 0.001;
+    if (!hasAtk && !hasStag && isMoving) return;
+
+    this.group.updateMatrixWorld(true);
+
+    // Mantém o corpo colado no chão durante o ataque/dano, erguendo apenas peito, cabeça e braços para rasgar as pernas do jogador!
+    if (hasAtk) {
+      const windup = atkPhase < 0.38 ? Math.sin((atkPhase / 0.38) * Math.PI * 0.5) : 0;
+      const strike = atkPhase >= 0.38 ? Math.sin(((atkPhase - 0.38) / 0.62) * Math.PI) : 0;
+      // Leve elevação do tronco superior (sem levantar o Body/quadril!) + bote frontal na mordida/garrada
+      this._rotateBoneModelAxis(b.torso, 1, 0, 0, -0.18 * windup + 0.14 * strike);
+      this._rotateBoneModelAxis(b.chest, 1, 0, 0, -0.22 * windup + 0.24 * strike);
+      this._rotateBoneModelAxis(b.chest, 0, 1, 0, -0.26 * windup + 0.32 * strike);
+      this._rotateBoneModelAxis(b.head, 1, 0, 0, -0.24 * windup + 0.28 * strike);
+      // Braço direito dá o golpe principal do chão; braço esquerdo se apoia/varre junto
+      this._rotateBoneModelAxis(b.upperArmR, 1, 0, 0, -0.82 * windup + 0.98 * strike);
+      this._rotateBoneModelAxis(b.upperArmR, 0, 1, 0, 0.35 * windup - 0.52 * strike);
+      this._rotateBoneModelAxis(b.lowerArmR, 1, 0, 0, -0.45 * windup + 0.30 * strike);
+      this._rotateBoneModelAxis(b.upperArmL, 1, 0, 0, -0.32 * windup + 0.52 * strike);
+      this._rotateBoneModelAxis(b.lowerArmL, 1, 0, 0, -0.25 * windup + 0.18 * strike);
+    }
+
+    if (hasStag) {
+      const s = THREE.MathUtils.clamp(staggerAlpha, 0, 1);
+      // Recuo curto de impacto rente ao chão (nunca levanta!)
+      this._rotateBoneModelAxis(b.chest, 1, 0, 0, -0.22 * s);
+      this._rotateBoneModelAxis(b.head, 1, 0, 0, -0.34 * s);
+      this._rotateBoneModelAxis(b.head, 0, 0, 1, 0.24 * s);
+    }
+
+    if (!isMoving && !hasAtk) {
+      // Respiração/contorção sutil no chão quando parado perto do alvo
+      const breath = Math.sin(phase || 0) * 0.06;
+      this._rotateBoneModelAxis(b.chest, 1, 0, 0, breath);
+      this._rotateBoneModelAxis(b.head, 0, 1, 0, breath * 1.4);
+    }
+  }
+
   applyStancePosture({
     crouchAlpha = 0,
     proneAlpha = 0,
@@ -402,12 +467,19 @@ class RigController {
     reloading = false,
     reloadProgress = 0,
     walkPhase = 0,
-    crawlPhase = 0
+    crawlPhase = 0,
+    dt = 1 / 60
   } = {}) {
     if (this.disposed || this.isZombie) return;
+    const safeDt = THREE.MathUtils.clamp(Number.isFinite(dt) ? dt : (1 / 60), 0.001, 0.08);
     const p = THREE.MathUtils.clamp(proneAlpha || 0, 0, 1);
     const c = THREE.MathUtils.clamp(crouchAlpha || 0, 0, 1) * (1 - p);
     const holdGun3P = !isMelee && !isThrow && p < 0.5;
+    if (!holdGun3P) {
+      const decay = 1 - Math.exp(-14 * safeDt);
+      this._sprintBlend = THREE.MathUtils.lerp(this._sprintBlend ?? 0, 0, decay);
+      this._aimBlend = THREE.MathUtils.lerp(this._aimBlend ?? 0, 0, decay);
+    }
     if (c < 0.005 && p < 0.005 && !holdGun3P) return;
 
     const b = this.bones;
@@ -433,72 +505,106 @@ class RigController {
     if (holdGun3P && b.upperArmR && b.lowerArmR && b.rightHand && b.upperArmL && b.lowerArmL && b.leftHand) {
       const targetSprint = (isMoving && isSprinting && !inCombat && !reloading) ? 1 : 0;
       const targetAim = (inCombat && !targetSprint) ? 1 : 0;
-      this._sprintBlend = THREE.MathUtils.lerp(this._sprintBlend ?? 0, targetSprint, 0.22);
-      this._aimBlend = THREE.MathUtils.lerp(this._aimBlend ?? 0, targetAim, 0.24);
+      const spAlpha = 1 - Math.exp(-12.5 * safeDt);
+      const aimAlpha = 1 - Math.exp(-14.0 * safeDt);
+      this._sprintBlend = THREE.MathUtils.lerp(this._sprintBlend ?? 0, targetSprint, spAlpha);
+      this._aimBlend = THREE.MathUtils.lerp(this._aimBlend ?? 0, targetAim, aimAlpha);
       const spB = this._sprintBlend;
       const aimB = this._aimBlend * (1 - spB);
       const lowB = Math.max(0, 1 - spB - aimB);
 
+      // Estabiliza clavículas (Shoulder.L / Shoulder.R) contra o balanço amplo dos clips Run/Walk antes do IK!
+      if (b.shoulderR && this._restShoulderR) {
+        this._saveBonePose(b.shoulderR);
+        b.shoulderR.quaternion.slerp(this._restShoulderR, 0.80);
+      }
+      if (b.shoulderL && this._restShoulderL) {
+        this._saveBonePose(b.shoulderL);
+        b.shoulderL.quaternion.slerp(this._restShoulderL, 0.80);
+      }
+
       const aimPitch = THREE.MathUtils.clamp(pitch || 0, -0.88, 0.88) * aimB;
       if (Math.abs(aimPitch) > 0.005) {
         // No model Quaternius (+Z = frente do personagem), rotacionar em -X inclina peito/cabeça para cima quando pitch > 0
-        this._rotateBoneModelAxis(b.torso, 1, 0, 0, -aimPitch * 0.32);
-        this._rotateBoneModelAxis(b.chest, 1, 0, 0, -aimPitch * 0.36);
+        this._rotateBoneModelAxis(b.torso, 1, 0, 0, -aimPitch * 0.30);
+        this._rotateBoneModelAxis(b.chest, 1, 0, 0, -aimPitch * 0.34);
         this._rotateBoneModelAxis(b.head, 1, 0, 0, -aimPitch * 0.32);
       }
 
-      const bob = isMoving ? Math.sin((walkPhase || 0) * (isSprinting ? 1.0 : 0.85)) : 0;
-      const crouchDrop = c * 0.31;
-      const chestBaseY = 1.24 - crouchDrop;
+      this.group.updateMatrixWorld(true);
 
-      // Posição da mão direita (empunhadura) no espaço de this.group (+X = direita, -X = esquerda, +Y = cima, -Z = frente)
+      // Âncora dinâmica na altura real dos ombros do esqueleto (imune a escala de skin, agachar ou inclinar tronco!)
+      b.upperArmR.getWorldPosition(_ikShoulderR);
+      b.upperArmL.getWorldPosition(_ikShoulderL);
+      _ikShoulderMid.copy(_ikShoulderR).add(_ikShoulderL).multiplyScalar(0.5);
+      this.group.worldToLocal(_ikShoulderMid);
+      const chestBaseY = THREE.MathUtils.clamp(_ikShoulderMid.y - 0.11, 0.62, 1.55);
+      const chestBaseZ = THREE.MathUtils.clamp(_ikShoulderMid.z, -0.18, 0.18);
+
+      const bob = isMoving ? Math.sin((walkPhase || 0) * (isSprinting ? 1.0 : 0.85)) : 0;
+
+      // Posição desejada da PALMA/EMPUNHADURA direita no espaço de this.group (+X = direita, -X = esquerda, +Y = cima, -Z = frente)
       let rhX, rhY, rhZ, gunPitch, gunYaw, gunRoll;
       if (isTwoHand) {
-        rhX = 0.14 * aimB + 0.14 * lowB + (0.11 + bob * 0.015) * spB;
-        rhY = (chestBaseY + 0.08 + Math.sin(aimPitch) * 0.08) * aimB
+        rhX = 0.15 * aimB + 0.15 * lowB + (0.12 + bob * 0.014) * spB;
+        rhY = (chestBaseY + 0.07 + Math.sin(aimPitch) * 0.09) * aimB
             + (chestBaseY - 0.06 + Math.abs(bob) * 0.008) * lowB
-            + (chestBaseY - 0.03 + bob * 0.018) * spB;
-        rhZ = (-0.21 + recoilKick * 0.09) * aimB
-            + (-0.22) * lowB
-            + (-0.21) * spB;
+            + (chestBaseY - 0.03 + bob * 0.016) * spB;
+        rhZ = chestBaseZ
+            + (-0.25 + recoilKick * 0.08) * aimB
+            + (-0.24) * lowB
+            + (-0.23) * spB;
 
         // Orientação da arma:
         // - aimB: reta para o alvo (-Z) com pitch real!
-        // - lowB (parado/andando): segurada com as 2 mãos levemente de lado (~30° p/ esquerda) em guarda baixa!
-        // - spB (correndo): segurada com as 2 mãos atravessada de lado no peito (~52° p/ esquerda + cano firme)!
-        gunPitch = (aimPitch + recoilKick * 0.45) * aimB + (-0.18) * lowB + (0.18 + bob * 0.05) * spB;
-        gunYaw   = (0.04) * aimB + (0.52) * lowB + (0.90 + bob * 0.04) * spB;
-        gunRoll  = (0.0) * aimB + (0.12) * lowB + (0.24) * spB;
+        // - lowB (parado/andando): segurada com as 2 mãos levemente de lado (~28° p/ esquerda) em guarda baixa!
+        // - spB (correndo): segurada com as 2 mãos atravessada de lado no peito (~50° p/ esquerda + cano estável)!
+        gunPitch = (aimPitch + recoilKick * 0.42) * aimB + (-0.16) * lowB + (0.14 + bob * 0.04) * spB;
+        gunYaw   = (0.04) * aimB + (0.48) * lowB + (0.86 + bob * 0.035) * spB;
+        gunRoll  = (0.0) * aimB + (0.10) * lowB + (0.20) * spB;
       } else {
         // Pistolas / Revólver: empunhadura dupla (2 mãos juntas no punho!) tanto mirando quanto parado/correndo
-        rhX = 0.05 * aimB + 0.07 * lowB + (0.06 + bob * 0.014) * spB;
-        rhY = (chestBaseY + 0.11 + Math.sin(aimPitch) * 0.12) * aimB
+        rhX = 0.05 * aimB + 0.07 * lowB + (0.06 + bob * 0.012) * spB;
+        rhY = (chestBaseY + 0.10 + Math.sin(aimPitch) * 0.12) * aimB
             + (chestBaseY - 0.05) * lowB
-            + (chestBaseY + 0.01 + bob * 0.018) * spB;
-        rhZ = (-0.34 + recoilKick * 0.08) * aimB
-            + (-0.25) * lowB
-            + (-0.22) * spB;
+            + (chestBaseY + 0.00 + bob * 0.015) * spB;
+        rhZ = chestBaseZ
+            + (-0.36 + recoilKick * 0.07) * aimB
+            + (-0.27) * lowB
+            + (-0.24) * spB;
 
-        gunPitch = (aimPitch + recoilKick * 0.55) * aimB + (-0.24) * lowB + (0.34 + bob * 0.05) * spB;
-        gunYaw   = (0.02) * aimB + (0.24) * lowB + (0.48) * spB;
+        gunPitch = (aimPitch + recoilKick * 0.52) * aimB + (-0.22) * lowB + (0.28 + bob * 0.045) * spB;
+        gunYaw   = (0.02) * aimB + (0.22) * lowB + (0.44) * spB;
         gunRoll  = 0.0;
       }
 
       this.group.getWorldQuaternion(_ikGrpQ);
-      _ikRightTgt.set(rhX, rhY, rhZ);
-      this.group.localToWorld(_ikRightTgt);
-      _ikPoleR.set(0.45, -1.0, 0.32).applyQuaternion(_ikGrpQ).normalize();
-
-      // 1) Resolve Braço Direito levando Wrist.R exatamente até a empunhadura!
-      this._solveArmWorldIK(b.upperArmR, b.lowerArmR, b.rightHand, _ikRightTgt, _ikPoleR);
-
-      // 2) Orienta weaponMount para que o cano da arma fique exatamente no ângulo tático (imune a torções do clip!)
       _ikGunEuler.set(gunPitch, gunYaw, gunRoll, 'YXZ');
       _ikGunQ.copy(_ikGrpQ).multiply(_postureQLoc.setFromEuler(_ikGunEuler));
-      b.rightHand.getWorldQuaternion(_ikHandQ);
-      this.weaponMount.position.set(0, 0.055, 0);
-      this.weaponMount.quaternion.copy(_ikHandQ).invert().multiply(_ikGunQ);
-      this.weaponMount.scale.setScalar(this._gunOffset.scale || 0.95);
+
+      // Converte alvo da palma direita para alvo do osso Wrist.R (recuando o comprimento punho->palma ao longo do eixo do cano!)
+      const palmReachR = this._gunOffset.pos ? Math.abs(this._gunOffset.pos[1] || 0.085) : 0.085;
+      _ikRightTgt.set(rhX, rhY, rhZ);
+      this.group.localToWorld(_ikRightTgt);
+      _ikGunFwd.set(0, 0, -1).applyQuaternion(_ikGunQ).normalize();
+      _ikRightWristTgt.copy(_ikRightTgt).addScaledVector(_ikGunFwd, -palmReachR * 0.85);
+      _ikPoleR.set(0.46, -1.0, 0.34).applyQuaternion(_ikGrpQ).normalize();
+
+      // 1) Resolve Braço Direito levando Wrist.R exatamente atrás da empunhadura!
+      this._solveArmWorldIK(b.upperArmR, b.lowerArmR, b.rightHand, _ikRightWristTgt, _ikPoleR);
+
+      // 2) Alinha Wrist.R exatamente para segurar o punho sem torção do clip, mantendo weaponMount no offset calibrado!
+      if (b.rightHand.parent) {
+        this._saveBonePose(b.rightHand);
+        _ikHandQ.copy(_ikGunQ).multiply(this._gunOffsetQuatInv);
+        b.rightHand.parent.getWorldQuaternion(_ikParentQ);
+        b.rightHand.quaternion.copy(_ikParentQ).invert().multiply(_ikHandQ);
+        b.rightHand.updateMatrixWorld(true);
+      }
+      const gOff = this._gunOffset;
+      this.weaponMount.position.set(gOff.pos[0], gOff.pos[1], gOff.pos[2]);
+      this.weaponMount.quaternion.copy(this._gunOffsetQuat);
+      this.weaponMount.scale.setScalar(gOff.scale || 0.95);
       this.weaponMount.updateMatrixWorld(true);
       this._weaponHoldMode = 'gun_ik';
 
@@ -506,9 +612,9 @@ class RigController {
       const activeAsm = (this.weaponMap && weaponId) ? this.weaponMap[weaponId] : null;
       if (isTwoHand) {
         const u = activeAsm && activeAsm.underPos ? activeAsm.underPos : null;
-        const fx = u ? u.x : 0;
-        const fy = u ? (u.y - 0.015) : 0.01;
-        const fz = u ? THREE.MathUtils.clamp(u.z, -0.34, -0.16) : -0.24;
+        const fx = u ? THREE.MathUtils.clamp(u.x, -0.04, 0.04) : 0;
+        const fy = u ? THREE.MathUtils.clamp(u.y - 0.018, -0.04, 0.055) : 0.005;
+        const fz = u ? THREE.MathUtils.clamp(u.z, -0.34, -0.15) : -0.24;
         // Durante a recarga, a mão esquerda desce até o carregador e sobe de volta!
         if (reloading && reloadProgress > 0.10 && reloadProgress < 0.85) {
           const dip = Math.sin(((reloadProgress - 0.10) / 0.75) * Math.PI);
@@ -522,12 +628,28 @@ class RigController {
           const dip = Math.sin(((reloadProgress - 0.12) / 0.70) * Math.PI);
           _ikLeftTgt.set(-0.02, -0.02 - dip * 0.14, 0.01 + dip * 0.04);
         } else {
-          _ikLeftTgt.set(-0.022, -0.014, 0.016);
+          _ikLeftTgt.set(-0.022, -0.016, 0.018);
         }
       }
       this.weaponMount.localToWorld(_ikLeftTgt);
-      _ikPoleL.set(-0.48, -1.0, 0.28).applyQuaternion(_ikGrpQ).normalize();
-      this._solveArmWorldIK(b.upperArmL, b.lowerArmL, b.leftHand, _ikLeftTgt, _ikPoleL);
+      // Recua levemente do ponto de apoio para o pulso esquerdo (Wrist.L) para a PALMA esquerda envolver o guarda-mão!
+      _ikForearmDir.copy(_ikLeftTgt).sub(_ikShoulderL);
+      const lDist = _ikForearmDir.length();
+      if (lDist > 0.08) {
+        _ikForearmDir.divideScalar(lDist);
+        _ikLeftWristTgt.copy(_ikLeftTgt).addScaledVector(_ikForearmDir, -0.055);
+      } else {
+        _ikLeftWristTgt.copy(_ikLeftTgt);
+      }
+      _ikPoleL.set(-0.48, -1.0, 0.30).applyQuaternion(_ikGrpQ).normalize();
+      this._solveArmWorldIK(b.upperArmL, b.lowerArmL, b.leftHand, _ikLeftWristTgt, _ikPoleL);
+
+      // Estabiliza o pulso esquerdo para a mão acompanhar o antebraço sem dobrar para trás durante o Run/Walk
+      if (b.leftHand && this._restLeftHand) {
+        this._saveBonePose(b.leftHand);
+        b.leftHand.quaternion.slerp(this._restLeftHand, 0.85);
+        b.leftHand.updateMatrixWorld(true);
+      }
     }
 
     if (p >= 0.005) {
