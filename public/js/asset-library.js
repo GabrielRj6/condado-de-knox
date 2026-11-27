@@ -166,15 +166,21 @@ function texturePackWeapon(obj) {
       const isBlack = /black/i.test(mat.name);
       const channel = isWood ? 'wood' : (isBlack ? 'polymer' : 'metal');
       mat.map = getPackSurfaceMap(channel, 'albedo');
-      mat.roughnessMap = getPackSurfaceMap(channel, 'roughness');
-      // Sem normalMap em geometria com UV planar gerada (evita listras prateadas sem tangentes no WebGPU)
-      mat.color.lerp(new THREE.Color(isWood ? 0xd2a679 : 0xc8d0d8), 0.10);
+      // Mantém roughness alto ao aplicar textura sem multiplicar por roughnessMap (evita efeito espelho prateado branco no WebGPU)
+      mat.roughnessMap = null;
+      mat.normalMap = null;
+      mat.roughness = isWood ? 0.72 : (isBlack ? 0.62 : 0.48);
+      mat.metalness = isWood ? 0.05 : (isBlack ? 0.16 : 0.38);
+      mat.color.setHex(isWood ? 0xd8a67c : (isBlack ? 0x8a909a : 0xc4ccd4));
       mat.needsUpdate = true;
     }
   });
 }
 
 const _postureAxis = new THREE.Vector3();
+const _postureV1 = new THREE.Vector3();
+const _postureV2 = new THREE.Vector3();
+const _postureV3 = new THREE.Vector3();
 const _postureQ1 = new THREE.Quaternion();
 const _postureQ2 = new THREE.Quaternion();
 const _postureQ3 = new THREE.Quaternion();

@@ -4296,7 +4296,7 @@ const weaponEnvMap = _weaponEnvRT.texture;
 _weaponPmrem.dispose();
 [Mats.gunSteel, Mats.gunBlack, Mats.gunPolymer, Mats.gunSilver, Mats.gunBrass, Mats.gunOlive, Mats.gunTan, Mats.carGlass].forEach((m) => {
   m.envMap = weaponEnvMap;
-  m.envMapIntensity = m === Mats.carGlass ? 1.15 : 1.55;
+  m.envMapIntensity = m === Mats.carGlass ? 0.85 : 0.38;
   m.needsUpdate = true;
 });
 
@@ -5272,8 +5272,8 @@ function getWeaponPbrMaterial(wId, channel) {
     const texKey = `${def.folder}:${ch}:${suffix}`;
     if (weaponPbrTexCache.has(texKey)) return weaponPbrTexCache.get(texKey);
     const t = weaponTexLoader.load(`${WEAPONS_BASE_URL}${def.folder}/textures/${ch}_${suffix}.png`);
-    // PNGs de albedo do pacote foram gerados em espaço linear: NoColorSpace preserva o tom metálico/polímero sem escurecer nem estourar no WebGPU!
-    t.colorSpace = THREE.NoColorSpace;
+    // spec.json: albedo_srgb, normal_opengl, roughness_linear, metalness_linear
+    t.colorSpace = suffix === 'albedo' ? THREE.SRGBColorSpace : THREE.NoColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.repeat.set(1.5, 1.5);
     t.anisotropy = 4;
@@ -5285,18 +5285,20 @@ function getWeaponPbrMaterial(wId, channel) {
   const matCfg = {
     map: loadMap('albedo'),
     normalMap: loadMap('normal'),
-    normalScale: new THREE.Vector2(isMetalCh ? 0.36 : 0.42, isMetalCh ? 0.36 : 0.42),
+    normalScale: new THREE.Vector2(isMetalCh ? 0.32 : 0.38, isMetalCh ? 0.32 : 0.38),
     roughnessMap: loadMap('roughness'),
     envMap: weaponEnvMap,
-    envMapIntensity: ch === 'accent' ? 1.45 : (ch === 'metal' ? 1.35 : (ch === 'olive' ? 0.95 : 0.85)),
+    envMapIntensity: ch === 'accent' ? 0.52 : (ch === 'metal' ? 0.45 : (ch === 'olive' ? 0.28 : (ch === 'wood' ? 0.20 : 0.24))),
     color: new THREE.Color(
-      ch === 'wood' ? 0xd2a884 :
-      ch === 'olive' ? 0xdde6d4 :
-      ch === 'grip' ? 0xe4e9f0 :
-      ch === 'polymer' ? 0xe8edf4 : 0xf0f4fa
+      ch === 'wood' ? 0xdca87e :
+      ch === 'olive' ? 0xb8c8a8 :
+      ch === 'grip' ? 0x868c94 :
+      ch === 'polymer' ? 0xa4acb6 :
+      ch === 'accent' ? 0xe6ecf2 : 0xd0d6de
     ),
-    roughness: ch === 'accent' ? 0.32 : (ch === 'metal' ? 0.40 : (ch === 'wood' ? 0.64 : (ch === 'grip' ? 0.76 : 0.58))),
-    metalness: ch === 'accent' ? 0.72 : (ch === 'metal' ? 0.62 : (ch === 'olive' ? 0.20 : (ch === 'polymer' ? 0.12 : 0.06)))
+    // roughness * roughnessMap (~0.38-0.48) => acabamento acetinado/fosco tático realista sem virar espelho branco no WebGPU!
+    roughness: ch === 'accent' ? 0.88 : (ch === 'metal' ? 0.94 : (ch === 'wood' ? 0.98 : 1.0)),
+    metalness: ch === 'accent' ? 0.56 : (ch === 'metal' ? 0.48 : (ch === 'olive' ? 0.16 : (ch === 'polymer' ? 0.08 : 0.04)))
   };
   if (isMetalCh || ch === 'olive') {
     matCfg.metalnessMap = loadMap('metalness');
@@ -27102,6 +27104,7 @@ function animate(nowMs) {
     _lastRenderAtMs = tNow;
   }
 
+  try {
   const dt = Math.min(clock.getDelta(), 0.05);
 
   if (isPlaying || inventoryOpen || partyOpen || fullMapOpen || devState.panelOpen || player.dead) {
@@ -27194,7 +27197,11 @@ function animate(nowMs) {
     _lastGpuDrawCalls = renderer.info.render.drawCalls ?? renderer.info.render.frameCalls ?? 0;
     _lastGpuTriangles = renderer.info.render.triangles ?? 0;
   }
-  scheduleNextFrame();
+  } catch (frameErr) {
+    console.error('[KNOX Frame Error]', frameErr);
+  } finally {
+    scheduleNextFrame();
+  }
 }
 
 updateFpArmsAppearance(player.characterId);
