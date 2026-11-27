@@ -5380,7 +5380,11 @@ function loadWeaponTemplate(wId) {
           hammerTop = new THREE.Vector3(b.max.x, b.max.y, 0);
         }
         child.userData.isCylinderRound = wId === 'revolver_magnum' && curIdx >= 2 && curIdx <= 7;
-        const frontBlade = /^(front_blade_sight|front_sight_hood)$/.test(child.name);
+        if (wId === 'revolver_magnum' && child.name === 'exposed_hammer') {
+        hammerTop = new THREE.Vector3(b.max.x, b.max.y, 0);
+      }
+      child.userData.isCylinderRound = wId === 'revolver_magnum' && curIdx >= 2 && curIdx <= 7;
+      const frontBlade = /^(front_blade_sight|front_sight_hood)$/.test(child.name);
         if (def.nativeScope && (ch === '__scopeGlass' || child.name === 'scope_lens')) {
           pupilRadius = Math.min(pupilRadius, (b.max.y - b.min.y) * 0.40, (b.max.z - b.min.z) * 0.40);
         }
