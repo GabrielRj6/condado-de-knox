@@ -883,9 +883,11 @@ app.use(async (req, res) => {
       res.writeHead(404); res.end('Not found'); return;
     }
     const ext = path.extname(safePath).toLowerCase();
+    const isHeavyAsset = vendor || ['.glb', '.gltf', '.obj', '.mtl', '.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico', '.fbx'].includes(ext);
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': 'no-cache'
+      'Content-Length': st.size,
+      'Cache-Control': isHeavyAsset ? 'public, max-age=86400' : 'no-cache'
     });
     if (req.method === 'HEAD') {
       res.end();
