@@ -97,18 +97,18 @@ function upgradeObjMaterials(obj) {
       const std = isGlass
         ? new THREE.MeshStandardMaterial({
             name: m.name || 'quaternius_glass',
-            color: new THREE.Color(0x58c4e8),
-            roughness: 0.08,
-            metalness: 0.12,
+            color: new THREE.Color(0x0e161c),
+            roughness: 0.06,
+            metalness: 0.10,
             transparent: true,
-            opacity: 0.22,
+            opacity: 0.06,
             depthWrite: false
           })
         : new THREE.MeshStandardMaterial({
             name: m.name || 'quaternius_gun',
             color: col,
             roughness: isWood ? 0.68 : (isGreen ? 0.58 : (isDarkMetal ? 0.44 : 0.50)),
-            metalness: isWood ? 0.06 : (isGreen ? 0.16 : (isDarkMetal ? 0.26 : 0.22))
+            metalness: isWood ? 0.06 : (isGreen ? 0.16 : (isDarkMetal ? 0.34 : 0.28))
           });
       matCache.set(key, std);
       return std;
@@ -148,12 +148,13 @@ function texturePackWeapon(obj) {
       const normal = geo.getAttribute('normal');
       if (pos && normal) {
         const uv = new Float32Array(pos.count * 2);
+        const uvScale = 0.28;
         for (let i = 0; i < pos.count; i++) {
           const x = Math.abs(normal.getX(i));
           const y = Math.abs(normal.getY(i));
           const z = Math.abs(normal.getZ(i));
-          uv[i * 2] = x > y && x > z ? pos.getZ(i) : pos.getX(i);
-          uv[i * 2 + 1] = y >= x && y > z ? pos.getZ(i) : pos.getY(i);
+          uv[i * 2] = (x > y && x > z ? pos.getZ(i) : pos.getX(i)) * uvScale;
+          uv[i * 2 + 1] = (y >= x && y > z ? pos.getZ(i) : pos.getY(i)) * uvScale;
         }
         geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
       }
@@ -161,12 +162,13 @@ function texturePackWeapon(obj) {
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const mat of mats) {
       if (!mat || mat.transparent || mat.map) continue;
-      const channel = /wood/i.test(mat.name) ? 'wood' : (/black/i.test(mat.name) ? 'polymer' : 'metal');
+      const isWood = /wood/i.test(mat.name);
+      const isBlack = /black/i.test(mat.name);
+      const channel = isWood ? 'wood' : (isBlack ? 'polymer' : 'metal');
       mat.map = getPackSurfaceMap(channel, 'albedo');
-      mat.normalMap = getPackSurfaceMap(channel, 'normal');
-      mat.normalScale = new THREE.Vector2(0.32, 0.32);
       mat.roughnessMap = getPackSurfaceMap(channel, 'roughness');
-      mat.color.lerp(new THREE.Color(0xffffff), 0.45);
+      // Sem normalMap em geometria com UV planar gerada (evita listras prateadas sem tangentes no WebGPU)
+      mat.color.lerp(new THREE.Color(isWood ? 0xd2a679 : 0xc8d0d8), 0.10);
       mat.needsUpdate = true;
     }
   });
@@ -876,12 +878,14 @@ class RigController {
     // Alinha braços, coxas e canelas esticados rente ao chão para nunca ficarem dobrados para o alto!
     const groupQuat = this.group.getWorldQuaternion(new THREE.Quaternion());
     const relaxLimb = (bone, end, gx, gz) => {
-      if (!bone || !end) return;
+      if (!bone || !end || !bone.parent) return;
       bone.parent.updateWorldMatrix(true, false);
       bone.updateMatrixWorld(true);
-      const direction = end.getWorldPosition(new THREE.Vector3())
-        .sub(bone.getWorldPosition(new THREE.Vector3())).normalize();
+      const diff = end.getWorldPosition(new THREE.Vector3()).sub(bone.getWorldPosition(new THREE.Vector3()));
+      if (diff.lengthSq() < 1e-6) return;
+      const direction = diff.normalize();
       const target = new THREE.Vector3(gx, -1, gz).normalize().applyQuaternion(groupQuat);
+      if (direction.dot(target) < -0.9995) return;
       const worldRotation = bone.getWorldQuaternion(new THREE.Quaternion());
       const inverseParent = bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
       bone.quaternion.setFromUnitVectors(direction, target).multiply(worldRotation).premultiply(inverseParent);
