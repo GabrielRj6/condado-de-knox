@@ -1981,9 +1981,11 @@ import {
   stepSpringRecoil,
   selectContextualDeathStyle,
   selectZombieAnimState,
+  computeZombieUpdatePolicy,
+  packSpatialCellKey,
   computeBallisticDrop
 } from '/js/tactical-logic.js';
-import { assetLibrary, getAssetVersion } from '/js/asset-library.js?v=20261127a';
+import { assetLibrary, getAssetVersion } from '/js/asset-library.js?v=20261127b';
 
 const KP = globalThis.KnoxPersistence;
 const clientIdentity = KP ? KP.createClientIdentity({
@@ -3871,21 +3873,21 @@ function createWorldBoxGeo(w, h, d, tile = 1.6, bottomY = 0) {
 
 const Mats = {
   grass: new THREE.MeshLambertMaterial({ map: Tex.grass }),
-  asphalt: new THREE.MeshStandardMaterial({ map: Tex.asphalt, roughness: 0.9 }),
-  concrete: new THREE.MeshStandardMaterial({ map: Tex.concrete, roughness: 0.88 }),
-  brick: new THREE.MeshStandardMaterial({ map: Tex.brick, roughness: 0.9 }),
-  drywall: new THREE.MeshStandardMaterial({ color: 0xaba596, roughness: 0.92 }),
-  trimWood: new THREE.MeshStandardMaterial({ color: 0xcbc5b6, roughness: 0.82 }),
-  woodFloor: new THREE.MeshStandardMaterial({ map: Tex.woodFloor, roughness: 0.8 }),
-  fence: new THREE.MeshStandardMaterial({ map: Tex.fence, roughness: 0.92 }),
-  roof: new THREE.MeshStandardMaterial({ map: Tex.shingles, roughness: 0.92 }),
-  tileRoof: new THREE.MeshStandardMaterial({ map: Tex.tileRoof, roughness: 0.84 }),
-  stucco: new THREE.MeshStandardMaterial({ map: Tex.stucco, roughness: 0.88 }),
+  asphalt: new THREE.MeshLambertMaterial({ map: Tex.asphalt }),
+  concrete: new THREE.MeshLambertMaterial({ map: Tex.concrete }),
+  brick: new THREE.MeshLambertMaterial({ map: Tex.brick }),
+  drywall: new THREE.MeshLambertMaterial({ color: 0xaba596 }),
+  trimWood: new THREE.MeshLambertMaterial({ color: 0xcbc5b6 }),
+  woodFloor: new THREE.MeshLambertMaterial({ map: Tex.woodFloor }),
+  fence: new THREE.MeshLambertMaterial({ map: Tex.fence }),
+  roof: new THREE.MeshLambertMaterial({ map: Tex.shingles }),
+  tileRoof: new THREE.MeshLambertMaterial({ map: Tex.tileRoof }),
+  stucco: new THREE.MeshLambertMaterial({ map: Tex.stucco }),
   facadeGlass: new THREE.MeshStandardMaterial({ map: Tex.facadeGlass, roughness: 0.20, metalness: 0.55 }),
   modernPanel: new THREE.MeshStandardMaterial({ map: Tex.modernPanel, roughness: 0.42, metalness: 0.38 }),
   windowFrame: new THREE.MeshStandardMaterial({ color: 0x262a2e, roughness: 0.52, metalness: 0.40 }),
-  darkWood: new THREE.MeshStandardMaterial({ color: 0x4c3523, roughness: 0.84 }),
-  doorWood: new THREE.MeshStandardMaterial({ map: Tex.woodFloor, color: 0x9b8a77, roughness: 0.82 }),
+  darkWood: new THREE.MeshLambertMaterial({ color: 0x4c3523 }),
+  doorWood: new THREE.MeshLambertMaterial({ map: Tex.woodFloor, color: 0x9b8a77 }),
   glass: new THREE.MeshStandardMaterial({ color: 0x90aab4, transparent: true, opacity: 0.36, roughness: 0.2, side: THREE.DoubleSide }),
   yellowLine: new THREE.MeshLambertMaterial({ color: 0xc29b38 }),
   poleMetal: new THREE.MeshStandardMaterial({ color: 0x3b3f42, roughness: 0.55, metalness: 0.55 }),
@@ -3914,7 +3916,7 @@ const Mats = {
   gunWood: new THREE.MeshStandardMaterial({ map: Tex.woodFloor, color: 0x9b5a34, roughness: 0.60 }),
   gunOlive: new THREE.MeshStandardMaterial({ color: 0x4b5540, roughness: 0.62, metalness: 0.22 }),
   bakelite: new THREE.MeshStandardMaterial({ color: 0x9e4824, roughness: 0.55 }),
-  woodRafter: new THREE.MeshStandardMaterial({ color: 0x5c422c, roughness: 0.86 }),
+  woodRafter: new THREE.MeshLambertMaterial({ color: 0x5c422c }),
   tritium: new THREE.MeshBasicMaterial({ color: 0x5eff78 }),
   redDotGlow: new THREE.MeshBasicMaterial({ color: 0xff2e24, depthTest: false, transparent: true, opacity: 0.96 }),
   holoGlow: new THREE.MeshBasicMaterial({ color: 0xff3b28, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.95 }),
@@ -4071,20 +4073,29 @@ const graphicsState = {
   appliedPixelRatio: 1.0
 };
 
+let _cachedGraphicsPreset = null;
+function invalidateGraphicsPresetCache() {
+  _cachedGraphicsPreset = null;
+}
+
 function getGraphicsPreset() {
+  if (_cachedGraphicsPreset) return _cachedGraphicsPreset;
   const base = GRAPHICS_PRESETS[graphicsState.quality] || GRAPHICS_PRESETS.medium;
   const g = knoxSettings.graphics;
   const lodMult = g.lod === 'low' ? 0.72 : (g.lod === 'high' ? 1.18 : 0.94);
   const maxPart = g.particles === 'low' ? 32 : (g.particles === 'high' ? 112 : 64);
   const shMap = g.shadows === 'high' ? 2048 : (g.shadows === 'low' ? 512 : 1024);
-  return {
+  const shDist = Math.max(20, Math.min(75, Math.round(g.shadowDist || base.shadowDist || 38)));
+  _cachedGraphicsPreset = {
     ...base,
     shadowsEnabled: g.shadows !== 'off',
     shadowMapSize: shMap,
-    shadowHz: g.shadows === 'off' ? 0 : (g.shadows === 'high' ? 30 : 22),
+    shadowDist: shDist,
+    shadowHz: g.shadows === 'off' ? 0 : (g.shadows === 'high' ? 28 : 20),
     lodDistMult: lodMult,
     maxParticles: maxPart
   };
+  return _cachedGraphicsPreset;
 }
 
 function requestShadowUpdate(force = false) {
@@ -4109,12 +4120,28 @@ function refreshRendererPixelRatio() {
 }
 
 function applyGraphicsSubSettings(silent = false) {
+  invalidateGraphicsPresetCache();
   const g = knoxSettings.graphics;
   const preset = getGraphicsPreset();
   const useShadows = !isSoftwareGl && g.shadows !== 'off';
   const prevShadowsEnabled = renderer.shadowMap.enabled;
   renderer.shadowMap.enabled = useShadows;
   // Mantém PCFSoftShadowMap constante (evita corrupção de shaders em tempo real ao alternar qualidade de sombra!)
+
+  // Ajusta anisotropia das texturas procedurais e qualidade das nuvens conforme o preset
+  const targetAniso = graphicsState.quality === 'low' ? 1 : (graphicsState.quality === 'medium' ? 2 : 4);
+  if (typeof Tex !== 'undefined') {
+    for (const tk in Tex) {
+      const tx = Tex[tk];
+      if (tx && tx.isTexture && tx.anisotropy !== targetAniso) {
+        tx.anisotropy = targetAniso;
+        tx.needsUpdate = true;
+      }
+    }
+  }
+  if (typeof skyDomeMesh !== 'undefined' && skyDomeMesh && skyDomeMesh.material && skyDomeMesh.material.uniforms && skyDomeMesh.material.uniforms.uCloudQuality) {
+    skyDomeMesh.material.uniforms.uCloudQuality.value = graphicsState.quality === 'low' ? 0.0 : 1.0;
+  }
 
   if (typeof sunLight !== 'undefined') {
     sunLight.castShadow = useShadows;
@@ -4181,6 +4208,7 @@ function applyGraphicsQuality(presetKey, silent = false) {
   knoxSettings.graphics.lod = basePreset.lod;
   knoxSettings.graphics.particles = basePreset.particles;
   knoxSettings.graphics.maxDynamicLights = basePreset.maxDynamicLights;
+  invalidateGraphicsPresetCache();
 
   applyGraphicsSubSettings(true);
 
@@ -4215,14 +4243,15 @@ function updateShadowScheduler(dt) {
   const preset = getGraphicsPreset();
   if (!renderer.shadowMap.enabled || preset.shadowHz <= 0) return;
   graphicsState.shadowAcc += dt;
-  const interval = 1 / preset.shadowHz;
-  const sunMoved = Math.abs(sunLight.target.position.x - graphicsState.lastShadowSunX) > 0.20
-    || Math.abs(sunLight.target.position.z - graphicsState.lastShadowSunZ) > 0.20;
-  // Quando o jogador está em movimento (correndo/dirigindo), atualiza a sombra todo frame para nunca flickar auto-sombra no SkinnedMesh!
   const playerMoving = (typeof player !== 'undefined') && (
-    !!player.drivingCar || Math.hypot(player.vel?.x || 0, player.vel?.z || 0) > 0.15
+    !!player.drivingCar || Math.hypot(player.vel?.x || 0, player.vel?.z || 0) > 0.18
   );
-  if (graphicsState.shadowForcePending || playerMoving || sunMoved || graphicsState.shadowAcc >= interval) {
+  // Em movimento usa no máximo 30 Hz (33ms) — evita auto-sombra flickando sem reconstruir o shadow map a 60-144 Hz todo frame!
+  const effectiveHz = playerMoving ? Math.max(preset.shadowHz, 30) : preset.shadowHz;
+  const interval = 1 / effectiveHz;
+  const sunMoved = Math.abs(sunLight.target.position.x - graphicsState.lastShadowSunX) > 0.35
+    || Math.abs(sunLight.target.position.z - graphicsState.lastShadowSunZ) > 0.35;
+  if (graphicsState.shadowForcePending || sunMoved || graphicsState.shadowAcc >= interval) {
     graphicsState.shadowForcePending = false;
     graphicsState.shadowAcc = 0;
     graphicsState.lastShadowSunX = sunLight.target.position.x;
@@ -6379,7 +6408,7 @@ function registerCollider(box) {
   const z1 = Math.floor(box.maxZ / COLLIDER_CELL);
   for (let gx = x0; gx <= x1; gx++) {
     for (let gz = z0; gz <= z1; gz++) {
-      const key = `${gx},${gz}`;
+      const key = packSpatialCellKey(gx, gz);
       let cell = colliderGrid.get(key);
       if (!cell) { cell = []; colliderGrid.set(key, cell); }
       cell.push(box);
@@ -6400,7 +6429,7 @@ function queryColliders(x, z, pad = 2.0) {
   const z1 = Math.floor((z + pad) / COLLIDER_CELL);
   for (let gx = x0; gx <= x1; gx++) {
     for (let gz = z0; gz <= z1; gz++) {
-      const cell = colliderGrid.get(`${gx},${gz}`);
+      const cell = colliderGrid.get(packSpatialCellKey(gx, gz));
       if (!cell) continue;
       for (let i = 0; i < cell.length; i++) {
         const b = cell[i];
@@ -6427,7 +6456,7 @@ function unregisterCollider(box) {
   const z1 = Math.floor(box.maxZ / COLLIDER_CELL);
   for (let gx = x0; gx <= x1; gx++) {
     for (let gz = z0; gz <= z1; gz++) {
-      const key = `${gx},${gz}`;
+      const key = packSpatialCellKey(gx, gz);
       const cell = colliderGrid.get(key);
       if (!cell) continue;
       const idx = cell.indexOf(box);
@@ -6602,7 +6631,7 @@ function getSurfaceInfo(x, z) {
 
   for (let dx = -1; dx <= 1; dx++) {
     for (let dz = -1; dz <= 1; dz++) {
-      const bucket = rGrid.get(`${gx + dx},${gz + dz}`);
+      const bucket = rGrid.get(packSpatialCellKey(gx + dx, gz + dz));
       if (!bucket) continue;
       for (let i = 0; i < bucket.length; i++) {
         const s = segs[bucket[i]];
@@ -10106,7 +10135,7 @@ function rebuildRaycastSpatialIndex(dynamicObjs = null) {
         const z1 = Math.floor((cz + r) / cellSize);
         for (let gx = x0; gx <= x1; gx++) {
           for (let gz = z0; gz <= z1; gz++) {
-            const k = `${gx},${gz}`;
+            const k = packSpatialCellKey(gx, gz);
             let arr = grid.get(k);
             if (!arr) { arr = []; grid.set(k, arr); }
             arr.push(m);
@@ -10119,6 +10148,7 @@ function rebuildRaycastSpatialIndex(dynamicObjs = null) {
   indexMeshList(camCollideMeshes, raycastIndex.camGrid, raycastIndex.largeCam, raycastIndex.camCell);
   indexMeshList(shootableMeshes, raycastIndex.shootGrid, raycastIndex.largeShoot, raycastIndex.shootCell);
   raycastIndex.ready = true;
+  raycastIndex._lastShootRebuildAt = 0;
   streamingTimer = 0;
   requestShadowUpdate(true);
 }
@@ -10141,7 +10171,7 @@ function getNearbyCamMeshes(px, pz, dt) {
   const gx = Math.floor(px / cell), gz = Math.floor(pz / cell);
   for (let dx = -1; dx <= 1; dx++) {
     for (let dz = -1; dz <= 1; dz++) {
-      const arr = raycastIndex.camGrid.get(`${gx + dx},${gz + dz}`);
+      const arr = raycastIndex.camGrid.get(packSpatialCellKey(gx + dx, gz + dz));
       if (!arr) continue;
       for (let i = 0; i < arr.length; i++) {
         const m = arr[i];
@@ -10180,7 +10210,7 @@ function rebuildVisibleShootableCache(px, pz, maxDist) {
         const cellCz = (cgz + dz + 0.5) * cell - pz;
         if (cellCx * camFwdX + cellCz * camFwdZ < -cell * 1.1) continue;
       }
-      const arr = raycastIndex.shootGrid.get(`${cgx + dx},${cgz + dz}`);
+      const arr = raycastIndex.shootGrid.get(packSpatialCellKey(cgx + dx, cgz + dz));
       if (!arr) continue;
       for (let i = 0; i < arr.length; i++) {
         const m = arr[i];
@@ -10426,8 +10456,9 @@ function updateSceneStreamingAndLOD(dt) {
     if (vis && !isInCameraConeXZ(it.pos.x, it.pos.z, 1.8)) vis = false;
     if (it.mesh.visible !== vis) it.mesh.visible = vis;
   }
-  const zVisMax = Math.min(drawDist * 1.05, 420);
+  const zVisMax = Math.min(Math.max(drawDist * 1.08, _lastScopeShow ? 480 : 280), 480);
   const zVisMaxSq = zVisMax * zVisMax;
+  const zShadowDistSq = renderer.shadowMap.enabled ? (Math.min(38, (gfxPreset.shadowDist || 38) * 0.92) ** 2) : -1;
   for (let i = 0; i < zombies.length; i++) {
     const z = zombies[i];
     const zp = z.root.position;
@@ -10443,6 +10474,9 @@ function updateSceneStreamingAndLOD(dt) {
       }
     }
     if (z.root.visible !== vis) z.root.visible = vis;
+    if (z.v2 && !z.v2.disposed && typeof z.v2.setShadowCasting === 'function') {
+      z.v2.setShadowCasting(vis && dSq <= zShadowDistSq);
+    }
   }
   const vehVisMaxSq = (drawDist * 1.1) ** 2;
   for (let i = 0; i < vehicles.length; i++) {
@@ -10466,10 +10500,24 @@ function updateSceneStreamingAndLOD(dt) {
     if (v.root.visible !== vis) v.root.visible = vis;
   }
 
-  // 5. Atualiza cache de meshes visíveis para mira/combate (a pé OU passageiro inclinado atirando!)
+  // 5. Atualiza cache de meshes visíveis para mira/combate com throttle (evita reconstruir 60x/s ao mexer o mouse!)
   const needCombatCache = !player.drivingCar || (player.carSeat > 0 && (player.carLeaning || player.carLeanAlpha > 0.1));
   if (needCombatCache && raycastIndex.ready) {
-    rebuildVisibleShootableCache(px, pz, Math.min(drawDist, 145));
+    const nowSc = performance.now();
+    const scDx = px - (raycastIndex._lastShootX || 1e9);
+    const scDz = pz - (raycastIndex._lastShootZ || 1e9);
+    const yawDiff = Math.abs(player.yaw - (raycastIndex._lastShootYaw || 0));
+    if (
+      (nowSc - (raycastIndex._lastShootRebuildAt || 0)) >= 140 ||
+      (scDx * scDx + scDz * scDz) > 6.25 ||
+      yawDiff > 0.24
+    ) {
+      raycastIndex._lastShootRebuildAt = nowSc;
+      raycastIndex._lastShootX = px;
+      raycastIndex._lastShootZ = pz;
+      raycastIndex._lastShootYaw = player.yaw;
+      rebuildVisibleShootableCache(px, pz, Math.min(drawDist, 145));
+    }
   }
 }
 
@@ -10825,6 +10873,7 @@ function createRealisticSkyShaderMaterial() {
     uCloudShadow:   uniform(new THREE.Color('#8da7c2')),
     uCloudCoverage: uniform(0.44),
     uCloudDensity:  uniform(0.78),
+    uCloudQuality:  uniform(graphicsState.quality === 'low' ? 0.0 : 1.0),
     uMieStrength:   uniform(0.52),
     uStarIntensity: uniform(0.0),
     uIsMoon:        uniform(0.0)
@@ -10833,7 +10882,7 @@ function createRealisticSkyShaderMaterial() {
   const {
     uTime, uSeed, uSunDir, uZenithColor, uMidColor, uHorizonColor,
     uGroundColor, uFogColor, uSunColor, uSunGlowColor, uCloudLight,
-    uCloudShadow, uCloudCoverage, uCloudDensity, uMieStrength,
+    uCloudShadow, uCloudCoverage, uCloudDensity, uCloudQuality, uMieStrength,
     uStarIntensity, uIsMoon
   } = uniforms;
 
@@ -10865,27 +10914,23 @@ function createRealisticSkyShaderMaterial() {
     p.x.mul(0.60).add(p.y.mul(0.80))
   ).mul(2.04).add(vec2(1.7, 9.2));
 
-  const fbm4 = Fn(([pIn]) => {
-    const p = pIn.toVar();
-    const v = float(0.0).toVar();
-    v.addAssign(noise2D(p).mul(0.5));
-    p.assign(rotStep(p));
-    v.addAssign(noise2D(p).mul(0.25));
-    p.assign(rotStep(p));
-    v.addAssign(noise2D(p).mul(0.125));
-    p.assign(rotStep(p));
-    v.addAssign(noise2D(p).mul(0.0625));
-    return v;
-  });
-
   const fbm3 = Fn(([pIn]) => {
     const p = pIn.toVar();
     const v = float(0.0).toVar();
-    v.addAssign(noise2D(p).mul(0.5));
+    v.addAssign(noise2D(p).mul(0.55));
     p.assign(rotStep(p));
-    v.addAssign(noise2D(p).mul(0.25));
+    v.addAssign(noise2D(p).mul(0.30));
     p.assign(rotStep(p));
-    v.addAssign(noise2D(p).mul(0.125));
+    v.addAssign(noise2D(p).mul(0.15));
+    return v;
+  });
+
+  const fbm2 = Fn(([pIn]) => {
+    const p = pIn.toVar();
+    const v = float(0.0).toVar();
+    v.addAssign(noise2D(p).mul(0.65));
+    p.assign(rotStep(p));
+    v.addAssign(noise2D(p).mul(0.35));
     return v;
   });
 
@@ -10912,7 +10957,7 @@ function createRealisticSkyShaderMaterial() {
       const mwAxis = normalize(vec3(0.48, 0.35, 0.80));
       const mwDot = dot(dir, mwAxis);
       const mwBand = exp(mwDot.mul(mwDot).mul(-14.0));
-      const mwTex = fbm3(dir.xz.mul(3.8).add(vec2(uSeed.mul(0.1), uSeed.mul(0.1))));
+      const mwTex = fbm2(dir.xz.mul(3.8).add(vec2(uSeed.mul(0.1), uSeed.mul(0.1))));
       skyCol.addAssign(vec3(0.10, 0.14, 0.24).mul(mwBand).mul(mwTex).mul(uStarIntensity).mul(horFade).mul(0.65));
 
       const starCell = floor(dir.mul(260.0)).toVar();
@@ -10949,7 +10994,7 @@ function createRealisticSkyShaderMaterial() {
         const mUp = cross(sunDir, mRight).toVar();
         const mUV = vec2(dot(dir, mRight), dot(dir, mUp)).div(moonRad).toVar();
         const limb = sqrt(max(0.0, float(1.0).sub(dot(mUV, mUV))));
-        const maria = fbm3(mUV.mul(3.4).add(vec2(2.1, 4.7)));
+        const maria = fbm2(mUV.mul(3.4).add(vec2(2.1, 4.7)));
         const moonSurf = uSunColor.mul(float(0.76).add(maria.mul(0.30))).mul(float(0.78).add(limb.mul(0.22)));
         skyCol.assign(mix(skyCol, moonSurf, moonDisk.mul(smoothstep(-0.04, 0.06, y))));
       });
@@ -10961,33 +11006,33 @@ function createRealisticSkyShaderMaterial() {
       skyCol.assign(mix(skyCol, uSunColor.mul(1.35), sunDisk.mul(smoothstep(-0.04, 0.06, y))));
     });
 
-    // 5. Nuvens volumétricas procedurais em 2 altitudes (WGSL via TSL)
+    // 5. Nuvens volumétricas procedurais otimizadas (WGSL via TSL: 5 oitavas no Baixo / 7 no Médio+ em vez de 13!)
     If(y.greaterThan(0.015), () => {
       const domeScale = float(1.0).div(y.add(0.18)).toVar();
       const wind1 = vec2(uTime.mul(0.011), uTime.mul(0.004));
-      const wind2 = vec2(uTime.mul(0.006), uTime.mul(-0.003));
       const uvCumulus = dir.xz.mul(domeScale).mul(0.62).add(wind1).add(vec2(uSeed.mul(0.13), uSeed.mul(0.27))).toVar();
-      const uvCirrus = dir.xz.mul(domeScale).mul(1.45).add(wind2).add(vec2(uSeed.mul(0.41), uSeed.mul(0.19))).toVar();
 
-      const cBase = fbm4(uvCumulus);
-      const cDetail = fbm3(uvCumulus.mul(2.35).add(vec2(3.1, 1.7)));
-      const cField = cBase.mul(0.72).add(cDetail.mul(0.28)).toVar();
-
-      const thresh = mix(0.68, 0.34, clamp(uCloudCoverage, 0.0, 1.0)).toVar();
-      const cumulus = smoothstep(thresh, thresh.add(0.26), cField).mul(uCloudDensity).toVar();
-
-      const sunStep = sunDir.xz.mul(0.095);
-      const cLitSample = fbm3(uvCumulus.add(sunStep));
-      const selfLit = clamp(cField.sub(cLitSample).mul(2.8).add(0.58), 0.0, 1.0);
-      const silverLining = pow(sunCos, 6.0).mul(float(1.0).sub(cumulus.mul(0.55))).mul(0.45);
-      const cloudCol = mix(uCloudShadow, uCloudLight, clamp(selfLit.add(silverLining), 0.0, 1.0));
-
-      const cirrusRaw = fbm3(vec2(uvCirrus.x.mul(1.8), uvCirrus.y.mul(0.65)));
-      const cirrus = smoothstep(0.60, 0.84, cirrusRaw).mul(0.34).mul(float(0.4).add(uCloudCoverage.mul(0.6)));
-
+      const cField = fbm3(uvCumulus).toVar();
+      const thresh = mix(0.66, 0.34, clamp(uCloudCoverage, 0.0, 1.0)).toVar();
+      const cumulus = smoothstep(thresh, thresh.add(0.25), cField).mul(uCloudDensity).toVar();
       const cloudHorFade = smoothstep(0.015, 0.22, y).toVar();
-      skyCol.assign(mix(skyCol, mix(uCloudLight, uHorizonColor, 0.25), cirrus.mul(cloudHorFade)));
-      skyCol.assign(mix(skyCol, cloudCol, clamp(cumulus.mul(cloudHorFade), 0.0, 0.94)));
+
+      If(uCloudQuality.greaterThan(0.5), () => {
+        const wind2 = vec2(uTime.mul(0.006), uTime.mul(-0.003));
+        const uvCirrus = dir.xz.mul(domeScale).mul(1.45).add(wind2).add(vec2(uSeed.mul(0.41), uSeed.mul(0.19)));
+        const cirrusRaw = fbm2(vec2(uvCirrus.x.mul(1.8), uvCirrus.y.mul(0.65)));
+        const cirrus = smoothstep(0.58, 0.84, cirrusRaw).mul(0.32).mul(float(0.4).add(uCloudCoverage.mul(0.6)));
+        skyCol.assign(mix(skyCol, mix(uCloudLight, uHorizonColor, 0.25), cirrus.mul(cloudHorFade)));
+      });
+
+      If(cumulus.greaterThan(0.005), () => {
+        const sunStep = sunDir.xz.mul(0.095);
+        const cLitSample = fbm2(uvCumulus.add(sunStep));
+        const selfLit = clamp(cField.sub(cLitSample).mul(2.8).add(0.58), 0.0, 1.0);
+        const silverLining = pow(sunCos, 6.0).mul(float(1.0).sub(cumulus.mul(0.55))).mul(0.45);
+        const cloudCol = mix(uCloudShadow, uCloudLight, clamp(selfLit.add(silverLining), 0.0, 1.0));
+        skyCol.assign(mix(skyCol, cloudCol, clamp(cumulus.mul(cloudHorFade), 0.0, 0.94)));
+      });
     });
 
     // 6. Hemisfério inferior + faixa atmosférica de horizonte integrada ao scene.fog
@@ -11004,6 +11049,7 @@ function createRealisticSkyShaderMaterial() {
 
   const skyMat = new THREE.MeshBasicNodeMaterial({
     side: THREE.BackSide,
+    depthTest: true,
     depthWrite: false,
     fog: false
   });
@@ -11014,10 +11060,12 @@ function createRealisticSkyShaderMaterial() {
 
 function ensureSkyDomeMesh() {
   if (!skyDomeMesh) {
-    const skyGeo = new THREE.SphereGeometry(1180, 40, 22);
+    const skyGeo = new THREE.SphereGeometry(1180, 32, 18);
     const skyMat = createRealisticSkyShaderMaterial();
     skyDomeMesh = new THREE.Mesh(skyGeo, skyMat);
-    skyDomeMesh.renderOrder = -100;
+    // Renderiza DEPOIS da geometria opaca (renderOrder = 10, depthTest = true, depthWrite = false) e ANTES dos transparentes:
+    // Early-Z descarta ~65-80% dos pixels cobertos por chão/casas/armas, economizando imensamente o shader do céu!
+    skyDomeMesh.renderOrder = 10;
     skyDomeMesh.frustumCulled = false;
     scene.add(skyDomeMesh);
   }
@@ -11503,7 +11551,9 @@ function addChunkRoadStrip(parentGroup, rd) {
   const midZ = (rd.z1 + rd.z2) * 0.5;
   const angle = Math.atan2(dx, dz);
 
-  const roadGeo = regD(new THREE.BoxGeometry(w, 0.06, len + 1.2));
+  const roadGeo = new THREE.BoxGeometry(w, 0.06, len + 1.2);
+  if (Array.isArray(parentGroup._tempGeos)) parentGroup._tempGeos.push(roadGeo);
+  else regD(roadGeo);
   const roadMesh = new THREE.Mesh(roadGeo, Mats.asphalt);
   roadMesh.position.set(midX, 0.015, midZ);
   roadMesh.rotation.y = angle;
@@ -11514,7 +11564,9 @@ function addChunkRoadStrip(parentGroup, rd) {
   // Calçadas laterais em vias urbanas
   if (rd.roadClass !== 'highway') {
     const swW = (Number.isFinite(rd.sideW) && rd.sideW > 0.2) ? rd.sideW : 1.65;
-    const swGeo = regD(new THREE.BoxGeometry(swW, 0.13, len + 0.6));
+    const swGeo = new THREE.BoxGeometry(swW, 0.13, len + 0.6);
+    if (Array.isArray(parentGroup._tempGeos)) parentGroup._tempGeos.push(swGeo);
+    else regD(swGeo);
     const nx = Math.cos(angle), nz = -Math.sin(angle);
     const off = w * 0.5 + swW * 0.5;
     const swL = new THREE.Mesh(swGeo, Mats.concrete);
@@ -11529,7 +11581,9 @@ function addChunkRoadStrip(parentGroup, rd) {
     parentGroup.add(swR);
   } else {
     // Faixa central amarela na rodovia
-    const lineGeo = regD(new THREE.BoxGeometry(0.20, 0.075, len));
+    const lineGeo = new THREE.BoxGeometry(0.20, 0.075, len);
+    if (Array.isArray(parentGroup._tempGeos)) parentGroup._tempGeos.push(lineGeo);
+    else regD(lineGeo);
     const lineMesh = new THREE.Mesh(lineGeo, Mats.yellowLine);
     lineMesh.position.set(midX, 0.022, midZ);
     lineMesh.rotation.y = angle;
@@ -11586,6 +11640,7 @@ function loadChunk(cx, cz) {
 
   const chunkGroup = new THREE.Group();
   chunkGroup.name = `chunk_${key}`;
+  chunkGroup._tempGeos = [];
   worldGroup.add(chunkGroup);
 
   // 1. Piso do chunk (bioma urbano/campo/floresta) + lâmina de água quando há lago
@@ -11778,8 +11833,54 @@ function loadChunk(cx, cz) {
     camCollideMeshes = Array.from(camSet);
   }
 
+  // OTIMIZAÇÃO CRÍTICA DE DRAW CALLS NO CHUNK:
+  // Mescla piso, estradas, calçadas, árvores (tronco/pinheiro/carvalho) e postes por material (~80-120 -> ~6-8 draw calls!),
+  // congela matrizes estáticas e registra o chunk no frustum culling direcional (`streamingChunks`)!
+  const emptySet = new Set();
+  mergeStaticContainerMeshes(chunkGroup, emptySet, emptySet, emptySet, null, false);
+  if (Array.isArray(chunkGroup._tempGeos) && chunkGroup._tempGeos.length > 0) {
+    // Descarta apenas geometrias temporárias que já foram mescladas; registra as remanescentes em mapDisposables
+    const liveGeos = new Set();
+    for (let i = 0; i < chunkGroup.children.length; i++) {
+      if (chunkGroup.children[i].geometry) liveGeos.add(chunkGroup.children[i].geometry);
+    }
+    for (let i = 0; i < chunkGroup._tempGeos.length; i++) {
+      const tg = chunkGroup._tempGeos[i];
+      if (!tg) continue;
+      if (liveGeos.has(tg)) mapDisposables.push(tg);
+      else try { tg.dispose(); } catch (_) {}
+    }
+    chunkGroup._tempGeos.length = 0;
+  }
+  chunkGroup.traverse((o) => {
+    o.updateMatrix();
+    o.matrixAutoUpdate = false;
+  });
+  for (let i = 0; i < chunkLoot.length; i++) {
+    if (chunkLoot[i] && chunkLoot[i].mesh) {
+      chunkLoot[i].mesh.traverse((o) => { o.updateMatrix(); o.matrixAutoUpdate = false; });
+    }
+  }
+  const halfCs = (mm.chunkSize || 64) * 0.5;
+  const chunkStreamEntry = {
+    mesh: chunkGroup,
+    isTerrain: true,
+    minX: bp.originX,
+    maxX: bp.originX + (mm.chunkSize || 64),
+    minZ: bp.originZ,
+    maxZ: bp.originZ + (mm.chunkSize || 64),
+    center: new THREE.Vector3(bp.centerX, 3.0, bp.centerZ),
+    radius: halfCs * 1.48,
+    box3: new THREE.Box3(
+      new THREE.Vector3(bp.originX - 4, -2, bp.originZ - 4),
+      new THREE.Vector3(bp.originX + (mm.chunkSize || 64) + 4, 16, bp.originZ + (mm.chunkSize || 64) + 4)
+    )
+  };
+  streamingChunks.push(chunkStreamEntry);
+
   const rec = {
     cx, cz, key,
+    chunkStreamEntry,
     worldObjs: worldGroup.children.slice(w0),
     colliders: colliders.slice(c0),
     houses: newHouses,
@@ -11808,6 +11909,11 @@ function loadChunk(cx, cz) {
 function unloadChunk(key) {
   const rec = chunkWorldState.loadedChunks.get(key);
   if (!rec) return;
+
+  if (rec.chunkStreamEntry) {
+    const csIdx = streamingChunks.indexOf(rec.chunkStreamEntry);
+    if (csIdx >= 0) streamingChunks.splice(csIdx, 1);
+  }
 
   // Preserva veículos atualmente ocupados ou conduzidos pelo jogador (destaca-os do chunk!)
   const preservedVehicleRoots = new Set();
@@ -13648,7 +13754,7 @@ function buildRealWorldRoadsAndIntersections(roads, intersections) {
     const z1 = Math.floor((Math.max(az, bz) + pad) / cell);
     for (let gx = x0; gx <= x1; gx++) {
       for (let gz = z0; gz <= z1; gz++) {
-        const k = `${gx},${gz}`;
+        const k = packSpatialCellKey(gx, gz);
         let arr = terrainState.roadGrid.get(k);
         if (!arr) { arr = []; terrainState.roadGrid.set(k, arr); }
         arr.push(idx);
@@ -13688,7 +13794,7 @@ function buildRealWorldRoadsAndIntersections(roads, intersections) {
     const gx = Math.floor(x / cell), gz = Math.floor(z / cell);
     for (let dx = -1; dx <= 1; dx++) {
       for (let dz = -1; dz <= 1; dz++) {
-        const arr = terrainState.roadGrid.get(`${gx + dx},${gz + dz}`);
+        const arr = terrainState.roadGrid.get(packSpatialCellKey(gx + dx, gz + dz));
         if (!arr) continue;
         for (let k = 0; k < arr.length; k++) {
           const s = terrainState.roadSegs[arr[k]];
@@ -21978,6 +22084,8 @@ function alertZombiesBySound(origin, radius) {
   }
 }
 
+let _zombieV2Cursor = 0;
+
 function updateZombies(dt) {
   const px = player.pos.x, pz = player.pos.z;
   const detectRange = player.crouching ? 13.0 : (player.flashlightOn ? 28.0 : 22.0);
@@ -21985,11 +22093,16 @@ function updateZombies(dt) {
   const isClientNet = !!netState.isClient;
   let navCalcsThisFrame = 0;
   let v2UpdatesThisFrame = 0;
-  const maxV2AnimDist = Math.max(currentDrawDistance || 220, _lastScopeShow ? 480 : 280);
+  const gfxPreset = getGraphicsPreset();
+  const zFullDist = gfxPreset.zombieAnimFullDist || 24;
+  const zShadowDist = gfxPreset.shadowDist || 36;
+  const drawDistNow = currentDrawDistance || 220;
+  const scopedNow = !!_lastScopeShow;
+  const maxV2AnimDist = Math.min(480, Math.max(drawDistNow * 1.08, scopedNow ? 480 : 280));
 
   // Hidrata rigs v2 dos zumbis de forma escalonada (evita travar a GPU com 50 clones no primeiro frame!)
   if (pendingZombieV2Queue.length > 0) {
-    drainZombieV2Queue(3, px, pz);
+    drainZombieV2Queue(4, px, pz);
   }
 
   // Etiqueta portas fechadas e janelas apenas quando o total mudar (evita loop O(N) a 60 Hz)
@@ -22028,15 +22141,20 @@ function updateZombies(dt) {
   }
 
 
-  for (let i = 0; i < zombies.length; i++) {
+  const zCount = zombies.length;
+  const startIdx = zCount > 0 ? (_zombieV2Cursor % zCount) : 0;
+  if (zCount > 0) _zombieV2Cursor = (startIdx + Math.min(zCount, 32)) % zCount;
+
+  for (let step = 0; step < zCount; step++) {
+    const i = (startIdx + step) % zCount;
     const z = zombies[i];
     const zp = z.root.position;
     const p = z.parts;
 
     // === ANIMAÇÃO DE MORTE COMPLETA DO ZUMBI (3 ESTILOS ARTICULADOS + RECUO DE IMPACTO + CLIP V2) ===
     if (z.dead) {
-      if (z.v2 && !z.v2.disposed) z.v2.updateZombieFall(Math.min(1, z.deathT + dt * 1.75));
       if (z.deathT < 1) {
+        if (z.v2 && !z.v2.disposed) z.v2.updateZombieFall(Math.min(1, z.deathT + dt * 1.75));
         const prevT = z.deathT;
         z.deathT = Math.min(1, z.deathT + dt * 1.75);
         const t = z.deathT;
@@ -22105,6 +22223,9 @@ function updateZombies(dt) {
           p.legR.knee.rotation.set(-0.24 * fall, 0, 0);
         }
         if (prevT === 0) z.atkAnimT = 0;
+      } else if (z.v2 && !z.v2.disposed && !z._v2FallDone) {
+        z.v2.updateZombieFall(1);
+        z._v2FallDone = true;
       }
       continue;
     }
@@ -22112,11 +22233,35 @@ function updateZombies(dt) {
     const localDx = px - zp.x, localDz = pz - zp.z;
     const localDist = Math.hypot(localDx, localDz);
 
+    // Política unificada de simulação + animação por distância e visibilidade:
+    // Zumbis visíveis até 480m (ou luneta) NUNCA ficam congelados parados; só dormem se estiverem longe E fora da visão!
+    const policy = computeZombieUpdatePolicy({
+      dist: localDist,
+      drawDist: drawDistNow,
+      isVisible: !!z.root.visible,
+      isChasing: z.alertT > 0 || !!z.netChasing,
+      isStaggered: z.stagger > 0,
+      fullAnimDist: zFullDist,
+      shadowDist: zShadowDist,
+      isScoped: scopedNow
+    });
+
+    if (!policy.simulate) {
+      // Ainda verifica se algum jogador remoto (em multiplayer Host) está perto deste zumbi
+      if (isClientNet || aliveTargets.length <= 1) continue;
+      let nearRemote = false;
+      for (let ti = 0; ti < aliveTargets.length; ti++) {
+        const tgt = aliveTargets[ti];
+        if (tgt.isLocal) continue;
+        if (Math.hypot(tgt.x - zp.x, tgt.z - zp.z) <= 155) { nearRemote = true; break; }
+      }
+      if (!nearRemote) continue;
+    }
+
     z.atkCd = Math.max(0, z.atkCd - dt);
     z.atkAnimT = Math.max(0, (z.atkAnimT || 0) - dt);
 
-    let animationElapsed = dt;
-    let moveSpd = 0;
+    let moveSpd = z._lastMoveSpd ?? (z.speed * (z.legHit ? 0.25 : 0.38));
     let isChasing = false;
 
     // Modo CLIENTE sincronizado com o HOST: interpolação suave da posição autoritativa do Host!
@@ -22135,6 +22280,7 @@ function updateZombies(dt) {
         z.yaw = lerpAngle(z.yaw, z.netYaw, smNet);
       }
       moveSpd = dt > 1e-4 ? Math.min(5.5, Math.hypot(zp.x - prevX, zp.z - prevZ) / dt) : 0;
+      z._lastMoveSpd = moveSpd;
       isChasing = !!z.netChasing;
 
       const zTargetY = getSurfaceHeight(zp.x, zp.z);
@@ -22161,31 +22307,40 @@ function updateZombies(dt) {
         const d = Math.hypot(tgt.x - zp.x, tgt.z - zp.z);
         if (d < nearestDist) { nearestDist = d; nearest = tgt; }
       }
-      if (!nearest && localDist > 150) continue;
-      if (nearest && nearestDist > 155) continue;
 
       if (nearest && nearestDist < nearest.range) z.alertT = Math.max(z.alertT, 8.5);
       z.alertT = Math.max(0, z.alertT - dt);
 
-      // Zumbis distantes patrulhando (sem perseguir): atualiza física/colisão a 15 Hz em vez de 60 Hz!
+      // Zumbis distantes patrulhando (sem perseguir): atualiza física leve sem NUNCA pular/congelar a animação esquelética!
       if (z.stagger <= 0 && z.alertT <= 0 && nearestDist > 58) {
-        z._farPhysAcc = (z._farPhysAcc || 0) + dt;
-        if (z._farPhysAcc < 0.066) continue;
-        const farDt = Math.min(0.12, z._farPhysAcc);
-        z._farPhysAcc = 0;
-        z.wanderTimer -= farDt;
-        if (z.wanderTimer <= 0) { z.wanderTimer = 3 + Math.random() * 4; z.yaw += (Math.random() - 0.5) * 2.0; }
+        const physStep = policy.physStep > 0 ? policy.physStep : 0.066;
+        z._farPhysAcc = (z._farPhysAcc ?? ((i % 7) / 7 * physStep)) + dt;
         moveSpd = z.speed * (z.legHit ? 0.25 : 0.38);
-        zp.x += -Math.sin(z.yaw) * moveSpd * farDt;
-        zp.z += -Math.cos(z.yaw) * moveSpd * farDt;
-        zp.y = getSurfaceHeight(zp.x, zp.z);
-        animationElapsed = farDt;
+        z._lastMoveSpd = moveSpd;
+        if (z._farPhysAcc >= physStep) {
+          const farDt = Math.min(0.20, z._farPhysAcc);
+          z._farPhysAcc = 0;
+          z.wanderTimer -= farDt;
+          if (z.wanderTimer <= 0) { z.wanderTimer = 3 + Math.random() * 4; z.yaw += (Math.random() - 0.5) * 2.0; }
+          zp.x += -Math.sin(z.yaw) * moveSpd * farDt;
+          zp.z += -Math.cos(z.yaw) * moveSpd * farDt;
+          zp.y = policy.allowCollisions ? getSurfaceHeight(zp.x, zp.z) : getTerrainHeight(zp.x, zp.z);
+          if (policy.allowCollisions) {
+            resolveCircleWorldCollisions(zp, 0.35, zp.y, zp.y + 1.8, 0.48, z._roadkillIgnoreVehicle?.id);
+          }
+        }
       } else if (z.stagger > 0) {
         z.stagger = Math.max(0, z.stagger - dt);
         zp.x += z.knockX * dt;
         zp.z += z.knockZ * dt;
+        moveSpd = 0;
+        z._lastMoveSpd = 0;
+        const zTargetY = getSurfaceHeight(zp.x, zp.z);
+        zp.y = Math.abs(zp.y - zTargetY) > 1.8 ? zTargetY : THREE.MathUtils.lerp(zp.y, zTargetY, Math.min(1, dt * 18));
+        resolveCircleWorldCollisions(zp, 0.35, zp.y, zp.y + 1.8, 0.48, z._roadkillIgnoreVehicle?.id);
       } else if (z.alertT > 0 && nearest) {
         isChasing = true;
+        moveSpd = 0;
         let steerX = nearest.x;
         let steerZ = nearest.z;
 
@@ -22314,11 +22469,20 @@ function updateZombies(dt) {
             damageLocalPlayer(16, 'ATAQUE DE ZUMBI', chosenZone);
           }
         }
+        z._lastMoveSpd = moveSpd;
+        const zTargetY = getSurfaceHeight(zp.x, zp.z);
+        zp.y = Math.abs(zp.y - zTargetY) > 1.8 ? zTargetY : THREE.MathUtils.lerp(zp.y, zTargetY, Math.min(1, dt * 18));
+        const impactVehicle = z._roadkillIgnoreVehicle;
+        resolveCircleWorldCollisions(zp, 0.35, zp.y, zp.y + 1.8, 0.48, impactVehicle?.id);
+        if (impactVehicle && Math.hypot(zp.x - impactVehicle.pos.x, zp.z - impactVehicle.pos.z) > impactVehicle.phys.length) {
+          z._roadkillIgnoreVehicle = null;
+        }
       } else {
         z._navWaypoints = null;
         z.wanderTimer -= dt;
         if (z.wanderTimer <= 0) { z.wanderTimer = 3 + Math.random() * 4; z.yaw += (Math.random() - 0.5) * 2.0; }
         moveSpd = z.speed * (z.legHit ? 0.25 : 0.38);
+        z._lastMoveSpd = moveSpd;
         const wPreX = zp.x, wPreZ = zp.z;
         zp.x += -Math.sin(z.yaw) * moveSpd * dt;
         zp.z += -Math.cos(z.yaw) * moveSpd * dt;
@@ -22329,14 +22493,13 @@ function updateZombies(dt) {
           }
           z._wRefX = zp.x; z._wRefZ = zp.z; z._wanderCheckT = 0;
         }
-      }
-
-      const zTargetY = getSurfaceHeight(zp.x, zp.z);
-      zp.y = Math.abs(zp.y - zTargetY) > 1.8 ? zTargetY : THREE.MathUtils.lerp(zp.y, zTargetY, Math.min(1, dt * 18));
-      const impactVehicle = z._roadkillIgnoreVehicle;
-      resolveCircleWorldCollisions(zp, 0.35, zp.y, zp.y + 1.8, 0.48, impactVehicle?.id);
-      if (impactVehicle && Math.hypot(zp.x - impactVehicle.pos.x, zp.z - impactVehicle.pos.z) > impactVehicle.phys.length) {
-        z._roadkillIgnoreVehicle = null;
+        const zTargetY = getSurfaceHeight(zp.x, zp.z);
+        zp.y = Math.abs(zp.y - zTargetY) > 1.8 ? zTargetY : THREE.MathUtils.lerp(zp.y, zTargetY, Math.min(1, dt * 18));
+        const impactVehicle = z._roadkillIgnoreVehicle;
+        resolveCircleWorldCollisions(zp, 0.35, zp.y, zp.y + 1.8, 0.48, impactVehicle?.id);
+        if (impactVehicle && Math.hypot(zp.x - impactVehicle.pos.x, zp.z - impactVehicle.pos.z) > impactVehicle.phys.length) {
+          z._roadkillIgnoreVehicle = null;
+        }
       }
     }
 
@@ -22368,14 +22531,12 @@ function updateZombies(dt) {
       }
     }
 
-    // LOD de Animação Esquelética por Distância (60 Hz perto -> 20 Hz médio -> 10 Hz longe -> 8 Hz além de 56m)
+    // LOD de Animação Esquelética desacoplado da física (zumbis distantes visíveis SEMPRE se movem e animam suavemente!)
     if (!z.root.visible) continue;
-    const zFullDist = getGraphicsPreset().zombieAnimFullDist || 24;
-    let animDt = animationElapsed;
-    if (localDist > zFullDist) {
-      const minStep = localDist > 95 ? 0.22 : localDist > 56 ? 0.125 : localDist > 42 ? 0.10 : 0.05;
-      z._animAcc = (z._animAcc ?? ((i % 12) / 12 * minStep)) + animationElapsed;
-      if (z._animAcc < minStep) continue;
+    let animDt = dt;
+    if (policy.animStep > 0) {
+      z._animAcc = (z._animAcc ?? ((i % 12) / 12 * policy.animStep)) + dt;
+      if (z._animAcc < policy.animStep) continue;
       animDt = Math.min(0.24, z._animAcc);
       z._animAcc = 0;
     }
@@ -22391,7 +22552,8 @@ function updateZombies(dt) {
     const atkWindup = atkPhase > 0 && atkPhase < 0.42 ? Math.sin((atkPhase / 0.42) * Math.PI * 0.5) : 0;
     const atkStrike = atkPhase >= 0.42 ? Math.sin(((atkPhase - 0.42) / 0.58) * Math.PI) : 0;
 
-    if (z.v2 && !z.v2.disposed && localDist <= maxV2AnimDist && v2UpdatesThisFrame < 64) {
+    const hasV2 = !!(z.v2 && !z.v2.disposed);
+    if (hasV2 && localDist <= maxV2AnimDist && v2UpdatesThisFrame < 96) {
       v2UpdatesThisFrame++;
       const zAnim = selectZombieAnimState({
         legHit: !!z.legHit,
@@ -22416,6 +22578,17 @@ function updateZombies(dt) {
           isMoving: moveSpd > 0.08
         });
       }
+    }
+
+    // Otimização de CPU: além de 52m com rig V2 ativo em pé, pula os 14 lerps do rig procedural invisível (mantém hitbox ereto!)
+    if (hasV2 && policy.simplifiedHitbox && !z.legHit) {
+      if (Math.abs(p.pelvis.position.y - 0.90) > 0.05) {
+        p.pelvis.position.set(0, 0.90, 0);
+        p.pelvis.rotation.set(0, 0, 0);
+        p.spine.rotation.set(-0.18, 0, 0);
+        p.head.rotation.set(0.10, 0, 0);
+      }
+      continue;
     }
 
     // === ANIMAÇÃO ARTICULADA COMPLETA + HITBOXES PROPORCIONAIS (RASTEJANDO NO CHÃO OU DE PÉ) ===
@@ -22950,20 +23123,45 @@ function getNearestRoadNameForHUD(px, pz) {
   return 'RODOVIA ESTADUAL';
 }
 
+let _minimapCanvasCache = null;
+let _minimapCtxCache = null;
+
 function updateMinimapHUD(force = false) {
   const now = performance.now();
-  if (!force && now - minimapState.lastDraw < 42) return;
-  minimapState.lastDraw = now;
-
-  const cv = document.getElementById('minimap-canvas');
-  if (!cv) return;
-  const ctx = cv.getContext('2d');
-  const W = cv.width, H = cv.height;
-  const cx = W * 0.5, cy = H * 0.5;
+  const minInterval = player.drivingCar ? 55 : 90;
+  if (!force && now - minimapState.lastDraw < minInterval) return;
 
   const px = player.drivingCar ? player.drivingCar.pos.x : player.pos.x;
   const pz = player.drivingCar ? player.drivingCar.pos.z : player.pos.z;
   const headingYaw = player.drivingCar ? player.drivingCar.yaw : player.yaw;
+
+  // Se o jogador não se moveu nem girou nem mudou zoom e não há outros jogadores se movendo, pula redesenho 2D desnecessário
+  if (
+    !force &&
+    remotePlayers.size === 0 &&
+    (now - minimapState.lastDraw) < 420 &&
+    Math.abs(px - (minimapState._lastPx ?? 1e9)) < 0.25 &&
+    Math.abs(pz - (minimapState._lastPz ?? 1e9)) < 0.25 &&
+    Math.abs(headingYaw - (minimapState._lastYaw ?? 1e9)) < 0.035 &&
+    minimapState.zoomIdx === minimapState._lastZoomIdx
+  ) {
+    return;
+  }
+  minimapState.lastDraw = now;
+  minimapState._lastPx = px;
+  minimapState._lastPz = pz;
+  minimapState._lastYaw = headingYaw;
+  minimapState._lastZoomIdx = minimapState.zoomIdx;
+
+  if (!_minimapCanvasCache) {
+    _minimapCanvasCache = document.getElementById('minimap-canvas');
+    _minimapCtxCache = _minimapCanvasCache ? _minimapCanvasCache.getContext('2d') : null;
+  }
+  const cv = _minimapCanvasCache;
+  const ctx = _minimapCtxCache;
+  if (!cv || !ctx) return;
+  const W = cv.width, H = cv.height;
+  const cx = W * 0.5, cy = H * 0.5;
 
   const zoom = minimapState.zoomLevels[minimapState.zoomIdx];
   const baseRange = realWorldMeta.active ? Math.min(175, Math.max(95, (realWorldMeta.sideMeters || 500) * 0.24)) : 125;
@@ -22972,6 +23170,10 @@ function updateMinimapHUD(force = false) {
 
   const toX = (wx) => cx + (wx - px) * scale;
   const toY = (wz) => cy + (wz - pz) * scale;
+  const cullMinX = px - viewHalfM * 1.45;
+  const cullMaxX = px + viewHalfM * 1.45;
+  const cullMinZ = pz - viewHalfM * 1.45;
+  const cullMaxZ = pz + viewHalfM * 1.45;
 
   // 1. Fundo tático do minimapa
   ctx.fillStyle = '#0e130f';
@@ -23018,13 +23220,31 @@ function updateMinimapHUD(force = false) {
     }
   }
 
-  // 3. Bordas de calçada e pistas das ruas (largura e cor diferenciadas: Rodovia > Avenida > Rua > Passagem!)
+  // 3. Bordas de calçada e pistas das ruas com culling AABB (evita desenhar centenas de ruas fora do viewport!)
+  const visRoads = [];
+  for (let i = 0; i < roads.length; i++) {
+    const r = roads[i];
+    if (!r.pts || r.pts.length < 2) continue;
+    if (r._minX === undefined) {
+      let mnX = Infinity, mxX = -Infinity, mnZ = Infinity, mxZ = -Infinity;
+      for (let j = 0; j < r.pts.length; j++) {
+        const pt = r.pts[j];
+        if (pt[0] < mnX) mnX = pt[0];
+        if (pt[0] > mxX) mxX = pt[0];
+        if (pt[1] < mnZ) mnZ = pt[1];
+        if (pt[1] > mxZ) mxZ = pt[1];
+      }
+      r._minX = mnX; r._maxX = mxX; r._minZ = mnZ; r._maxZ = mxZ;
+    }
+    if (r._maxX < cullMinX || r._minX > cullMaxX || r._maxZ < cullMinZ || r._minZ > cullMaxZ) continue;
+    visRoads.push(r);
+  }
+
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   for (let pass = 0; pass < 2; pass++) {
-    for (let i = 0; i < roads.length; i++) {
-      const r = roads[i];
-      if (!r.pts || r.pts.length < 2) continue;
+    for (let i = 0; i < visRoads.length; i++) {
+      const r = visRoads[i];
       const cls = r.roadClass || 'street';
       const baseW = r.width || (cls === 'highway' ? 16 : (cls === 'avenue' ? 12.4 : (cls === 'passage' || cls === 'service' ? 5.8 : 8.2)));
       const rw = Math.max(pass === 0 ? 3.0 : 1.6, baseW * scale + (pass === 0 ? 2.0 : 0));
@@ -23044,9 +23264,9 @@ function updateMinimapHUD(force = false) {
   // 3b. Indicadores sutis de mão única no minimapa (quando em zoom urbano)
   if (scale >= 0.95) {
     ctx.fillStyle = 'rgba(232, 236, 224, 0.55)';
-    for (let i = 0; i < roads.length; i++) {
-      const r = roads[i];
-      if (r.oneway !== 1 || !r.pts || r.pts.length < 2) continue;
+    for (let i = 0; i < visRoads.length; i++) {
+      const r = visRoads[i];
+      if (r.oneway !== 1) continue;
       const midIdx = Math.floor((r.pts.length - 1) * 0.5);
       const a = r.pts[midIdx], b = r.pts[midIdx + 1];
       const mx = toX((a[0] + b[0]) * 0.5), my = toY((a[1] + b[1]) * 0.5);
@@ -23079,6 +23299,8 @@ function updateMinimapHUD(force = false) {
   }
 
   // 5. Construções (coloridas por categoria e rotacionadas exatamente conforme a rua!)
+  ctx.strokeStyle = 'rgba(10,12,10,0.70)';
+  ctx.lineWidth = 0.85;
   for (let i = 0; i < buildings.length; i++) {
     const b = buildings[i];
     const sx = toX(b.x), sy = toY(b.z);
@@ -23102,15 +23324,19 @@ function updateMinimapHUD(force = false) {
     const sw = Math.max(3.4, bw * scale);
     const sh = Math.max(3.0, bd * scale);
     const rot = (typeof b.rotY === 'number' && Number.isFinite(b.rotY)) ? -b.rotY : 0;
-    ctx.save();
-    ctx.translate(sx, sy);
-    if (rot !== 0) ctx.rotate(rot);
     ctx.fillStyle = col;
-    ctx.fillRect(-sw * 0.5, -sh * 0.5, sw, sh);
-    ctx.strokeStyle = 'rgba(10,12,10,0.70)';
-    ctx.lineWidth = 0.85;
-    ctx.strokeRect(-sw * 0.5, -sh * 0.5, sw, sh);
-    ctx.restore();
+    if (Math.abs(rot) < 0.01) {
+      const rx = sx - sw * 0.5, ry = sy - sh * 0.5;
+      ctx.fillRect(rx, ry, sw, sh);
+      ctx.strokeRect(rx, ry, sw, sh);
+    } else {
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(rot);
+      ctx.fillRect(-sw * 0.5, -sh * 0.5, sw, sh);
+      ctx.strokeRect(-sw * 0.5, -sh * 0.5, sw, sh);
+      ctx.restore();
+    }
   }
 
   // 6. Veículos no minimapa (Carro largo âmbar vs Moto estreita ciano!)

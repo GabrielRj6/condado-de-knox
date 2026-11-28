@@ -33,7 +33,9 @@ import {
   computeBallisticDrop,
   hasZombieLineOfSight,
   findZombieTacticalPath,
-  selectZombieAnimState
+  selectZombieAnimState,
+  computeZombieUpdatePolicy,
+  packSpatialCellKey
 } from '../public/js/tactical-logic.js';
 
 test('team-only map visibility hides players without team or on different teams', () => {
@@ -449,3 +451,49 @@ test('Crawling zombies (legHit) stay on crawl clip when attacking, staggered, mo
   assert.equal(selectZombieAnimState({ legHit: false, moveSpd: 2.2, isChasing: true, archetype: 1 }).clip, 'run');
   assert.equal(selectZombieAnimState({ legHit: false, moveSpd: 0 }).clip, 'idle');
 });
+
+test('computeZombieUpdatePolicy keeps distant visible zombies moving and animated without freezing, while culling far shadows', () => {
+  const near = computeZombieUpdatePolicy({ dist: 12, drawDist: 220, isVisible: true, shadowDist: 36, fullAnimDist: 24 });
+  assert.equal(near.simulate, true);
+  assert.equal(near.tier, 'near');
+  assert.equal(near.allowShadows, true);
+  assert.equal(near.animStep, 0);
+
+  const mid = computeZombieUpdatePolicy({ dist: 48, drawDist: 220, isVisible: true, shadowDist: 36, fullAnimDist: 24 });
+  assert.equal(mid.simulate, true);
+  assert.equal(mid.tier, 'mid');
+  assert.equal(mid.allowShadows, false);
+  assert.ok(mid.animStep > 0 && mid.animStep <= 0.08);
+
+  // Critical regression: zombie at 180m and 260m visible in view MUST keep simulating & animating (previously froze past 155m)
+  const far180 = computeZombieUpdatePolicy({ dist: 180, drawDist: 220, isVisible: true, shadowDist: 36 });
+  assert.equal(far180.simulate, true);
+  assert.equal(far180.tier, 'horizon');
+  assert.equal(far180.allowCollisions, false);
+  assert.equal(far180.allowShadows, false);
+  assert.ok(far180.physStep <= 0.14);
+  assert.ok(far180.animStep <= 0.16);
+
+  const scoped420 = computeZombieUpdatePolicy({ dist: 420, drawDist: 220, isVisible: true, isScoped: true });
+  assert.equal(scoped420.simulate, true);
+  assert.equal(scoped420.tier, 'horizon');
+
+  // Invisible zombies beyond background AI cutoff sleep cleanly to save CPU
+  const hiddenFar = computeZombieUpdatePolicy({ dist: 210, drawDist: 220, isVisible: false });
+  assert.equal(hiddenFar.simulate, false);
+  assert.equal(hiddenFar.tier, 'sleep');
+});
+
+test('packSpatialCellKey produces unique collision-free integer keys across negative and positive coordinates', () => {
+  const seen = new Set();
+  for (let gx = -40; gx <= 40; gx += 7) {
+    for (let gz = -40; gz <= 40; gz += 7) {
+      const k = packSpatialCellKey(gx, gz);
+      assert.equal(typeof k, 'number');
+      assert.equal(Number.isSafeInteger(k), true);
+      assert.equal(seen.has(k), false, `duplicate key for ${gx},${gz}`);
+      seen.add(k);
+    }
+  }
+});
+

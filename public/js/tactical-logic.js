@@ -2512,4 +2512,108 @@ export function selectZombieAnimState({
   return { clip: 'idle', mode: 'idle', fade: 0.22, timeScale: 1.0 };
 }
 
+/**
+ * Empacota coordenadas de célula inteiras (gx, gz) em chave numérica inteira livre de alocação de string.
+ * Suporta coordenadas de -32768 até +32767 em cada eixo (cobre > 1.500 km de mundo).
+ */
+export function packSpatialCellKey(gx, gz) {
+  return ((gx | 0) + 32768) * 65536 + ((gz | 0) + 32768);
+}
 
+/**
+ * Calcula a política de simulação, animação esquelética, sombras e hitbox de um zumbi vivo
+ * de acordo com distância e visibilidade na câmera.
+ * Invariante: nenhum zumbi visível dentro do alcance de visão/luneta fica congelado (sempre recebe
+ * passo de movimento leve e atualização esquelética escalonada).
+ */
+export function computeZombieUpdatePolicy({
+  dist = 0,
+  drawDist = 220,
+  isVisible = true,
+  isChasing = false,
+  isStaggered = false,
+  fullAnimDist = 24,
+  shadowDist = 36,
+  isScoped = false
+} = {}) {
+  const safeDist = Number.isFinite(dist) ? Math.max(0, dist) : 0;
+  const maxVisSimDist = Math.min(480, Math.max((drawDist || 220) * 1.08, isScoped ? 480 : 280));
+  const bgAiDist = 155;
+
+  const urgent = !!(isChasing || isStaggered);
+  const simulate = urgent || safeDist <= bgAiDist || (isVisible && safeDist <= maxVisSimDist);
+
+  if (!simulate) {
+    return {
+      simulate: false,
+      tier: 'sleep',
+      physStep: 0.25,
+      animStep: 0.25,
+      allowFullAi: false,
+      allowCollisions: false,
+      allowShadows: false,
+      simplifiedHitbox: true,
+      maxVisSimDist
+    };
+  }
+
+  const allowShadows = isVisible && safeDist <= Math.max(16, shadowDist || 36);
+  const allowFullAi = urgent || safeDist <= 58;
+  const allowCollisions = urgent || safeDist <= 140;
+  const simplifiedHitbox = !urgent && safeDist > 52;
+
+  if (urgent || safeDist <= Math.max(14, fullAnimDist || 24)) {
+    return {
+      simulate: true,
+      tier: 'near',
+      physStep: 0,
+      animStep: 0,
+      allowFullAi: true,
+      allowCollisions: true,
+      allowShadows,
+      simplifiedHitbox: false,
+      maxVisSimDist
+    };
+  }
+
+  if (safeDist <= 58) {
+    return {
+      simulate: true,
+      tier: 'mid',
+      physStep: 0,
+      animStep: safeDist <= 42 ? 0.042 : 0.066,
+      allowFullAi: true,
+      allowCollisions: true,
+      allowShadows,
+      simplifiedHitbox,
+      maxVisSimDist
+    };
+  }
+
+  if (safeDist <= 140) {
+    return {
+      simulate: true,
+      tier: 'far',
+      physStep: 0.066,
+      animStep: safeDist <= 95 ? 0.085 : 0.11,
+      allowFullAi: false,
+      allowCollisions: true,
+      allowShadows: false,
+      simplifiedHitbox: true,
+      maxVisSimDist
+    };
+  }
+
+  // Zumbis distantes visíveis (140m .. 480m): patrulha leve sem colisão cara, mas SEMPRE caminhando e animados!
+  return {
+    simulate: true,
+    tier: 'horizon',
+    physStep: safeDist <= 260 ? 0.10 : 0.14,
+    animStep: safeDist <= 260 ? 0.12 : 0.16,
+    allowFullAi: false,
+    allowCollisions: false,
+    allowShadows: false,
+    simplifiedHitbox: true,
+    maxVisSimDist
+  };
+}

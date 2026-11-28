@@ -302,6 +302,8 @@ class RigController {
     }
 
     // Configura sombras, desativa frustumCulled em SkinnedMeshes e oculta armas embutidas nos GLBs (ex.: Pistol / Pistol_1..3 em swat/suit)
+    this._renderMeshes = [];
+    this._castShadow = !this.isZombie;
     const BAKED_WEAPON_RE = /^(pistol|gun|rifle|sword|knife|weapon|dagger|shotgun)([._\-\s]\d+)?$/i;
     model.traverse((obj) => {
       const cleanName = String(obj.name || '').trim();
@@ -327,11 +329,22 @@ class RigController {
           }
           p = p.parent;
         }
-        obj.castShadow = true;
+        obj.castShadow = this._castShadow;
         obj.receiveShadow = true;
         obj.frustumCulled = false;
+        this._renderMeshes.push(obj);
       }
     });
+  }
+
+  setShadowCasting(castShadow) {
+    const want = !!castShadow;
+    if (this._castShadow === want) return;
+    this._castShadow = want;
+    const list = this._renderMeshes;
+    for (let i = 0; i < list.length; i++) {
+      list[i].castShadow = want;
+    }
   }
 
   _restorePostureOverrides() {
